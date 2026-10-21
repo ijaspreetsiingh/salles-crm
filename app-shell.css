@@ -1,0 +1,159 @@
+/*
+ * JassDBX app shell.
+ * Shared by every desk page: the app switcher in the navbar.
+ * App colours come from the registry in launcher.js and from app-themes/*.css.
+ */
+
+.jd-apps-nav-item {
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding: 0 6px;
+}
+
+.jd-apps-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 34px;
+	padding: 0 11px;
+	border: 1px solid var(--jd-border, #e4e9ee);
+	border-radius: 9px;
+	background: var(--jd-surface, #fff);
+	color: var(--jd-text, #17212b);
+	font: inherit;
+	font-size: 12px;
+	font-weight: 650;
+	cursor: pointer;
+}
+
+.jd-apps-toggle:hover,
+.jd-apps-toggle[aria-expanded="true"] {
+	background: var(--jd-accent-soft, #e8f5f1);
+}
+
+.jd-apps-dot {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	flex: 0 0 9px;
+}
+
+.jd-apps-caret {
+	color: var(--jd-muted-text, #667482);
+	font-size: 10px;
+	line-height: 1;
+}
+
+.jd-apps-menu {
+	position: absolute;
+	top: calc(100% + 8px);
+	left: 0;
+	z-index: 1055;
+	display: grid;
+	gap: 2px;
+	min-width: 250px;
+	padding: 8px;
+	border: 1px solid var(--jd-border, #e4e9ee);
+	border-radius: 14px;
+	background: var(--jd-surface, #fff);
+	box-shadow: 0 18px 40px rgba(23, 33, 43, .16);
+}
+
+.jd-apps-menu[hidden] { display: none; }
+
+.jd-apps-menu-head {
+	padding: 6px 10px 4px;
+	color: var(--jd-muted-text, #667482);
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: .08em;
+	text-transform: uppercase;
+}
+
+.jd-apps-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border-radius: 9px;
+	color: var(--jd-text, #17212b);
+	text-decoration: none;
+}
+
+.jd-apps-item:hover {
+	background: var(--jd-surface-muted, #f8fafb);
+	text-decoration: none;
+}
+
+.jd-apps-item.is-active {
+	background: var(--jd-accent-soft, #e8f5f1);
+	font-weight: 650;
+}
+
+.jd-apps-swatch {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex: 0 0 10px;
+}
+
+.jd-apps-item-label {
+	display: grid;
+	gap: 1px;
+	line-height: 1.25;
+}
+
+.jd-apps-item-label small {
+	color: var(--jd-muted-text, #667482);
+	font-size: 11px;
+	font-weight: 500;
+}
+
+@media (max-width: 640px) {
+	.jd-apps-toggle-label { display: none; }
+}
+
+/* Frappe v16 desk: the switcher sits in the sidebar's standard-items band,
+   so the menu is inline instead of a floating dropdown (no clipping). */
+.body-sidebar .jd-apps-panel {
+	position: relative;
+	margin: 4px 10px 8px;
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-toggle {
+	width: 100%;
+	justify-content: flex-start;
+	min-height: 32px;
+	padding: 0 10px;
+	border-color: transparent;
+	background: transparent;
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-toggle:hover,
+.body-sidebar .jd-apps-panel .jd-apps-toggle[aria-expanded="true"] {
+	background: var(--jd-accent-soft, #e8f5f1);
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-caret {
+	margin-left: auto;
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-menu {
+	position: static;
+	min-width: 0;
+	max-height: 46vh;
+	overflow-y: auto;
+	margin-top: 4px;
+	padding: 6px;
+	border-radius: 11px;
+	box-shadow: none;
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-item {
+	padding: 7px 8px;
+}
+
+.body-sidebar .jd-apps-panel .jd-apps-item-label small {
+	display: none;
+}

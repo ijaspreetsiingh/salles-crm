@@ -1,0 +1,51 @@
+h1 | header | {"text": "<span class=\"h4\">HRM Dashboard</span>", "col": 12}
+c1 | number_card | {"number_card_name": "Total Employees", "col": 3}
+c2 | number_card | {"number_card_name": "New Joinees", "col": 3}
+c3 | number_card | {"number_card_name": "Leaves Pending", "col": 3}
+c4 | number_card | {"number_card_name": "Attendance Today", "col": 3}
+c5 | number_card | {"number_card_name": "Open Job Applicants", "col": 3}
+c6 | number_card | {"number_card_name": "Pending Expense Claims", "col": 3}
+h2 | header | {"text": "<span class=\"h4\">Quick Actions</span>", "col": 12}
+s1 | shortcut | {"label": "New Employee", "link_to": "Employee", "type": "DocType", "col": 3, "icon": "add"}
+s2 | shortcut | {"label": "New Leave Application", "link_to": "Leave Application", "type": "DocType", "col": 3, "icon": "add"}
+s3 | shortcut | {"label": "New Attendance", "link_to": "Attendance", "type": "DocType", "col": 3, "icon": "add"}
+s4 | shortcut | {"label": "New Job Applicant", "link_to": "Job Applicant", "type": "DocType", "col": 3, "icon": "add"}
+h3 | header | {"text": "<span class=\"h4\">Employee Records</span>", "col": 12}
+l1 | link | {"label": "Employees", "link_type": "DocType", "link_to": "Employee", "col": 3}
+l2 | link | {"label": "Departments", "link_type": "DocType", "link_to": "Department", "col": 3}
+l3 | link | {"label": "Designations", "link_type": "DocType", "link_to": "Designation", "col": 3}
+l4 | link | {"label": "Branches", "link_type": "DocType", "link_to": "Branch", "col": 3}
+l5 | link | {"label": "Employment Types", "link_type": "DocType", "link_to": "Employment Type", "col": 3}
+l6 | link | {"label": "Shift Types", "link_type": "DocType", "link_to": "Shift Type", "col": 3}
+h4 | header | {"text": "<span class=\"h4\">Leave &amp; Attendance</span>", "col": 12}
+la1 | link | {"label": "Leave Applications", "link_type": "DocType", "link_to": "Leave Application", "col": 3}
+la2 | link | {"label": "Leave Types", "link_type": "DocType", "link_to": "Leave Type", "col": 3}
+la3 | link | {"label": "Leave Balance", "link_type": "Report", "link_to": "Leave Balance", "col": 3}
+la4 | link | {"label": "Attendance", "link_type": "DocType", "link_to": "Attendance", "col": 3}
+la5 | link | {"label": "Monthly Attendance Sheet", "link_type": "Report", "link_to": "Monthly Attendance Sheet", "col": 3}
+la6 | link | {"label": "Shift Assignment", "link_type": "DocType", "link_to": "Shift Assignment", "col": 3}
+la7 | link | {"label": "Leave Policy", "link_type": "DocType", "link_to": "Leave Policy", "col": 3}
+la8 | link | {"label": "Holiday List", "link_type": "DocType", "link_to": "Holiday List", "col": 3}
+h5 | header | {"text": "<span class=\"h4\">Payroll &amp; Expenses</span>", "col": 12}
+p1 | link | {"label": "Salary Slips", "link_type": "DocType", "link_to": "Salary Slip", "col": 3}
+p2 | link | {"label": "Salary Structures", "link_type": "DocType", "link_to": "Salary Structure", "col": 3}
+p3 | link | {"label": "Salary Components", "link_type": "DocType", "link_to": "Salary Component", "col": 3}
+p4 | link | {"label": "Payroll Entries", "link_type": "DocType", "link_to": "Payroll Entry", "col": 3}
+p5 | link | {"label": "Expense Claims", "link_type": "DocType", "link_to": "Expense Claim", "col": 3}
+p6 | link | {"label": "Gratuity List", "link_type": "DocType", "link_to": "Gratuity", "col": 3}
+p7 | link | {"label": "Gratuity", "link_type": "DocType", "link_to": "Gratuity", "col": 3}
+p8 | link | {"label": "Salary Register", "link_type": "Report", "link_to": "Salary Register", "col": 3}
+h6 | header | {"text": "<span class=\"h4\">Recruitment &amp; Performance</span>", "col": 12}
+r1 | link | {"label": "Job Applicants", "link_type": "DocType", "link_to": "Job Applicant", "col": 3}
+r2 | link | {"label": "Job Openings", "link_type": "DocType", "link_to": "Job Opening", "col": 3}
+r3 | link | {"label": "Interview", "link_type": "DocType", "link_to": "Interview", "col": 3}
+r4 | link | {"label": "Interview Feedback", "link_type": "DocType", "link_to": "Interview Feedback", "col": 3}
+r5 | link | {"label": "Appraisals", "link_type": "DocType", "link_to": "Appraisal", "col": 3}
+r6 | link | {"label": "Employee Skill", "link_type": "DocType", "link_to": "Employee Skill", "col": 3}
+r7 | link | {"label": "Training Result", "link_type": "DocType", "link_to": "Training Result", "col": 3}
+r8 | link | {"label": "Employee Transfer", "link_type": "DocType", "link_to": "Employee Transfer", "col": 3}
+h7 | header | {"text": "<span class=\"h4\">HR Settings</span>", "col": 12}
+st1 | link | {"label": "HR Settings", "link_type": "DocType", "link_to": "HR Settings", "col": 3}
+st2 | link | {"label": "Employee Grade", "link_type": "DocType", "link_to": "Employee Grade", "col": 3}
+st3 | link | {"label": "Exit Interview", "link_type": "DocType", "link_to": "Exit Interview", "col": 3}
+st4 | link | {"label": "Staffing Plan", "link_type": "DocType", "link_to": "Staffing Plan", "col": 3}

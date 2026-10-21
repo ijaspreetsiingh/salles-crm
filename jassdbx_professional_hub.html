@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JASSDBX — Enterprise Business Suite</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary: #1e3a8a;
+  --primary-light: #3b82f6;
+  --primary-dark: #0c2340;
+  --success: #059669;
+  --info: #0891b2;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  color: var(--gray-900);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ===== HEADER ===== */
+.header {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+  color: white;
+  padding: 24px 0;
+  box-shadow: var(--shadow-lg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.tagline {
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+
+.header-right {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.btn-primary {
+  background: white;
+  color: var(--primary);
+  padding: 10px 20px;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== HERO ===== */
+.hero {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 50%, var(--primary-light) 100%);
+  color: white;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.hero-content {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  font-size: 48px;
+  margin-bottom: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+
+.hero p {
+  font-size: 18px;
+  margin-bottom: 30px;
+  opacity: 0.95;
+  line-height: 1.7;
+}
+
+.hero-tags {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 30px;
+}
+
+.hero-tag {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 10px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(10px);
+}
+
+/* ===== MAIN CONTENT ===== */
+.main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.section-label {
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-size: 36px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 50px;
+  color: var(--gray-900);
+}
+
+/* ===== APPS GRID ===== */
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 80px;
+}
+
+.app-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 32px 24px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.app-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, currentColor, transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.app-card:hover {
+  border-color: var(--primary-light);
+  transform: translateY(-8px);
+  box-shadow: var(--shadow-xl);
+}
+
+.app-card:hover::before {
+  opacity: 1;
+}
+
+.app-card.sales { color: #059669; }
+.app-card.inventory { color: #0891b2; }
+.app-card.accounts { color: #d97706; }
+.app-card.projects { color: #8b5cf6; }
+.app-card.hr { color: #ec4899; }
+.app-card.buying { color: #06b6d4; }
+.app-card.manufacturing { color: #f97316; }
+.app-card.assets { color: #6366f1; }
+
+.app-icon {
+  font-size: 56px;
+  margin-bottom: 20px;
+  display: block;
+}
+
+.app-name {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--gray-900);
+}
+
+.app-desc {
+  font-size: 14px;
+  color: var(--gray-600);
+  margin-bottom: 24px;
+  line-height: 1.6;
+  flex-grow: 1;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.05);
+  color: currentColor;
+  margin-bottom: 16px;
+}
+
+.btn-details {
+  background: linear-gradient(135deg, currentColor 0%, var(--primary-light) 100%);
+  color: white;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  align-self: center;
+  width: 100%;
+  letter-spacing: 0.5px;
+}
+
+.btn-details:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== MODAL ===== */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+}
+
+.modal.active {
+  display: flex;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-xl);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-header {
+  padding: 32px 32px 24px;
+  border-bottom: 1px solid var(--gray-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--gray-900);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--gray-500);
+  transition: color 0.3s;
+}
+
+.modal-close:hover {
+  color: var(--gray-900);
+}
+
+.modal-body {
+  padding: 32px;
+}
+
+.modal-section {
+  margin-bottom: 32px;
+}
+
+.modal-section h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--gray-900);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.feature-item {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--gray-700);
+}
+
+.feature-item::before {
+  content: '✓ ';
+  color: var(--success);
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.stat-box {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.stat-label {
+  font-size: 12px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+  background: var(--gray-900);
+  color: var(--gray-300);
+  text-align: center;
+  padding: 40px 24px;
+  margin-top: 80px;
+  border-top: 1px solid var(--gray-800);
+}
+
+.footer b {
+  color: white;
+  letter-spacing: 2px;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-100);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gray-400);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-600);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 32px; }
+  .section-title { font-size: 24px; }
+  .apps-grid { grid-template-columns: 1fr; }
+  .modal-header { flex-direction: column; gap: 12px; align-items: flex-start; }
+  .modal-close { align-self: flex-end; margin-top: -8px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-container">
+    <div>
+      <div class="logo">JASSDBX</div>
+      <div class="tagline">Enterprise Business Suite</div>
+    </div>
+    <div class="header-right">
+      <button class="btn-primary" onclick="alert('Contact sales team for demo')">Request Demo</button>
+    </div>
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-content">
+    <h1>Enterprise Resource Planning Made Simple</h1>
+    <p>JASSDBX integrates all your business operations—Sales, Finance, HR, Inventory, Manufacturing, and Projects—into one unified, intelligent platform.</p>
+    <div class="hero-tags">
+      <span class="hero-tag">8 Applications</span>
+      <span class="hero-tag">37 Modules</span>
+      <span class="hero-tag">200+ Features</span>
+      <span class="hero-tag">Enterprise Grade</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main">
+  <div class="section-label">Core Applications</div>
+  <div class="section-title">Explore Our Solutions</div>
+  
+  <div class="apps-grid">
+    <!-- Sales CRM -->
+    <div class="app-card sales">
+      <span class="app-icon">🛍️</span>
+      <div class="app-name">Sales CRM</div>
+      <div class="app-desc">Manage leads, deals, quotations, and sales orders from prospect to customer</div>
+      <div class="badge">4 Modules • 28+ Features</div>
+      <button class="btn-details" onclick="openModal('sales')">View Details →</button>
+    </div>
+
+    <!-- Inventory -->
+    <div class="app-card inventory">
+      <span class="app-icon">📦</span>
+      <div class="app-name">Inventory</div>
+      <div class="app-desc">Real-time stock tracking, multi-warehouse management, and supplier integration</div>
+      <div class="badge">4 Modules • 30+ Features</div>
+      <button class="btn-details" onclick="openModal('inventory')">View Details →</button>
+    </div>
+
+    <!-- Accounts -->
+    <div class="app-card accounts">
+      <span class="app-icon">💰</span>
+      <div class="app-name">Accounts & Billing</div>
+      <div class="app-desc">Invoicing, GST compliance, financial reports, and payment tracking</div>
+      <div class="badge">6 Modules • 40+ Features</div>
+      <button class="btn-details" onclick="openModal('accounts')">View Details →</button>
+    </div>
+
+    <!-- Projects -->
+    <div class="app-card projects">
+      <span class="app-icon">📋</span>
+      <div class="app-name">Projects</div>
+      <div class="app-desc">Project planning, task management, time tracking, and resource allocation</div>
+      <div class="badge">4 Modules • 22+ Features</div>
+      <button class="btn-details" onclick="openModal('projects')">View Details →</button>
+    </div>
+
+    <!-- HR -->
+    <div class="app-card hr">
+      <span class="app-icon">👥</span>
+      <div class="app-name">HR & Payroll</div>
+      <div class="app-desc">Employee management, payroll processing, leave tracking, and recruitment</div>
+      <div class="badge">7 Modules • 35+ Features</div>
+      <button class="btn-details" onclick="openModal('hr')">View Details →</button>
+    </div>
+
+    <!-- Buying -->
+    <div class="app-card buying">
+      <span class="app-icon">🛒</span>
+      <div class="app-name">Buying</div>
+      <div class="app-desc">Supplier management, purchase orders, RFQ, and procurement automation</div>
+      <div class="badge">4 Modules • 25+ Features</div>
+      <button class="btn-details" onclick="openModal('buying')">View Details →</button>
+    </div>
+
+    <!-- Manufacturing -->
+    <div class="app-card manufacturing">
+      <span class="app-icon">🏭</span>
+      <div class="app-name">Manufacturing</div>
+      <div class="app-desc">BOM creation, work orders, production planning, and quality control</div>
+      <div class="badge">5 Modules • 28+ Features</div>
+      <button class="btn-details" onclick="openModal('manufacturing')">View Details →</button>
+    </div>
+
+    <!-- Assets -->
+    <div class="app-card assets">
+      <span class="app-icon">🏢</span>
+      <div class="app-name">Assets</div>
+      <div class="app-desc">Asset tracking, depreciation management, and maintenance scheduling</div>
+      <div class="badge">3 Modules • 18+ Features</div>
+      <button class="btn-details" onclick="openModal('assets')">View Details →</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+
+<!-- Sales CRM Modal -->
+<div id="salesModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🛍️ Sales CRM</h2>
+      <button class="modal-close" onclick="closeModal('sales')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Complete customer relationship management system designed to streamline your entire sales process from initial contact to invoice payment.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Lead Management - Capture & qualify leads</div>
+          <div class="feature-item">Deals Pipeline - Track 5-stage sales pipeline</div>
+          <div class="feature-item">Customer Master - 360° customer profiles</div>
+          <div class="feature-item">Selling Module - Quote to invoice workflow</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Lead capture from multiple sources</div>
+          <div class="feature-item">Drag-drop kanban pipeline</div>
+          <div class="feature-item">Sales forecasting & analytics</div>
+          <div class="feature-item">Automated quotation generation</div>
+          <div class="feature-item">GST invoice automation</div>
+          <div class="feature-item">Payment status tracking</div>
+          <div class="feature-item">Customer lifetime value tracking</div>
+          <div class="feature-item">Lead conversion to customer + deal</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">4</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">28+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">5</div>
+            <div class="stat-label">Pipeline Stages</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">∞</div>
+            <div class="stat-label">Data Capacity</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Workflow</h3>
+        <p style="font-size: 13px; color: var(--gray-700);">
+          Lead → Customer Conversion → Deal Pipeline → Quotation → Sales Order → Delivery → Invoice → Payment
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Inventory Modal -->
+<div id="inventoryModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>📦 Inventory Management</h2>
+      <button class="modal-close" onclick="closeModal('inventory')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Complete stock management system with multi-warehouse support, real-time tracking, and automated reorder points.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Item Master - Product catalog</div>
+          <div class="feature-item">Warehouse Management - Multi-warehouse</div>
+          <div class="feature-item">Purchase Management - PO & GRN</div>
+          <div class="feature-item">Stock Transactions - Movements</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Real-time stock levels</div>
+          <div class="feature-item">Multi-warehouse support</div>
+          <div class="feature-item">Warehouse transfers</div>
+          <div class="feature-item">Low stock alerts</div>
+          <div class="feature-item">Stock aging reports</div>
+          <div class="feature-item">Reorder automation</div>
+          <div class="feature-item">Physical verification</div>
+          <div class="feature-item">Batch/Serial tracking</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">4</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">30+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Multi</div>
+            <div class="stat-label">Warehouses</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Real-time</div>
+            <div class="stat-label">Tracking</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Accounts Modal -->
+<div id="accountsModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>💰 Accounts & Billing</h2>
+      <button class="modal-close" onclick="closeModal('accounts')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Complete financial management with invoicing, GST compliance, expense tracking, and comprehensive reporting.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Sales Invoicing - GST compliant</div>
+          <div class="feature-item">Expense Tracking - Approval workflow</div>
+          <div class="feature-item">Payment & Collections - Receivables</div>
+          <div class="feature-item">Financial Reports - P&L, Balance Sheet</div>
+          <div class="feature-item">GST Compliance - GSTR ready</div>
+          <div class="feature-item">Chart of Accounts - General ledger</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Auto GST @18% calculation</div>
+          <div class="feature-item">Multi-line invoicing</div>
+          <div class="feature-item">Payment reconciliation</div>
+          <div class="feature-item">Outstanding aging reports</div>
+          <div class="feature-item">P&L statement generation</div>
+          <div class="feature-item">Cash flow analysis</div>
+          <div class="feature-item">Tax compliance reporting</div>
+          <div class="feature-item">Expense approval workflow</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">6</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">40+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">GST</div>
+            <div class="stat-label">Compliant</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">10+</div>
+            <div class="stat-label">Reports</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Projects Modal -->
+<div id="projectsModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>📋 Projects & Tasks</h2>
+      <button class="modal-close" onclick="closeModal('projects')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Comprehensive project management with task tracking, time logging, and resource allocation.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Project Management - Planning</div>
+          <div class="feature-item">Task Management - Tracking</div>
+          <div class="feature-item">Time Tracking - Logging</div>
+          <div class="feature-item">Resource Planning - Allocation</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Project creation & timeline</div>
+          <div class="feature-item">Milestone tracking</div>
+          <div class="feature-item">5-level task status</div>
+          <div class="feature-item">Time logging per task</div>
+          <div class="feature-item">Resource utilization reports</div>
+          <div class="feature-item">Budget tracking</div>
+          <div class="feature-item">Gantt chart view</div>
+          <div class="feature-item">Task dependencies</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">4</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">22+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">∞</div>
+            <div class="stat-label">Projects</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Real-time</div>
+            <div class="stat-label">Tracking</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HR Modal -->
+<div id="hrModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>👥 HR & Payroll</h2>
+      <button class="modal-close" onclick="closeModal('hr')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Complete human resource management from employee onboarding to payroll processing with HRMS integration.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Employee Management - Master</div>
+          <div class="feature-item">Leave Management - Tracking</div>
+          <div class="feature-item">Attendance - Daily marking</div>
+          <div class="feature-item">Payroll Processing - Monthly</div>
+          <div class="feature-item">Performance Management - Appraisals</div>
+          <div class="feature-item">Recruitment - Hiring</div>
+          <div class="feature-item">Employee Lifecycle - Onboarding</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Employee profile creation</div>
+          <div class="feature-item">Automated payroll</div>
+          <div class="feature-item">Leave allocation & tracking</div>
+          <div class="feature-item">Attendance marking</div>
+          <div class="feature-item">Salary slip generation</div>
+          <div class="feature-item">Performance rating</div>
+          <div class="feature-item">Recruitment workflow</div>
+          <div class="feature-item">GST & tax compliance</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">7</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">35+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Frappe</div>
+            <div class="stat-label">HRMS</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Auto</div>
+            <div class="stat-label">Payroll</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Buying Modal -->
+<div id="buyingModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🛒 Buying & Procurement</h2>
+      <button class="modal-close" onclick="closeModal('buying')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Complete procurement management from supplier management to purchase order tracking to invoice processing.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Supplier Management</div>
+          <div class="feature-item">RFQ (Request for Quote)</div>
+          <div class="feature-item">Purchase Orders - PO</div>
+          <div class="feature-item">Purchase Invoicing</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Supplier profile & rating</div>
+          <div class="feature-item">RFQ to multiple suppliers</div>
+          <div class="feature-item">Quote comparison</div>
+          <div class="feature-item">Purchase order generation</div>
+          <div class="feature-item">Goods receipt note (GRN)</div>
+          <div class="feature-item">3-way invoice matching</div>
+          <div class="feature-item">Payment tracking</div>
+          <div class="feature-item">Supplier performance</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">4</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">25+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">3-Way</div>
+            <div class="stat-label">Match</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">RFQ</div>
+            <div class="stat-label">Support</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Manufacturing Modal -->
+<div id="manufacturingModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🏭 Manufacturing</h2>
+      <button class="modal-close" onclick="closeModal('manufacturing')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Production management with BOM creation, work order tracking, production planning, and quality control.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Bill of Materials - BOM</div>
+          <div class="feature-item">Work Orders - WO</div>
+          <div class="feature-item">Stock Entry - Production</div>
+          <div class="feature-item">Quality Control</div>
+          <div class="feature-item">Production Planning</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">BOM creation & versioning</div>
+          <div class="feature-item">Work order tracking</div>
+          <div class="feature-item">Production scheduling</div>
+          <div class="feature-item">Quality inspection</div>
+          <div class="feature-item">Scrap management</div>
+          <div class="feature-item">Material requirement planning</div>
+          <div class="feature-item">Capacity planning</div>
+          <div class="feature-item">Batch tracking</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">5</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">28+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">BOM</div>
+            <div class="stat-label">Management</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">MRP</div>
+            <div class="stat-label">Planning</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Assets Modal -->
+<div id="assetsModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🏢 Assets Management</h2>
+      <button class="modal-close" onclick="closeModal('assets')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Overview</h3>
+        <p>Fixed asset tracking with depreciation management, maintenance scheduling, and complete asset lifecycle.</p>
+      </div>
+
+      <div class="modal-section">
+        <h3>Key Modules</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Asset Master - Creation</div>
+          <div class="feature-item">Depreciation - Automation</div>
+          <div class="feature-item">Maintenance - Scheduling</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Core Features</h3>
+        <div class="feature-grid">
+          <div class="feature-item">Asset creation & tracking</div>
+          <div class="feature-item">Depreciation calculation</div>
+          <div class="feature-item">Straight-line & diminishing</div>
+          <div class="feature-item">Maintenance scheduling</div>
+          <div class="feature-item">Asset transfer</div>
+          <div class="feature-item">Disposal tracking</div>
+          <div class="feature-item">Cost center allocation</div>
+          <div class="feature-item">Asset reports</div>
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Statistics</h3>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-number">3</div>
+            <div class="stat-label">Modules</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">18+</div>
+            <div class="stat-label">Features</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Auto</div>
+            <div class="stat-label">Depreciation</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-number">Full</div>
+            <div class="stat-label">Lifecycle</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <b>JASSDBX</b> — Enterprise Business Suite v1.0<br/>
+  Built on Frappe Framework • ERPNext • HRMS<br/>
+  <small style="color: var(--gray-500); margin-top: 12px; display: block;">Copyright © 2026. All rights reserved.</small>
+</div>
+
+<script>
+function openModal(app) {
+  const modals = {
+    'sales': 'salesModal',
+    'inventory': 'inventoryModal',
+    'accounts': 'accountsModal',
+    'projects': 'projectsModal',
+    'hr': 'hrModal',
+    'buying': 'buyingModal',
+    'manufacturing': 'manufacturingModal',
+    'assets': 'assetsModal'
+  };
+  
+  document.getElementById(modals[app]).classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal(app) {
+  const modals = {
+    'sales': 'salesModal',
+    'inventory': 'inventoryModal',
+    'accounts': 'accountsModal',
+    'projects': 'projectsModal',
+    'hr': 'hrModal',
+    'buying': 'buyingModal',
+    'manufacturing': 'manufacturingModal',
+    'assets': 'assetsModal'
+  };
+  
+  document.getElementById(modals[app]).classList.remove('active');
+  document.body.style.overflow = 'auto';
+}
+
+// Close modal when clicking outside
+window.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal')) {
+    e.target.classList.remove('active');
+    document.body.style.overflow = 'auto';
+  }
+});
+</script>
+
+</body>
+</html>

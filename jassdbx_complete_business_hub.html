@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JASSDBX — Business Suite</title>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary: #1e40af;
+  --primary-light: #3b82f6;
+  --primary-dark: #0c2340;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: #fafbfc;
+  color: var(--gray-900);
+  line-height: 1.6;
+}
+
+/* ===== HEADER ===== */
+.header {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+  color: white;
+  padding: 20px 0;
+  box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo-section h1 {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.logo-section p {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.header-links {
+  display: flex;
+  gap: 16px;
+}
+
+.header-links a {
+  color: white;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.header-links a:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ===== HERO ===== */
+.hero {
+  background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary) 100%);
+  color: white;
+  padding: 60px 24px;
+}
+
+.hero-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 42px;
+  margin-bottom: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.hero p {
+  font-size: 16px;
+  margin-bottom: 24px;
+  opacity: 0.95;
+}
+
+.hero-stats {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.hero-stat span {
+  font-weight: 700;
+  font-size: 20px;
+  display: block;
+}
+
+/* ===== MAIN ===== */
+.main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: 50px;
+}
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--primary);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.section-title {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--gray-900);
+}
+
+/* ===== APPS GRID ===== */
+.apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-bottom: 60px;
+}
+
+.app-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 28px 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.app-card:hover {
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.app-icon {
+  font-size: 40px;
+}
+
+.app-title h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 4px;
+}
+
+.app-title p {
+  font-size: 12px;
+  color: var(--gray-600);
+}
+
+.app-desc {
+  font-size: 13px;
+  color: var(--gray-700);
+  line-height: 1.6;
+}
+
+.app-badge {
+  display: inline-block;
+  background: var(--gray-100);
+  color: var(--primary);
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.app-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  align-self: flex-start;
+}
+
+.app-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ===== DETAIL VIEW ===== */
+.detail-view {
+  display: none;
+}
+
+.detail-view.active {
+  display: block;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--gray-100);
+  color: var(--primary);
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: all 0.3s;
+}
+
+.back-btn:hover {
+  background: var(--gray-200);
+}
+
+.detail-header {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 32px 28px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.detail-header-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.detail-icon {
+  font-size: 56px;
+}
+
+.detail-info h2 {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.detail-info p {
+  color: var(--gray-700);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ===== MODULES GRID ===== */
+.modules-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: var(--gray-900);
+}
+
+.modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-bottom: 40px;
+}
+
+.module-card {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s;
+}
+
+.module-card:hover {
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-md);
+}
+
+.module-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--gray-900);
+}
+
+.module-card p {
+  font-size: 12px;
+  color: var(--gray-600);
+  margin-bottom: 12px;
+}
+
+.features-list {
+  list-style: none;
+}
+
+.features-list li {
+  font-size: 13px;
+  padding: 8px 0 8px 20px;
+  position: relative;
+  color: var(--gray-700);
+  border-bottom: 1px dashed var(--gray-200);
+}
+
+.features-list li:last-child {
+  border: none;
+}
+
+.features-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #059669;
+  font-weight: 700;
+  width: 16px;
+}
+
+/* ===== WORKFLOW ===== */
+.workflow-section {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 28px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.workflow-section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.flow-diagram {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.flow-step {
+  background: var(--gray-100);
+  border: 2px solid var(--primary);
+  color: var(--primary);
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  min-width: 100px;
+  text-align: center;
+}
+
+.flow-arrow {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* ===== DATA MODELS ===== */
+.data-models {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 28px;
+  margin-bottom: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.data-models h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.data-model {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.data-model h4 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.data-model ul {
+  list-style: none;
+}
+
+.data-model li {
+  font-size: 12px;
+  padding: 5px 0;
+  color: var(--gray-700);
+}
+
+.data-model li::before {
+  content: '→ ';
+  color: var(--primary);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ===== STATS ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin: 32px 0;
+}
+
+.stat-card {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.stat-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+
+/* ===== TABLE ===== */
+.table-container {
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  margin: 40px 0;
+}
+
+.table-header {
+  padding: 16px 24px;
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--gray-200);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background: var(--gray-50);
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray-700);
+  font-weight: 700;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 13px;
+}
+
+tr:hover td {
+  background: var(--gray-50);
+}
+
+/* ===== FOOTER ===== */
+.footer {
+  background: var(--gray-900);
+  color: var(--gray-300);
+  text-align: center;
+  padding: 32px 24px;
+  margin-top: 60px;
+  border-top: 1px solid var(--gray-800);
+}
+
+.footer b {
+  color: white;
+  letter-spacing: 1px;
+}
+
+.footer small {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .hero h1 { font-size: 28px; }
+  .section-title { font-size: 24px; }
+  .apps-grid { grid-template-columns: 1fr; }
+  .detail-header-content { flex-direction: column; }
+  .hero-stats { gap: 16px; }
+  .flow-diagram { gap: 8px; }
+  .flow-arrow { display: none; }
+  .flow-step { min-width: 80px; font-size: 12px; }
+}
+
+@media (max-width: 480px) {
+  .hero { padding: 40px 16px; }
+  .main { padding: 32px 16px; }
+  .header-inner { flex-direction: column; gap: 12px; }
+  .apps-grid { gap: 16px; }
+  table { font-size: 12px; }
+  td, th { padding: 8px 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-inner">
+    <div class="logo-section">
+      <h1>JASSDBX</h1>
+      <p>Business Suite</p>
+    </div>
+    <div class="header-links">
+      <a href="#" onclick="backToApps(); return false;" id="backLink" style="display:none;">← Back</a>
+    </div>
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-content">
+    <h1>Enterprise Resource Planning Platform</h1>
+    <p>Unified business management across Sales, Finance, HR, Inventory, Manufacturing, and Projects</p>
+    <div class="hero-stats">
+      <div><span>8</span> Applications</div>
+      <div><span>37</span> Modules</div>
+      <div><span>200+</span> Features</div>
+      <div><span>100%</span> Web-Based</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- APPS VIEW -->
+  <div id="appsView">
+    <div class="section-header">
+      <div class="section-label">Core Applications</div>
+      <h2 class="section-title">Select Your Module</h2>
+    </div>
+
+    <div class="apps-grid">
+      <!-- Sales CRM -->
+      <div class="app-card" onclick="showApp('sales')">
+        <div class="app-header">
+          <div class="app-icon">🛍️</div>
+          <div class="app-title">
+            <h3>Sales CRM</h3>
+            <p>Customer Relations</p>
+          </div>
+        </div>
+        <div class="app-desc">Lead management, deals pipeline, quotations and sales order tracking</div>
+        <span class="app-badge">4 Modules • 28+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Inventory -->
+      <div class="app-card" onclick="showApp('inventory')">
+        <div class="app-header">
+          <div class="app-icon">📦</div>
+          <div class="app-title">
+            <h3>Inventory</h3>
+            <p>Stock Management</p>
+          </div>
+        </div>
+        <div class="app-desc">Multi-warehouse tracking, stock management, purchase orders and supplier integration</div>
+        <span class="app-badge">4 Modules • 30+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Accounts -->
+      <div class="app-card" onclick="showApp('accounts')">
+        <div class="app-header">
+          <div class="app-icon">💰</div>
+          <div class="app-title">
+            <h3>Accounts & Billing</h3>
+            <p>Financial Management</p>
+          </div>
+        </div>
+        <div class="app-desc">Invoicing, GST compliance, financial reports, expense tracking and payments</div>
+        <span class="app-badge">6 Modules • 40+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Projects -->
+      <div class="app-card" onclick="showApp('projects')">
+        <div class="app-header">
+          <div class="app-icon">📋</div>
+          <div class="app-title">
+            <h3>Projects</h3>
+            <p>Task Management</p>
+          </div>
+        </div>
+        <div class="app-desc">Project planning, task tracking, time logging and resource allocation</div>
+        <span class="app-badge">4 Modules • 22+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- HR -->
+      <div class="app-card" onclick="showApp('hr')">
+        <div class="app-header">
+          <div class="app-icon">👥</div>
+          <div class="app-title">
+            <h3>HR & Payroll</h3>
+            <p>Human Resources</p>
+          </div>
+        </div>
+        <div class="app-desc">Employee management, payroll processing, leave tracking and recruitment</div>
+        <span class="app-badge">7 Modules • 35+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Buying -->
+      <div class="app-card" onclick="showApp('buying')">
+        <div class="app-header">
+          <div class="app-icon">🛒</div>
+          <div class="app-title">
+            <h3>Buying</h3>
+            <p>Procurement</p>
+          </div>
+        </div>
+        <div class="app-desc">Supplier management, purchase orders, RFQ and procurement automation</div>
+        <span class="app-badge">4 Modules • 25+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Manufacturing -->
+      <div class="app-card" onclick="showApp('manufacturing')">
+        <div class="app-header">
+          <div class="app-icon">🏭</div>
+          <div class="app-title">
+            <h3>Manufacturing</h3>
+            <p>Production</p>
+          </div>
+        </div>
+        <div class="app-desc">BOM creation, work orders, production planning and quality control</div>
+        <span class="app-badge">5 Modules • 28+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+
+      <!-- Assets -->
+      <div class="app-card" onclick="showApp('assets')">
+        <div class="app-header">
+          <div class="app-icon">🏢</div>
+          <div class="app-title">
+            <h3>Assets</h3>
+            <p>Asset Management</p>
+          </div>
+        </div>
+        <div class="app-desc">Asset tracking, depreciation management and maintenance scheduling</div>
+        <span class="app-badge">3 Modules • 18+ Features</span>
+        <button class="app-btn">View Details →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SALES DETAIL -->
+  <div id="salesDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">🛍️</div>
+        <div class="detail-info">
+          <h2>Sales CRM</h2>
+          <p>Complete customer relationship management system designed for sales teams to manage leads, deals, customers, and sales orders from initial contact to final invoice.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>👤 Lead Management</h3>
+        <p>Capture and nurture sales opportunities</p>
+        <ul class="features-list">
+          <li>Lead creation with contact information</li>
+          <li>Lead source tracking (Website, Referral, Cold Call, Event)</li>
+          <li>Lead status workflow (New → Contacted → Qualified → Converted/Lost)</li>
+          <li>Lead scoring and qualification</li>
+          <li>Lead conversion to customer + deal</li>
+          <li>Lead assignment to sales team</li>
+          <li>Activity timeline and history</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🤝 Deals Pipeline</h3>
+        <p>Track deals through sales stages</p>
+        <ul class="features-list">
+          <li>5-stage pipeline (Qualification → Proposal → Negotiation → Won → Lost)</li>
+          <li>Drag-drop kanban board</li>
+          <li>Deal value and probability tracking</li>
+          <li>Revenue forecasting</li>
+          <li>Deal owner assignment</li>
+          <li>Pipeline analytics</li>
+          <li>Lost deal analysis</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🏢 Customer Master</h3>
+        <p>Centralized customer database</p>
+        <ul class="features-list">
+          <li>Customer profile creation</li>
+          <li>Multiple contact persons</li>
+          <li>Email, phone, address management</li>
+          <li>Customer classification (A/B/C)</li>
+          <li>Purchase history tracking</li>
+          <li>Customer lifetime value</li>
+          <li>Credit management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🛍️ Selling Module</h3>
+        <p>Complete sales order to invoice workflow</p>
+        <ul class="features-list">
+          <li>Item/Product master with pricing</li>
+          <li>Stock tracking</li>
+          <li>Quotation generation (QTN series)</li>
+          <li>Sales order creation</li>
+          <li>Delivery note management</li>
+          <li>Sales invoice with auto GST</li>
+          <li>Return order handling</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="workflow-section">
+      <h3>Sales Process Workflow</h3>
+      <div class="flow-diagram">
+        <div class="flow-step">Lead</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Customer</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Deal</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Quotation</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Order</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Delivery</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Invoice</div>
+      </div>
+    </div>
+
+    <div class="data-models">
+      <h3>Core Data Models</h3>
+      <div class="model-grid">
+        <div class="data-model">
+          <h4>Lead Record</h4>
+          <ul>
+            <li>Lead name, company</li>
+            <li>Email, phone</li>
+            <li>Source, status</li>
+            <li>Owner, created date</li>
+          </ul>
+        </div>
+        <div class="data-model">
+          <h4>Deal Record</h4>
+          <ul>
+            <li>Deal title, value (₹)</li>
+            <li>Customer, stage</li>
+            <li>Probability, closing date</li>
+            <li>Owner, expected revenue</li>
+          </ul>
+        </div>
+        <div class="data-model">
+          <h4>Customer Record</h4>
+          <ul>
+            <li>Customer name, type</li>
+            <li>Contact persons</li>
+            <li>Email, phone, address</li>
+            <li>Credit limit, GST number</li>
+          </ul>
+        </div>
+        <div class="data-model">
+          <h4>Quotation Record</h4>
+          <ul>
+            <li>QTN number (auto)</li>
+            <li>Customer, items</li>
+            <li>Qty, rate, amount</li>
+            <li>Subtotal, tax, total</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">28+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">5</div>
+        <div class="stat-label">Pipeline Stages</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">∞</div>
+        <div class="stat-label">Data Capacity</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INVENTORY DETAIL -->
+  <div id="inventoryDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">📦</div>
+        <div class="detail-info">
+          <h2>Inventory Management</h2>
+          <p>Complete stock management system with multi-warehouse support, real-time tracking, and automated reorder points.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>📋 Item Master</h3>
+        <p>Comprehensive product catalog</p>
+        <ul class="features-list">
+          <li>Item creation with unique codes</li>
+          <li>Item name, description, category</li>
+          <li>Unit of measurement (UOM)</li>
+          <li>Selling rate, cost price</li>
+          <li>Tax classification (GST slab)</li>
+          <li>Supplier mapping</li>
+          <li>Reorder level management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🏭 Warehouse Management</h3>
+        <p>Multi-warehouse inventory tracking</p>
+        <ul class="features-list">
+          <li>Multiple warehouse creation</li>
+          <li>Real-time stock levels</li>
+          <li>Stock transfer between warehouses</li>
+          <li>Bin/location tracking</li>
+          <li>Stock aging reports</li>
+          <li>Physical verification</li>
+          <li>Low stock alerts</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🛒 Purchase Management</h3>
+        <p>Supplier order and receipt tracking</p>
+        <ul class="features-list">
+          <li>Supplier master creation</li>
+          <li>Purchase request (RFQ)</li>
+          <li>Purchase order creation</li>
+          <li>Goods receipt note (GRN)</li>
+          <li>Supplier invoice matching</li>
+          <li>Purchase history</li>
+          <li>Return to supplier</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📊 Stock Transactions</h3>
+        <p>Track all inventory movements</p>
+        <ul class="features-list">
+          <li>Purchase receipt (inward)</li>
+          <li>Sales delivery (outward)</li>
+          <li>Stock adjustment (damage, loss)</li>
+          <li>Internal transfers</li>
+          <li>Stock movement history</li>
+          <li>FIFO/LIFO valuation</li>
+          <li>Batch/Serial tracking</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="workflow-section">
+      <h3>Inventory Operations Workflow</h3>
+      <div class="flow-diagram">
+        <div class="flow-step">Supplier</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">RFQ</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">PO</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">GRN</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Warehouse</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Sales</div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">30+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Multi</div>
+        <div class="stat-label">Warehouses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Real-time</div>
+        <div class="stat-label">Tracking</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACCOUNTS DETAIL -->
+  <div id="accountsDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">💰</div>
+        <div class="detail-info">
+          <h2>Accounts & Billing</h2>
+          <p>Complete financial management with invoicing, GST compliance, expense tracking, and comprehensive reporting.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>🧾 Sales Invoicing</h3>
+        <p>Generate and manage sales invoices</p>
+        <ul class="features-list">
+          <li>Invoice creation from sales order</li>
+          <li>Auto-numbering (INV series)</li>
+          <li>Multi-line item support</li>
+          <li>Automatic GST @18% calculation</li>
+          <li>Subtotal, GST, grand total</li>
+          <li>Invoice status tracking</li>
+          <li>Invoice templates</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>💸 Expense Tracking</h3>
+        <p>Record and categorize expenses</p>
+        <ul class="features-list">
+          <li>Expense claim creation</li>
+          <li>Expense categorization</li>
+          <li>Receipt upload & documentation</li>
+          <li>Approval workflow</li>
+          <li>Reimbursement processing</li>
+          <li>Monthly summaries</li>
+          <li>Vendor bill management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>💳 Payment & Collections</h3>
+        <p>Track receivables and payables</p>
+        <ul class="features-list">
+          <li>Payment receipt creation</li>
+          <li>Multiple payment modes</li>
+          <li>Invoice reconciliation</li>
+          <li>Outstanding aging reports</li>
+          <li>Payment due tracking</li>
+          <li>Partial payment support</li>
+          <li>Payment term management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📊 Financial Reports</h3>
+        <p>Generate financial statements</p>
+        <ul class="features-list">
+          <li>Profit & Loss statement</li>
+          <li>Balance sheet</li>
+          <li>Cash flow analysis</li>
+          <li>Trial balance</li>
+          <li>GST summary (IGST, CGST, SGST)</li>
+          <li>Revenue by customer</li>
+          <li>Expense breakdown</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📋 GST Compliance</h3>
+        <p>Automatic GST calculation</p>
+        <ul class="features-list">
+          <li>GST rate selection (5-28%)</li>
+          <li>HSN/SAC code mapping</li>
+          <li>IGST/CGST/SGST auto-split</li>
+          <li>GST summary for returns</li>
+          <li>GSTR-1, GSTR-2 readiness</li>
+          <li>Tax liability tracking</li>
+          <li>Input tax credit (ITC)</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📚 Chart of Accounts</h3>
+        <p>General ledger management</p>
+        <ul class="features-list">
+          <li>Account head creation</li>
+          <li>Account code hierarchy</li>
+          <li>Manual journal entries</li>
+          <li>Debit/Credit posting</li>
+          <li>Account reconciliation</li>
+          <li>Audit trail</li>
+          <li>Opening balance entry</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">6</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">40+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">GST</div>
+        <div class="stat-label">Compliant</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">10+</div>
+        <div class="stat-label">Reports</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROJECTS DETAIL -->
+  <div id="projectsDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">📋</div>
+        <div class="detail-info">
+          <h2>Projects & Tasks</h2>
+          <p>Comprehensive project management with task tracking, time logging, and resource allocation.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>📊 Project Management</h3>
+        <p>Create and manage projects</p>
+        <ul class="features-list">
+          <li>Project creation with timeline</li>
+          <li>Project status tracking</li>
+          <li>Team member assignment</li>
+          <li>Budget allocation</li>
+          <li>Milestone creation</li>
+          <li>Progress percentage</li>
+          <li>Project documentation</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>✅ Task Management</h3>
+        <p>Break down projects into tasks</p>
+        <ul class="features-list">
+          <li>Task creation under projects</li>
+          <li>Priority levels (Low-Urgent)</li>
+          <li>Task status workflow</li>
+          <li>Task assignment</li>
+          <li>Due date management</li>
+          <li>Task dependencies</li>
+          <li>Checklists</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>⏱️ Time Tracking</h3>
+        <p>Log time spent on tasks</p>
+        <ul class="features-list">
+          <li>Time log creation</li>
+          <li>Task-wise tracking</li>
+          <li>Activity logging</li>
+          <li>Project summary</li>
+          <li>Utilization reports</li>
+          <li>Overtime tracking</li>
+          <li>Approval workflow</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>👥 Resource Planning</h3>
+        <p>Manage team allocation</p>
+        <ul class="features-list">
+          <li>Capacity management</li>
+          <li>Resource allocation</li>
+          <li>Utilization reports</li>
+          <li>Skill-based assignment</li>
+          <li>Conflict detection</li>
+          <li>Workload dashboard</li>
+          <li>Resource optimization</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">22+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">∞</div>
+        <div class="stat-label">Projects</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Real-time</div>
+        <div class="stat-label">Tracking</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HR DETAIL -->
+  <div id="hrDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">👥</div>
+        <div class="detail-info">
+          <h2>HR & Payroll</h2>
+          <p>Complete human resource management from employee onboarding to payroll processing with HRMS integration.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>👤 Employee Management</h3>
+        <p>Employee master and personnel</p>
+        <ul class="features-list">
+          <li>Employee profile creation</li>
+          <li>Personal and official contact</li>
+          <li>Emergency contacts</li>
+          <li>Employment type</li>
+          <li>Designation and department</li>
+          <li>Reporting manager</li>
+          <li>Document management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📅 Leave Management</h3>
+        <p>Leave request and tracking</p>
+        <ul class="features-list">
+          <li>Leave type creation</li>
+          <li>Leave allocation</li>
+          <li>Leave application</li>
+          <li>Approval workflow</li>
+          <li>Leave balance tracking</li>
+          <li>Holiday calendar</li>
+          <li>Leave encashment</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>⏰ Attendance Tracking</h3>
+        <p>Daily attendance marking</p>
+        <ul class="features-list">
+          <li>Daily attendance marking</li>
+          <li>Shift assignment</li>
+          <li>Late coming tracking</li>
+          <li>Attendance rules</li>
+          <li>Bulk import</li>
+          <li>Attendance reports</li>
+          <li>Biometric integration</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>💼 Payroll Processing</h3>
+        <p>Monthly salary calculation</p>
+        <ul class="features-list">
+          <li>Salary structure creation</li>
+          <li>Salary slip generation</li>
+          <li>Basic, HRA, DA calculation</li>
+          <li>Allowances management</li>
+          <li>Deduction management</li>
+          <li>Income tax calculation</li>
+          <li>Bank transfer</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🎯 Performance Management</h3>
+        <p>Appraisal and feedback</p>
+        <ul class="features-list">
+          <li>Goal setting</li>
+          <li>Performance rating</li>
+          <li>360-degree feedback</li>
+          <li>Appraisal workflow</li>
+          <li>Performance history</li>
+          <li>Skill assessment</li>
+          <li>Reports</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🏢 Recruitment</h3>
+        <p>Job openings and hiring</p>
+        <ul class="features-list">
+          <li>Job opening creation</li>
+          <li>Applicant tracking</li>
+          <li>Interview scheduling</li>
+          <li>Offer letter generation</li>
+          <li>Recruitment tracking</li>
+          <li>Candidate evaluation</li>
+          <li>Onboarding</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📋 Employee Lifecycle</h3>
+        <p>Onboarding and offboarding</p>
+        <ul class="features-list">
+          <li>Onboarding templates</li>
+          <li>Document collection</li>
+          <li>Training programs</li>
+          <li>Separation process</li>
+          <li>Final settlement</li>
+          <li>Relieving letter</li>
+          <li>Alumni database</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">7</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">35+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Frappe</div>
+        <div class="stat-label">HRMS</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Auto</div>
+        <div class="stat-label">Payroll</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUYING DETAIL -->
+  <div id="buyingDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">🛒</div>
+        <div class="detail-info">
+          <h2>Buying & Procurement</h2>
+          <p>Complete procurement management from supplier management to purchase order tracking to invoice processing.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>🤝 Supplier Management</h3>
+        <p>Supplier master and relationships</p>
+        <ul class="features-list">
+          <li>Supplier creation</li>
+          <li>Contact persons</li>
+          <li>Supplier rating</li>
+          <li>Payment terms</li>
+          <li>Bank account details</li>
+          <li>Supplier classification</li>
+          <li>Spend analysis</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📋 RFQ (Request for Quote)</h3>
+        <p>Send quotation requests</p>
+        <ul class="features-list">
+          <li>RFQ creation</li>
+          <li>Multi-supplier requests</li>
+          <li>Item details and quantity</li>
+          <li>Quotation comparison</li>
+          <li>Supplier responses</li>
+          <li>Quote validity</li>
+          <li>RFQ to PO</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📦 Purchase Orders</h3>
+        <p>Create and manage POs</p>
+        <ul class="features-list">
+          <li>PO creation (auto-numbering)</li>
+          <li>Supplier selection</li>
+          <li>Item selection</li>
+          <li>Quantity and rate</li>
+          <li>PO status tracking</li>
+          <li>Delivery date</li>
+          <li>PO amendments</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🏢 Purchase Invoice</h3>
+        <p>Supplier invoice processing</p>
+        <ul class="features-list">
+          <li>Invoice creation from PO</li>
+          <li>Invoice tracking</li>
+          <li>Amount and tax calculation</li>
+          <li>Payment status</li>
+          <li>3-way match (PO-GRN-Invoice)</li>
+          <li>Discount management</li>
+          <li>Approval workflow</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">4</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">25+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">3-Way</div>
+        <div class="stat-label">Match</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">RFQ</div>
+        <div class="stat-label">Support</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MANUFACTURING DETAIL -->
+  <div id="manufacturingDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">🏭</div>
+        <div class="detail-info">
+          <h2>Manufacturing</h2>
+          <p>Production management with BOM creation, work order tracking, production planning, and quality control.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>📋 Bill of Materials (BOM)</h3>
+        <p>Define product composition</p>
+        <ul class="features-list">
+          <li>BOM creation</li>
+          <li>Component selection</li>
+          <li>Raw material management</li>
+          <li>BOM versioning</li>
+          <li>Standard costing</li>
+          <li>BOM hierarchy</li>
+          <li>Explosion calculation</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>⚙️ Work Orders</h3>
+        <p>Production planning and execution</p>
+        <ul class="features-list">
+          <li>Work order creation</li>
+          <li>Order quantity and timeline</li>
+          <li>Status tracking</li>
+          <li>Production vs planned</li>
+          <li>Batch assignment</li>
+          <li>Quality check</li>
+          <li>Scrap management</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🔄 Stock Entry</h3>
+        <p>Raw material and finished goods</p>
+        <ul class="features-list">
+          <li>Stock entry creation</li>
+          <li>Inward stock</li>
+          <li>Outward stock</li>
+          <li>Raw material consumption</li>
+          <li>Scrap handling</li>
+          <li>Batch traceability</li>
+          <li>Cost center allocation</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🎯 Quality Control</h3>
+        <p>Quality inspection and assurance</p>
+        <ul class="features-list">
+          <li>Inspection templates</li>
+          <li>Inspection criteria</li>
+          <li>Pass/Fail tracking</li>
+          <li>Defect documentation</li>
+          <li>Quality cost tracking</li>
+          <li>Process control reports</li>
+          <li>Corrective actions</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>📊 Production Planning</h3>
+        <p>Manufacturing capacity planning</p>
+        <ul class="features-list">
+          <li>Production forecast</li>
+          <li>Capacity planning</li>
+          <li>Material requirement planning</li>
+          <li>Production schedule</li>
+          <li>Resource allocation</li>
+          <li>Analytics and reporting</li>
+          <li>Variance analysis</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">5</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">28+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">BOM</div>
+        <div class="stat-label">Management</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">MRP</div>
+        <div class="stat-label">Planning</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASSETS DETAIL -->
+  <div id="assetsDetail" class="detail-view">
+    <button class="back-btn" onclick="backToApps()">← Back to Apps</button>
+    
+    <div class="detail-header">
+      <div class="detail-header-content">
+        <div class="detail-icon">🏢</div>
+        <div class="detail-info">
+          <h2>Assets Management</h2>
+          <p>Fixed asset tracking with depreciation management, maintenance scheduling, and complete asset lifecycle.</p>
+        </div>
+      </div>
+    </div>
+
+    <h3 class="modules-title">📦 Core Modules & Features</h3>
+    <div class="modules-grid">
+      <div class="module-card">
+        <h3>🏢 Asset Master</h3>
+        <p>Asset creation and master data</p>
+        <ul class="features-list">
+          <li>Asset creation with unique codes</li>
+          <li>Asset details and specifications</li>
+          <li>Purchase date and cost</li>
+          <li>Asset category</li>
+          <li>Depreciation method selection</li>
+          <li>Useful life tracking</li>
+          <li>Location tracking</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>💰 Depreciation</h3>
+        <p>Automatic depreciation calculation</p>
+        <ul class="features-list">
+          <li>Straight-line method</li>
+          <li>Diminishing balance</li>
+          <li>Schedule generation</li>
+          <li>Monthly depreciation posting</li>
+          <li>Depreciation reversal</li>
+          <li>Fully depreciated assets</li>
+          <li>Accumulated depreciation</li>
+        </ul>
+      </div>
+
+      <div class="module-card">
+        <h3>🔧 Asset Maintenance</h3>
+        <p>Maintenance tracking and scheduling</p>
+        <ul class="features-list">
+          <li>Maintenance schedule creation</li>
+          <li>Maintenance requests</li>
+          <li>Work order generation</li>
+          <li>Maintenance cost tracking</li>
+          <li>History and logs</li>
+          <li>Preventive maintenance</li>
+          <li>Spare parts tracking</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-number">3</div>
+        <div class="stat-label">Core Modules</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">18+</div>
+        <div class="stat-label">Total Features</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Auto</div>
+        <div class="stat-label">Depreciation</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">Full</div>
+        <div class="stat-label">Lifecycle</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <b>JASSDBX</b> — Enterprise Business Suite v1.0<br/>
+  Built on Frappe Framework • ERPNext • HRMS<br/>
+  <small>Copyright © 2026. All rights reserved.</small>
+</div>
+
+<script>
+function showApp(app) {
+  document.getElementById('appsView').style.display = 'none';
+  document.getElementById(app + 'Detail').classList.add('active');
+  document.getElementById('backLink').style.display = 'inline-flex';
+  window.scrollTo(0, 0);
+}
+
+function backToApps() {
+  document.querySelectorAll('.detail-view').forEach(el => {
+    el.classList.remove('active');
+  });
+  document.getElementById('appsView').style.display = 'block';
+  document.getElementById('backLink').style.display = 'none';
+  window.scrollTo(0, 0);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,39 @@
+/*
+ * JassDBX Projects theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-projects
+ * (Projects workspace and DocTypes in the Projects module).
+ */
+
+body.jd-app-projects.jd-desk-mode {
+	--jd-app-color: #0E7C86;
+	--jd-app-surface: #F0F8F9;
+	--jd-accent: #0E7C86;
+	--jd-accent-hover: #0A626A;
+	--jd-accent-soft: #DDF1F3;
+}
+
+body.jd-app-projects.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-projects.jd-desk-mode .jd-apps-toggle,
+body.jd-app-projects.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-projects.jd-desk-mode .body-sidebar-container,
+body.jd-app-projects.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-projects.jd-desk-mode {
+	--jd-app-color: #5FD0D8;
+	--jd-app-surface: #122225;
+	--jd-accent: #5FD0D8;
+	--jd-accent-hover: #86DDE3;
+	--jd-accent-soft: #1B3A3E;
+}
+
+body.jd-app-projects.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}

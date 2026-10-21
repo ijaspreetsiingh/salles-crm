@@ -1,0 +1,100 @@
+=== 1. include_script impl ===
+
+
+def get_dom_id(seed=None):
+	from frappe import generate_hash
+
+	return "id-" + generate_hash(12)
+
+
+def include_script(path, preload=True):
+	"""Get path of bundled script files.
+
+	If preload is specified the path will be added to preload headers so browsers can prefetch
+	assets."""
+	path = bundled_asset(path)
+
+	if preload:
+		import frappe
+
+		frappe.local.preload_assets["script"].append(path)
+
+	return f'<script type="text/javascript" src="{path}"></script>'
+
+
+def include_icons(path, preload=True):
+	"""Get path of bundled svg icons files.
+
+	If preload is specified the path will be added to preload headers so browsers can prefetch
+	assets."""
+	path = bundled_asset(path)
+
+	if preload:
+		import frappe
+
+		frappe.local.preload_assets["icons"].append(path)
+
+	return (
+		'<script type="text/javascript">fetch(`'
+		+ path
+		+ '?v=${window._version_number}`, {credentials: "same-origin"}).then((r) => r.text()).then((svg) => {let c = document.getElementById("all-symbols"); c.insertAdjacentHTML("beforeend", svg);});</script>'
+	)
+
+
+def include_style(path, rtl=None, preload=True):
+	"""Get path of bundled style files.
+
+	If preload is specified the path will be added to preload headers so browsers can prefetch
+	assets."""
+	path = bundled_asset(path)
+
+	if preload:
+		import frappe
+=== 2. hooks app_include_js/css ===
+=== 3. nginx locations ===
+grep: /etc/nginx/conf.d/nginx.conf: No such file or directory
+=== 4. site_config ===
+{
+ "db_name": "_725fc7a9164bba59",
+ "db_password": "Xmov8PJSwXgZskP8",
+ "db_type": "mariadb",
+ "db_user": "_725fc7a9164bba59",
+ "installed_apps": [
+  "frappe",
+  "erpnext",
+  "hrms"
+ ]
+}=== 5. workspace route shape in boot ===
+=== 6. workspace href in sidebar js ===
+15:// shell twice: `/desk/build` is the Build workspace and its shell is Build, so the prefix would
+58:// Shared by the rendered sidebar links and the header workspace switcher.
+88:		let workspace = frappe.workspaces[frappe.router.slug(item.link_to)];
+89:		if (workspace && workspace.public) {
+94:			// The title is read off the workspace rather than the item's label, which a
+96:			const title = workspace ? workspace.title : item.link_to;
+22:// Also named by the router, the workspace view and the arrangement editor; it matches
+28:// under it, a workspace only its own. Matching filters beat length, and a longer href beats a
+866:		if (route[0] === "Workspaces" && route[1] === "private") {
+879:		// A workspace route is answered by the shell that stores it.
+880:		if (route[0] === "Workspaces" && route.length >= 2) {
+881:			return this.module_for_workspace(route[route.length - 1]);
+1092:			return route[0] === "Workspaces" && route[route.length - 1] === entry.link_to;
+1149:				return route[0] === "Workspaces" && route[1] === "private" ? route[2] : route[1];
+=== 7. default_workspace py ===
+/home/frappe/frappe-bench/apps/frappe/frappe/website/utils.py:133:		default_workspace = frappe.get_user().load_user().default_workspace
+/home/frappe/frappe-bench/apps/frappe/frappe/website/utils.py:134:		if default_workspace:
+/home/frappe/frappe-bench/apps/frappe/frappe/website/utils.py:135:			home_page = get_url_to_workspace(default_workspace["name"], default_workspace["public"])
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2275:	default_workspace: str | None = None,
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2336:	`default_workspace` is the user's own, by name. The boot has already read it by the time this
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2337:	runs (`bootinfo.user.default_workspace`), so it is passed in rather than read a second time.
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2358:	home = home_shell(module_sidebars, canonical, dict(shells.workspace_owners()), default_workspace)
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2369:	module_sidebars: dict, canonical: dict, workspace_shells: dict, default_workspace: str | None = None
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/sidebar/sidebar.py:2389:	if default_workspace and (shell := workspace_shells.get(default_workspace)):
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/workspace_sidebar_item/workspace_sidebar_item.py:19:		default_workspace: DF.Check
+=== 8. home route resolve ===
+84:	// what was picked (see `sidebar.shell_for_route`).
+168:		// route through it resolves to (`sidebar.shell_for_route`).
+193:		this.current_route = await this.parse();
+886:	shell_for_route(route) {
+887:		return frappe.app?.sidebar?.shell_for_route?.(route) || null;
+909:		const shell = this.shell_for_route(this.current_route);

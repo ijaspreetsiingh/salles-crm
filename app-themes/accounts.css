@@ -1,0 +1,39 @@
+/*
+ * JassDBX Accounts theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-accounts
+ * (Accounts workspace and DocTypes in the Accounts module).
+ */
+
+body.jd-app-accounts.jd-desk-mode {
+	--jd-app-color: #B7791F;
+	--jd-app-surface: #FBF7EF;
+	--jd-accent: #B7791F;
+	--jd-accent-hover: #966215;
+	--jd-accent-soft: #F7EEDC;
+}
+
+body.jd-app-accounts.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-accounts.jd-desk-mode .jd-apps-toggle,
+body.jd-app-accounts.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-accounts.jd-desk-mode .body-sidebar-container,
+body.jd-app-accounts.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-accounts.jd-desk-mode {
+	--jd-app-color: #F0C05A;
+	--jd-app-surface: #221D13;
+	--jd-accent: #F0C05A;
+	--jd-accent-hover: #F6D089;
+	--jd-accent-soft: #3A301B;
+}
+
+body.jd-app-accounts.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}

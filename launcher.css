@@ -1,0 +1,784 @@
+#jd-launcher {
+	position: fixed;
+	inset: 0;
+	z-index: 1060;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	font-size: 15px;
+	color: #1f1f1f;
+	background:
+		radial-gradient(900px 520px at 6% 8%, rgba(255, 216, 172, 0.95), transparent 62%),
+		radial-gradient(860px 620px at 94% 16%, rgba(226, 240, 205, 0.9), transparent 58%),
+		radial-gradient(760px 700px at 80% 94%, rgba(245, 178, 138, 0.92), transparent 62%),
+		radial-gradient(640px 560px at 12% 90%, rgba(255, 230, 197, 0.96), transparent 62%),
+		linear-gradient(135deg, #f7d6ac 0%, #f2b98c 46%, #efd0a8 100%);
+}
+
+#jd-launcher * {
+	box-sizing: border-box;
+}
+
+/* Shared JassDBX Desk design system: native Frappe content stays functional. */
+html.jd-desk-mode {
+	--jd-bg: #f4f6f8;
+	--jd-surface: #ffffff;
+	--jd-surface-muted: #f8fafb;
+	--jd-text: #17212b;
+	--jd-muted-text: #667482;
+	--jd-border: #e4e9ee;
+	--jd-accent: #147d68;
+	--jd-accent-hover: #0e6958;
+	--jd-accent-soft: #e8f5f1;
+	--jd-shadow: 0 8px 24px rgba(29, 45, 58, .055);
+	--bg-color: var(--jd-bg);
+	--fg-color: var(--jd-surface);
+	--card-bg: var(--jd-surface);
+	--control-bg: var(--jd-surface);
+	--navbar-bg: var(--jd-surface);
+	--text-color: var(--jd-text);
+	--text-muted: var(--jd-muted-text);
+	--border-color: var(--jd-border);
+	--primary: var(--jd-accent);
+	color-scheme: light;
+}
+
+html.jd-desk-mode[data-jd-theme="dark"] {
+	--jd-bg: #111820;
+	--jd-surface: #19232d;
+	--jd-surface-muted: #202c37;
+	--jd-text: #e7edf2;
+	--jd-muted-text: #a0afbc;
+	--jd-border: #303d49;
+	--jd-accent: #61c4a7;
+	--jd-accent-hover: #7ad4b9;
+	--jd-accent-soft: #203d38;
+	--jd-shadow: 0 10px 28px rgba(0, 0, 0, .2);
+	--bg-color: var(--jd-bg);
+	--fg-color: var(--jd-surface);
+	--card-bg: var(--jd-surface);
+	--control-bg: var(--jd-surface);
+	--navbar-bg: var(--jd-surface);
+	--text-color: var(--jd-text);
+	--text-muted: var(--jd-muted-text);
+	--border-color: var(--jd-border);
+	--primary: var(--jd-accent);
+	color-scheme: dark;
+}
+
+body.jd-desk-mode {
+	background: var(--jd-bg) !important;
+	color: var(--jd-text);
+	font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+body.jd-desk-mode .navbar,
+body.jd-desk-mode .navbar .container,
+body.jd-desk-mode .page-head {
+	background: var(--jd-surface) !important;
+	border-color: var(--jd-border) !important;
+}
+
+body.jd-desk-mode .navbar,
+body.jd-desk-mode .page-head {
+	box-shadow: 0 1px 0 var(--jd-border);
+}
+
+body.jd-desk-mode .page-container,
+body.jd-desk-mode .layout-main-section-wrapper { background: transparent; }
+
+body.jd-desk-mode .page-head .title-text,
+body.jd-desk-mode .page-head h1,
+body.jd-desk-mode .page-head h2,
+body.jd-desk-mode .page-title,
+body.jd-desk-mode .layout-main-section { color: var(--jd-text); }
+
+body.jd-desk-mode .layout-main-section {
+	background: var(--jd-surface);
+	border: 1px solid var(--jd-border);
+	border-radius: 16px;
+	box-shadow: var(--jd-shadow);
+}
+
+body.jd-desk-mode .body-sidebar-container,
+body.jd-desk-mode .body-sidebar {
+	background: var(--jd-surface);
+	border-color: var(--jd-border);
+}
+
+body.jd-desk-mode .standard-sidebar-item {
+	border-radius: 9px;
+	margin: 2px 6px;
+	transition: background-color .16s ease, color .16s ease;
+}
+
+body.jd-desk-mode .standard-sidebar-item:hover,
+body.jd-desk-mode .standard-sidebar-item.selected,
+body.jd-desk-mode .standard-sidebar-item.active {
+	background: var(--jd-accent-soft);
+	color: var(--jd-accent);
+}
+
+body.jd-desk-mode .standard-sidebar-item.selected .sidebar-item-label,
+body.jd-desk-mode .standard-sidebar-item.active .sidebar-item-label {
+	color: var(--jd-accent);
+	font-weight: 650;
+}
+
+body.jd-desk-mode .list-row-container,
+body.jd-desk-mode .list-row-head,
+body.jd-desk-mode .form-layout,
+body.jd-desk-mode .form-dashboard,
+body.jd-desk-mode .form-section,
+body.jd-desk-mode .form-section .section-head,
+body.jd-desk-mode .list-paging-area { border-color: var(--jd-border) !important; }
+
+body.jd-desk-mode .list-row-head,
+body.jd-desk-mode .list-row-container,
+body.jd-desk-mode .form-section.card-section,
+body.jd-desk-mode .form-dashboard-section,
+body.jd-desk-mode .widget { background: var(--jd-surface); }
+
+body.jd-desk-mode .list-row-head { border-radius: 10px; }
+body.jd-desk-mode .list-row-container { transition: background-color .15s ease; }
+body.jd-desk-mode .list-row-container:hover,
+body.jd-desk-mode .list-row:hover { background: var(--jd-surface-muted); }
+
+body.jd-desk-mode .form-section.card-section,
+body.jd-desk-mode .form-dashboard-section,
+body.jd-desk-mode .widget {
+	border: 1px solid var(--jd-border);
+	border-radius: 14px;
+	box-shadow: var(--jd-shadow);
+}
+
+body.jd-desk-mode .widget-head,
+body.jd-desk-mode .text-muted,
+body.jd-desk-mode .help-box { color: var(--jd-muted-text) !important; }
+
+body.jd-desk-mode .form-control,
+body.jd-desk-mode .input-with-feedback,
+body.jd-desk-mode .frappe-control input,
+body.jd-desk-mode .frappe-control textarea,
+body.jd-desk-mode .frappe-control select,
+body.jd-desk-mode .search-bar input {
+	background-color: var(--jd-surface) !important;
+	border-color: var(--jd-border) !important;
+	border-radius: 9px;
+	color: var(--jd-text) !important;
+}
+
+body.jd-desk-mode .btn-primary {
+	background: var(--jd-accent) !important;
+	border-color: var(--jd-accent) !important;
+	border-radius: 9px;
+	color: #fff !important;
+}
+
+body.jd-desk-mode .btn-primary:hover {
+	background: var(--jd-accent-hover) !important;
+	border-color: var(--jd-accent-hover) !important;
+}
+
+body.jd-desk-mode .btn-default,
+body.jd-desk-mode .btn-secondary,
+body.jd-desk-mode .page-head .btn-group .btn { border-radius: 9px; }
+body.jd-desk-mode a:not(.btn),
+body.jd-desk-mode .indicator { color: var(--jd-accent); }
+
+body.jd-desk-mode :where(a, button, input, select, textarea):focus-visible {
+	outline: 3px solid color-mix(in srgb, var(--jd-accent) 42%, transparent);
+	outline-offset: 2px;
+}
+
+.jd-theme-nav-item { display: flex; align-items: center; padding: 0 6px; }
+.jd-theme-toggle {
+	display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 11px;
+	border: 1px solid var(--jd-border, #e4e9ee); border-radius: 9px; background: var(--jd-surface, #fff);
+	color: var(--jd-text, #17212b); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.jd-theme-toggle:hover { background: var(--jd-accent-soft, #e8f5f1); }
+
+html[data-jd-theme="dark"] body.jd-desk-mode .navbar,
+html[data-jd-theme="dark"] body.jd-desk-mode .navbar .container,
+html[data-jd-theme="dark"] body.jd-desk-mode .page-head,
+html[data-jd-theme="dark"] body.jd-desk-mode .layout-main-section,
+html[data-jd-theme="dark"] body.jd-desk-mode .body-sidebar-container,
+html[data-jd-theme="dark"] body.jd-desk-mode .body-sidebar,
+html[data-jd-theme="dark"] body.jd-desk-mode .list-row-head,
+html[data-jd-theme="dark"] body.jd-desk-mode .list-row-container,
+html[data-jd-theme="dark"] body.jd-desk-mode .form-section.card-section,
+html[data-jd-theme="dark"] body.jd-desk-mode .form-dashboard-section,
+html[data-jd-theme="dark"] body.jd-desk-mode .widget {
+	background-color: var(--jd-surface) !important;
+	color: var(--jd-text);
+}
+
+html[data-jd-theme="dark"] body.jd-desk-mode .form-control::placeholder,
+html[data-jd-theme="dark"] body.jd-desk-mode .frappe-control input::placeholder { color: var(--jd-muted-text); }
+
+/* CRM-only visual system. launcher.js adds this class for /desk/crm/* routes. */
+body.jd-crm-mode {
+	--jd-cream: #f4f2eb;
+	--jd-paper: #fffefa;
+	--jd-ink: #202522;
+	--jd-muted: #6d756e;
+	--jd-line: #e6e5dc;
+	--jd-pine: #2f5c50;
+	--jd-sun: #f2c94c;
+	--jd-tomato: #c8431f;
+	background: var(--jd-cream) !important;
+	color: var(--jd-ink);
+}
+
+body.jd-crm-mode .page-container {
+	background: transparent;
+}
+
+body.jd-crm-mode .page-head {
+	background: rgba(255, 254, 250, .88);
+	border-bottom: 1px solid var(--jd-line);
+	backdrop-filter: blur(12px);
+}
+
+body.jd-crm-mode .page-head .title-text,
+body.jd-crm-mode .page-head h1,
+body.jd-crm-mode .page-head h2 {
+	color: var(--jd-ink);
+	font-weight: 650;
+}
+
+body.jd-crm-mode .jd-crm-page-guide {
+	margin: 0 0 12px;
+	padding: 9px 13px;
+	border: 1px solid #dce6dc;
+	border-radius: 11px;
+	background: #f4f8f2;
+	color: #43564b;
+	font-size: 12px;
+	line-height: 1.5;
+}
+
+body.jd-crm-mode .jd-crm-sales-flow {
+	position: relative;
+	display: grid;
+	gap: 16px;
+	margin: 0 0 20px;
+	padding: 20px 22px;
+	border: 1px solid #dce6dc;
+	border-radius: 17px;
+	background: linear-gradient(115deg, #f4f8f2 0%, #fffefa 68%);
+	box-shadow: 0 7px 22px rgba(32, 37, 34, .035);
+}
+
+body.jd-crm-mode .jd-crm-flow-heading {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+body.jd-crm-mode .jd-crm-brand-mark {
+	display: grid;
+	width: 40px;
+	height: 40px;
+	flex: 0 0 40px;
+	place-items: center;
+	border-radius: 12px;
+	background: #2f5c50;
+	color: #fffefa;
+	font-size: 19px;
+	font-weight: 750;
+}
+
+body.jd-crm-mode .jd-crm-flow-copy {
+	display: grid;
+	gap: 3px;
+}
+
+body.jd-crm-mode .jd-crm-flow-copy strong {
+	color: var(--jd-ink);
+	font-size: 14px;
+}
+
+body.jd-crm-mode .jd-crm-flow-copy span {
+	color: var(--jd-muted);
+	font-size: 12px;
+}
+
+body.jd-crm-mode .jd-crm-module-groups {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+body.jd-crm-mode .jd-crm-module-group {
+	min-width: 0;
+	padding: 12px 14px;
+	border: 1px solid #e6e9e1;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, .7);
+}
+
+body.jd-crm-mode .jd-crm-module-label {
+	display: block;
+	margin-bottom: 8px;
+	color: #788078;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: .08em;
+}
+
+body.jd-crm-mode .jd-crm-module-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 7px;
+}
+
+body.jd-crm-mode .jd-crm-module-links a {
+	display: inline-flex;
+	align-items: center;
+	min-height: 30px;
+	padding: 5px 10px;
+	border: 1px solid #e5e8e1;
+	border-radius: 8px;
+	background: #fffefa;
+	color: #31483d;
+	font-size: 11px;
+	font-weight: 600;
+	text-decoration: none;
+	transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+
+body.jd-crm-mode .jd-crm-module-links a:hover {
+	transform: translateY(-1px);
+	border-color: #9db8a2;
+	background: #f2f7f1;
+}
+
+body.jd-crm-mode .jd-crm-flow-steps {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 7px;
+}
+
+body.jd-crm-mode .jd-crm-flow-steps span {
+	padding: 7px 11px;
+	border: 1px solid #dce6dc;
+	border-radius: 999px;
+	background: var(--jd-paper);
+	color: var(--jd-pine);
+	font-size: 12px;
+	font-weight: 650;
+}
+
+body.jd-crm-mode .jd-crm-flow-steps a {
+	display: inline-flex;
+	align-items: center;
+	padding: 7px 11px;
+	border: 1px solid #dce6dc;
+	border-radius: 999px;
+	background: var(--jd-paper);
+	color: var(--jd-pine);
+	font-size: 12px;
+	font-weight: 650;
+	text-decoration: none;
+}
+
+body.jd-crm-mode .jd-crm-flow-steps a:hover {
+	background: #edf5ec;
+}
+
+body.jd-crm-mode .jd-crm-flow-steps i {
+	color: #829187;
+	font-style: normal;
+}
+
+@media (max-width: 760px) {
+	body.jd-crm-mode .jd-crm-module-groups {
+		grid-template-columns: 1fr;
+	}
+}
+
+body.jd-crm-mode .layout-main-section-wrapper {
+	background: transparent;
+}
+
+body.jd-crm-mode .layout-main-section {
+	background: var(--jd-paper);
+	border: 1px solid var(--jd-line);
+	border-radius: 18px;
+	box-shadow: 0 10px 28px rgba(32, 37, 34, .045);
+}
+
+body.jd-crm-mode .body-sidebar-container,
+body.jd-crm-mode .body-sidebar {
+	background: #f8f7f1;
+	border-color: var(--jd-line);
+}
+
+body.jd-crm-mode .sidebar-header.shell-header {
+	border-radius: 12px;
+	color: var(--jd-ink);
+	font-weight: 700;
+}
+
+body.jd-crm-mode .standard-sidebar-item {
+	border-radius: 10px;
+	margin: 2px 7px;
+	transition: background-color .16s ease, color .16s ease;
+}
+
+body.jd-crm-mode .standard-sidebar-item:hover {
+	background: #e9eee8;
+}
+
+body.jd-crm-mode .standard-sidebar-item.selected,
+body.jd-crm-mode .standard-sidebar-item.active {
+	background: var(--jd-pine);
+	color: #fffefa;
+}
+
+body.jd-crm-mode .standard-sidebar-item.selected .sidebar-item-label,
+body.jd-crm-mode .standard-sidebar-item.active .sidebar-item-label {
+	color: inherit;
+	font-weight: 650;
+}
+
+body.jd-crm-mode .sidebar-item-container.section-item > .standard-sidebar-item .sidebar-item-label {
+	color: var(--jd-muted);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: .045em;
+	text-transform: uppercase;
+}
+
+body.jd-crm-mode .widget {
+	background: var(--jd-paper);
+	border: 1px solid var(--jd-line);
+	border-radius: 18px;
+	box-shadow: 0 8px 24px rgba(32, 37, 34, .04);
+	transition: transform .18s ease, box-shadow .18s ease;
+}
+
+body.jd-crm-mode .widget:hover {
+	box-shadow: 0 12px 30px rgba(32, 37, 34, .08);
+}
+
+body.jd-crm-mode .widget-head {
+	color: var(--jd-muted);
+	font-weight: 600;
+}
+
+body.jd-crm-mode .widget-title {
+	color: var(--jd-ink);
+	font-weight: 650;
+}
+
+body.jd-crm-mode .widget.number-widget-box .widget-body {
+	color: var(--jd-pine);
+	font-size: 28px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+body.jd-crm-mode .widget.shortcut-widget-box {
+	border-color: #dce6dc;
+	background: #f4f8f2;
+}
+
+body.jd-crm-mode .widget.shortcut-widget-box:hover {
+	border-color: #b7cdbb;
+	background: #edf4ec;
+	transform: translateY(-2px);
+}
+
+body.jd-crm-mode .widget.links-widget-box .link-item,
+body.jd-crm-mode .widget.links-widget-box a {
+	border-radius: 8px;
+}
+
+body.jd-crm-mode .widget.links-widget-box a:hover {
+	background: #edf4ec;
+	color: var(--jd-pine);
+}
+
+body.jd-crm-mode .form-layout,
+body.jd-crm-mode .form-dashboard,
+body.jd-crm-mode .list-row-container,
+body.jd-crm-mode .list-row-head {
+	border-color: var(--jd-line);
+}
+
+body.jd-crm-mode .form-section.card-section,
+body.jd-crm-mode .form-dashboard-section {
+	background: var(--jd-paper);
+	border: 1px solid var(--jd-line);
+	border-radius: 16px;
+	box-shadow: 0 6px 20px rgba(32, 37, 34, .035);
+}
+
+body.jd-crm-mode .list-row:hover {
+	background: #f4f8f2;
+}
+
+body.jd-crm-mode .form-control,
+body.jd-crm-mode .input-with-feedback,
+body.jd-crm-mode .frappe-control input,
+body.jd-crm-mode .frappe-control textarea,
+body.jd-crm-mode .frappe-control select {
+	border-color: #d8ddd5;
+	border-radius: 9px;
+}
+
+body.jd-crm-mode .btn-primary {
+	background: var(--jd-pine);
+	border-color: var(--jd-pine);
+	border-radius: 10px;
+}
+
+body.jd-crm-mode :where(a, button, input, select, textarea):focus-visible {
+	outline: 3px solid rgba(47, 92, 80, .55);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	body.jd-crm-mode *,
+	body.jd-crm-mode *::before,
+	body.jd-crm-mode *::after {
+		animation-duration: .01ms !important;
+		animation-iteration-count: 1 !important;
+		scroll-behavior: auto !important;
+		transition-duration: .01ms !important;
+	}
+}
+
+html[data-jd-theme="dark"] body.jd-crm-mode {
+	--jd-cream: var(--jd-bg);
+	--jd-paper: var(--jd-surface);
+	--jd-ink: var(--jd-text);
+	--jd-muted: var(--jd-muted-text);
+	--jd-line: var(--jd-border);
+	--jd-pine: var(--jd-accent);
+}
+
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-page-guide,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-sales-flow,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-module-group,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-module-links a,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-flow-steps a {
+	background: var(--jd-surface-muted);
+	border-color: var(--jd-border);
+	color: var(--jd-text);
+}
+
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-flow-copy span,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-module-label,
+html[data-jd-theme="dark"] body.jd-crm-mode .jd-crm-flow-steps i {
+	color: var(--jd-muted-text);
+}
+
+#jd-launcher .jd-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 20px 30px;
+}
+
+#jd-launcher .jd-brand {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-weight: 800;
+	font-size: 18px;
+	color: #171717;
+}
+
+#jd-launcher .jd-brand-dot {
+	width: 40px;
+	height: 40px;
+	border-radius: 50%;
+	background: #171717;
+	color: #fff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 18px;
+	font-weight: 800;
+}
+
+#jd-launcher .jd-header-actions {
+	display: flex;
+	gap: 12px;
+}
+
+#jd-launcher .jd-icon-btn {
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	border: none;
+	background: rgba(255, 255, 255, 0.55);
+	color: #333;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	box-shadow: 0 4px 14px rgba(110, 60, 20, 0.12);
+	text-decoration: none;
+	padding: 0;
+	transition: background 0.15s ease, transform 0.15s ease;
+}
+
+#jd-launcher .jd-icon-btn:hover {
+	background: rgba(255, 255, 255, 0.85);
+	transform: translateY(-1px);
+}
+
+#jd-launcher .jd-icon-btn svg {
+	width: 20px;
+	height: 20px;
+}
+
+#jd-launcher .jd-hero {
+	text-align: center;
+	margin-top: 5vh;
+	padding: 0 24px;
+}
+
+#jd-launcher .jd-date {
+	font-size: 21px;
+	color: #4c4c4c;
+	font-weight: 500;
+}
+
+#jd-launcher .jd-clock {
+	font-size: 78px;
+	font-weight: 800;
+	letter-spacing: -2px;
+	line-height: 1.04;
+	color: #1b1b1b;
+	margin: 8px 0 12px;
+}
+
+#jd-launcher .jd-greet {
+	font-size: 27px;
+	font-weight: 700;
+	color: #232323;
+}
+
+#jd-launcher .jd-search {
+	position: relative;
+	margin: 38px auto 0;
+	max-width: 560px;
+}
+
+#jd-launcher .jd-search-input {
+	width: 100%;
+	padding: 17px 22px 17px 52px;
+	border-radius: 16px;
+	border: 1px solid rgba(255, 255, 255, 0.75);
+	background: rgba(255, 255, 255, 0.72);
+	font-size: 16px;
+	color: #222;
+	outline: none;
+	box-shadow: 0 10px 30px rgba(120, 70, 30, 0.1);
+}
+
+#jd-launcher .jd-search-input::placeholder {
+	color: #8a8a8a;
+}
+
+#jd-launcher .jd-search-input:focus {
+	background: rgba(255, 255, 255, 0.92);
+	border-color: rgba(255, 255, 255, 0.95);
+}
+
+#jd-launcher .jd-search-ic {
+	position: absolute;
+	left: 19px;
+	top: 50%;
+	transform: translateY(-50%);
+	color: #777;
+	display: flex;
+}
+
+#jd-launcher .jd-search-ic svg {
+	width: 19px;
+	height: 19px;
+}
+
+#jd-launcher .jd-panel {
+	margin: 52px auto 48px;
+	width: min(1100px, calc(100% - 48px));
+	background: rgba(255, 255, 255, 0.5);
+	backdrop-filter: blur(20px);
+	-webkit-backdrop-filter: blur(20px);
+	border: 1px solid rgba(255, 255, 255, 0.65);
+	border-radius: 30px;
+	padding: 48px 44px;
+	box-shadow: 0 34px 90px rgba(110, 60, 20, 0.16);
+}
+
+#jd-launcher .jd-grid {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 40px 18px;
+}
+
+#jd-launcher .jd-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	gap: 11px;
+	text-decoration: none;
+	color: inherit;
+	padding: 12px 6px;
+	border-radius: 20px;
+	transition: transform 0.16s ease, background 0.16s ease;
+}
+
+#jd-launcher .jd-tile:hover {
+	transform: translateY(-5px);
+	background: rgba(255, 255, 255, 0.55);
+}
+
+#jd-launcher .jd-tile-icon {
+	width: 78px;
+	height: 78px;
+	border-radius: 23px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	box-shadow: 0 12px 26px rgba(0, 0, 0, 0.16);
+}
+
+#jd-launcher .jd-tile-icon svg {
+	width: 35px;
+	height: 35px;
+}
+
+#jd-launcher .jd-tile-label {
+	font-weight: 700;
+	font-size: 17px;
+	color: #212121;
+}
+
+#jd-launcher .jd-tile-sub {
+	font-size: 13.5px;
+	color: #646464;
+	max-width: 200px;
+	line-height: 1.35;
+}
+
+@media (max-width: 920px) {
+	#jd-launcher .jd-grid {
+		grid-template-columns: repeat(2, 1fr);
+	}
+	#jd-launcher .jd-clock {
+		font-size: 54px;
+	}
+}

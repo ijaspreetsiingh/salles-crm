@@ -1,0 +1,23 @@
+=== workspace.py page_data ===
+38:		charts: DF.Table[WorkspaceChart]
+66:		number_cards: DF.Table[WorkspaceNumberCard]
+69:		quick_lists: DF.Table[WorkspaceQuickList]
+73:		shortcuts: DF.Table[WorkspaceShortcut]
+129:		for shortcut in self.get("shortcuts"):
+220:			"shortcuts": _("Shortcut"),
+221:			"charts": _("Chart"),
+222:			"quick_lists": _("Quick List"),
+223:			"number_cards": _("Number Card"),
+476:		cards = []
+496:					cards.append(current_card)
+504:		cards.append(current_card)
+506:		return cards
+=== workspace_link fields ===
+grep: /home/frappe/frappe-bench/apps/frappe/frappe/doctype/workspace_link/workspace_link.json: No such file or directory
+=== how cards map links ===
+475:	def get_link_groups(self):
+749:	# Sharing a page, with everyone or with a group of roles, is the Workspace Manager's job.
+1068:	# `app` comes along so the dialog can group the workspaces whose module belongs to no app
+1119:		access = "group"
+1167:	# roles only gate access when the workspace is shared with a group
+1168:	if access != "group":

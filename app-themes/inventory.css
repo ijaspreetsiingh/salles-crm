@@ -1,0 +1,39 @@
+/*
+ * JassDBX Inventory theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-inventory
+ * (Stock workspace and DocTypes in the Stock module).
+ */
+
+body.jd-app-inventory.jd-desk-mode {
+	--jd-app-color: #6D46A8;
+	--jd-app-surface: #F7F3FC;
+	--jd-accent: #6D46A8;
+	--jd-accent-hover: #57358A;
+	--jd-accent-soft: #EFE7F9;
+}
+
+body.jd-app-inventory.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-inventory.jd-desk-mode .jd-apps-toggle,
+body.jd-app-inventory.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-inventory.jd-desk-mode .body-sidebar-container,
+body.jd-app-inventory.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-inventory.jd-desk-mode {
+	--jd-app-color: #B79BEA;
+	--jd-app-surface: #1D1726;
+	--jd-accent: #B79BEA;
+	--jd-accent-hover: #CDB8F3;
+	--jd-accent-soft: #2F2442;
+}
+
+body.jd-app-inventory.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}

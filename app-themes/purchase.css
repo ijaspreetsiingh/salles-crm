@@ -1,0 +1,39 @@
+/*
+ * JassDBX Purchase theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-purchase
+ * (Buying workspace and DocTypes in the Buying module).
+ */
+
+body.jd-app-purchase.jd-desk-mode {
+	--jd-app-color: #B23A56;
+	--jd-app-surface: #FCF4F6;
+	--jd-accent: #B23A56;
+	--jd-accent-hover: #942C45;
+	--jd-accent-soft: #F8E6EA;
+}
+
+body.jd-app-purchase.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-purchase.jd-desk-mode .jd-apps-toggle,
+body.jd-app-purchase.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-purchase.jd-desk-mode .body-sidebar-container,
+body.jd-app-purchase.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-purchase.jd-desk-mode {
+	--jd-app-color: #F08FA6;
+	--jd-app-surface: #241419;
+	--jd-accent: #F08FA6;
+	--jd-accent-hover: #F5AFBF;
+	--jd-accent-soft: #3B2129;
+}
+
+body.jd-app-purchase.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}

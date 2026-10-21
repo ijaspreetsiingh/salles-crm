@@ -1,0 +1,348 @@
+{
+ "workspaces": [
+  {
+   "name": "Accounting",
+   "module": "Accounts",
+   "public": 1
+  },
+  {
+   "name": "Accounts App",
+   "module": "Accounts",
+   "public": 1
+  },
+  {
+   "name": "Assets",
+   "module": "Assets",
+   "public": 1
+  },
+  {
+   "name": "Automation",
+   "module": "Automation",
+   "public": 1
+  },
+  {
+   "name": "Build",
+   "module": "Build",
+   "public": 1
+  },
+  {
+   "name": "Buying",
+   "module": "Buying",
+   "public": 1
+  },
+  {
+   "name": "CRM",
+   "module": "CRM",
+   "public": 1
+  },
+  {
+   "name": "Email",
+   "module": "Email",
+   "public": 1
+  },
+  {
+   "name": "ERPNext Settings",
+   "module": "Setup",
+   "public": 1
+  },
+  {
+   "name": "Expenses",
+   "module": "Expenses",
+   "public": 1
+  },
+  {
+   "name": "Financial Reports",
+   "module": "Accounts",
+   "public": 1
+  },
+  {
+   "name": "Home",
+   "module": "Setup",
+   "public": 1
+  },
+  {
+   "name": "HR Setup",
+   "module": "HR Setup",
+   "public": 1
+  },
+  {
+   "name": "HRM App",
+   "module": "HR",
+   "public": 1
+  },
+  {
+   "name": "Integrations",
+   "module": "Integrations",
+   "public": 1
+  },
+  {
+   "name": "Invoicing",
+   "module": "Accounts",
+   "public": 1
+  },
+  {
+   "name": "Leaves",
+   "module": "Leaves",
+   "public": 1
+  },
+  {
+   "name": "Manufacturing",
+   "module": "Manufacturing",
+   "public": 1
+  },
+  {
+   "name": "Payments",
+   "module": "Accounts",
+   "public": 1
+  },
+  {
+   "name": "Payroll",
+   "module": "Payroll",
+   "public": 1
+  },
+  {
+   "name": "Performance",
+   "module": "Performance",
+   "public": 1
+  },
+  {
+   "name": "Printing",
+   "module": "Printing",
+   "public": 1
+  },
+  {
+   "name": "Projects",
+   "module": "Projects",
+   "public": 1
+  },
+  {
+   "name": "Quality",
+   "module": "Quality Management",
+   "public": 1
+  },
+  {
+   "name": "Recruitment",
+   "module": "Recruitment",
+   "public": 1
+  },
+  {
+   "name": "Sales",
+   "module": "CRM",
+   "public": 1
+  },
+  {
+   "name": "Selling",
+   "module": "Selling",
+   "public": 1
+  },
+  {
+   "name": "Shift & Attendance",
+   "module": "Shift and Attendance",
+   "public": 1
+  },
+  {
+   "name": "Stock",
+   "module": "Stock",
+   "public": 1
+  },
+  {
+   "name": "Support",
+   "module": "Support",
+   "public": 1
+  },
+  {
+   "name": "System",
+   "module": "System",
+   "public": 1
+  },
+  {
+   "name": "Tax & Benefits",
+   "module": "Tax and Benefits",
+   "public": 1
+  },
+  {
+   "name": "Tenure",
+   "module": "Tenure",
+   "public": 1
+  },
+  {
+   "name": "Users",
+   "module": "Users",
+   "public": 1
+  },
+  {
+   "name": "Website",
+   "module": "Website",
+   "public": 1
+  }
+ ],
+ "sidebar_fields": [
+  "title",
+  "module",
+  "header_icon",
+  "column_break_defn",
+  "app",
+  "items_section",
+  "items",
+  "provenance_section",
+  "standard",
+  "column_break_prov",
+  "merged_from"
+ ],
+ "sidebars": [
+  {
+   "name": "Geo",
+   "module": "Geo"
+  },
+  {
+   "name": "Support",
+   "module": "Support"
+  },
+  {
+   "name": "Stock",
+   "module": "Stock"
+  },
+  {
+   "name": "Setup",
+   "module": "Setup"
+  },
+  {
+   "name": "Selling",
+   "module": "Selling"
+  },
+  {
+   "name": "Quality",
+   "module": "Quality Management"
+  },
+  {
+   "name": "Projects",
+   "module": "Projects"
+  },
+  {
+   "name": "Portal",
+   "module": "Portal"
+  },
+  {
+   "name": "Manufacturing",
+   "module": "Manufacturing"
+  },
+  {
+   "name": "CRM",
+   "module": "CRM"
+  },
+  {
+   "name": "Buying",
+   "module": "Buying"
+  },
+  {
+   "name": "Assets",
+   "module": "Assets"
+  },
+  {
+   "name": "Accounts",
+   "module": "Accounts"
+  },
+  {
+   "name": "System",
+   "module": "System"
+  },
+  {
+   "name": "Users",
+   "module": "Users"
+  },
+  {
+   "name": "Data",
+   "module": "Data"
+  },
+  {
+   "name": "Build",
+   "module": "Build"
+  },
+  {
+   "name": "Tenure",
+   "module": "Tenure"
+  },
+  {
+   "name": "Tax & Benefits",
+   "module": "Tax and Benefits"
+  },
+  {
+   "name": "Shift & Attendance",
+   "module": "Shift and Attendance"
+  },
+  {
+   "name": "Recruitment",
+   "module": "Recruitment"
+  },
+  {
+   "name": "Performance",
+   "module": "Performance"
+  },
+  {
+   "name": "Payroll",
+   "module": "Payroll"
+  },
+  {
+   "name": "Leaves",
+   "module": "Leaves"
+  },
+  {
+   "name": "HR Setup",
+   "module": "HR Setup"
+  },
+  {
+   "name": "Expenses",
+   "module": "Expenses"
+  },
+  {
+   "name": "Workflow",
+   "module": "Workflow"
+  },
+  {
+   "name": "Contacts",
+   "module": "Contacts"
+  },
+  {
+   "name": "Website",
+   "module": "Website"
+  },
+  {
+   "name": "Printing",
+   "module": "Printing"
+  }
+ ],
+ "sidebar_err": "DocType Sidebar Link not found",
+ "sales_stages": [
+  {
+   "name": "Closed Lost"
+  },
+  {
+   "name": "Closed Won"
+  },
+  {
+   "name": "Negotiation/Review"
+  },
+  {
+   "name": "Proposal/Price Quote"
+  },
+  {
+   "name": "Perception Analysis"
+  },
+  {
+   "name": "Identifying Decision Makers"
+  },
+  {
+   "name": "Value Proposition"
+  },
+  {
+   "name": "Needs Analysis"
+  },
+  {
+   "name": "Qualification"
+  },
+  {
+   "name": "Prospecting"
+  }
+ ],
+ "count_stage": 10
+}

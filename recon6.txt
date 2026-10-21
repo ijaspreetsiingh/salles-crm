@@ -1,0 +1,161 @@
+=== error text search ===
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/ui/side_panel.js:605:				console.error("[side panel] failed to render", doctype, docname, e);
+=== blocks/index.js ===
+// import blocks
+import Header from "./header";
+import Paragraph from "./paragraph";
+import Card from "./card";
+import Chart from "./chart";
+import Shortcut from "./shortcut";
+import Spacer from "./spacer";
+import Onboarding from "./onboarding";
+import QuickList from "./quick_list";
+import NumberCard from "./number_card";
+import CustomBlock from "./custom_block";
+
+// import tunes
+import HeaderSize from "./header_size";
+
+frappe.provide("frappe.workspace_block");
+
+frappe.workspace_block.blocks = {
+	header: Header,
+	paragraph: Paragraph,
+	card: Card,
+	chart: Chart,
+	shortcut: Shortcut,
+	spacer: Spacer,
+	onboarding: Onboarding,
+	quick_list: QuickList,
+	number_card: NumberCard,
+	custom_block: CustomBlock,
+};
+
+frappe.workspace_block.tunes = {
+	header_size: HeaderSize,
+};
+=== block.js ===
+import get_dialog_constructor from "../../../widgets/widget_dialog.js";
+
+export default class Block {
+	constructor(opts) {
+		Object.assign(this, opts);
+	}
+
+	make(block, block_name, widget_type = block) {
+		let block_data = this.config.page_data[block + "s"].items.find((obj) => {
+			return (
+				frappe.utils.unescape_html(obj.label) == frappe.utils.unescape_html(__(block_name))
+			);
+		});
+		if (!block_data) return false;
+		this.wrapper.innerHTML = "";
+		block_data.in_customize_mode = !this.readOnly;
+		this.block_widget = new frappe.widget.SingleWidgetGroup({
+			container: this.wrapper,
+			type: widget_type,
+			class_name: block == "chart" ? "widget-charts" : "",
+			options: this.options,
+			widgets: block_data,
+			api: this.api,
+			block: this.block,
+		});
+		this.wrapper.setAttribute(block + "_name", block_name);
+		if (!this.readOnly) {
+			this.block_widget.customize();
+		}
+		return true;
+	}
+
+	rendered(wrapper) {
+		if (wrapper) this.wrapper = wrapper;
+		!this.readOnly && this.resizer();
+		let block = this.wrapper.closest(".ce-block");
+		this.set_col_class(block, this.get_col());
+	}
+
+	resizer() {
+		this.wrapper.className = this.wrapper.className + " resizable";
+		var resizer = document.createElement("div");
+		resizer.className = "resizer";
+		this.wrapper.parentElement.appendChild(resizer);
+		resizer.addEventListener("mousedown", init_drag, false);
+		let me = this;
+		var startX, startWidth;
+
+		function init_drag(e) {
+			startX = e.clientX;
+			startWidth = this.parentElement.offsetWidth;
+			document.documentElement.addEventListener("mousemove", do_drag, false);
+			document.documentElement.addEventListener("mouseup", stop_drag, false);
+		}
+
+		function do_drag(e) {
+			$(this).css("cursor", "col-resize");
+			$(".widget").css("pointer-events", "none");
+			$(me.wrapper.parentElement)
+				.find(".resizer")
+				.css("border-right", "3px solid var(--gray-400)");
+			un_focus();
+			if (startWidth + e.clientX - startX - startWidth > 60) {
+				startX = e.clientX;
+				me.increase_width();
+			} else if (startWidth + e.clientX - startX - startWidth < -60) {
+				startX = e.clientX;
+				me.decrease_width();
+			}
+		}
+
+		// disable text selection on mousedown (on drag)
+		function un_focus() {
+			if (document.selection) {
+				document.selection.empty();
+			} else {
+				window.getSelection().removeAllRanges();
+			}
+		}
+
+=== shortcut.js data usage ===
+16:		this.col = this.data.col ? this.data.col : "3";
+53:		if (this.data && this.data.shortcut_name) {
+54:			let has_data = this.make("shortcut", this.data.shortcut_name);
+=== quick_list.js data usage ===
+16:		this.col = this.data.col ? this.data.col : "4";
+34:		if (this.data && this.data.quick_list_name) {
+35:			let has_data = this.make("quick_list", this.data.quick_list_name);
+=== number_card.js data usage ===
+17:		this.col = this.data.col ? this.data.col : "4";
+34:		if (this.data && this.data.number_card_name) {
+35:			let has_data = this.make("number_card", this.data.number_card_name);
+=== chart.js data usage ===
+16:		this.col = this.data.col ? this.data.col : "12";
+34:		if (this.data && this.data.chart_name) {
+35:			let has_data = this.make("chart", this.data.chart_name);
+=== header.js data usage ===
+10:		this.data = data;
+11:		this.col = this.data.col ? this.data.col : "12";
+21:		newData.text = data.text || "";
+22:		newData.col = parseInt(data.col) || 12;
+58:			text: this.data.text + data.text,
+61:		this.data = newData;
+98:		this._data.text = this._element.innerHTML;
+106:		if (data.text !== undefined) {
+107:			let text = __(this._data.text) || "";
+130:		let text = this._data.text || "&nbsp";
+=== workspace.js links ===
+26:	if (typeof workspace.content != "string") return;
+28:		workspace.content = JSON.parse(workspace.content);
+31:		workspace.content = [];
+361:			this.content = current_page.content;
+362:			this.content && this.add_custom_cards_in_content();
+363:			this.content && this.add_hidden_notice_in_content(current_page);
+392:		this.content.find((item, i) => {
+396:			this.content.splice(index + 1, 0, {
+400:			this.content.splice(index + 2, 0, {
+417:				this.editor.render({ blocks: this.content || [] });
+420:			this.initialize_editorjs(this.content);
+452:			this.content.some(
+458:		this.content.unshift({
+1001:		this.undo.initialize({ blocks: this.content || [] });
+1497:					page.content == JSON.stringify(blocks) &&
+1508:				page.content = JSON.stringify(blocks);

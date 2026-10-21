@@ -1,0 +1,156 @@
+=== page_data py ===
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/../../core/doctype/role_permission_for_page_and_report/role_permission_for_page_and_report.py:28:	def set_report_page_data(self):
+/home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/../../core/doctype/role_permission_for_page_and_report/role_permission_for_page_and_report.py:63:	def update_report_page_data(self):
+=== workspace.py 115-150 ===
+			self.standard
+			and not self.is_new()
+			and self.has_value_changed("content")
+			and not frappe.conf.developer_mode
+			and not disable_saving_as_public()
+		):
+			frappe.throw(
+				_("Standard workspaces can't be edited directly. Your changes are saved as a customization.")
+			)
+
+		for d in self.get("links"):
+			if d.link_type == "Report" and d.is_query_report != 1:
+				d.report_ref_doctype = frappe.get_value("Report", d.link_to, "ref_doctype")
+
+		for shortcut in self.get("shortcuts"):
+			if shortcut.type == "Report":
+				shortcut.report_ref_doctype = frappe.get_value("Report", shortcut.link_to, "ref_doctype")
+
+		self.validate_duplicate_widget_labels()
+		self.validate_shared_page_has_a_module()
+		self.validate_private_page_is_yours()
+
+	def validate_private_page_is_yours(self):
+		"""A private page belongs to the person named in `for_user`, and only they may write one.
+
+		A Workspace Manager may write anyone's, which is what the manager dialog does and what
+		`new_page` and `update_page` have always allowed. This says the same thing in the model,
+		because those are endpoints and a document API call reaches neither: anyone holding
+		`Desk User` could insert a Workspace naming somebody else in `for_user`, and the page then
+		wrote a row into that person's own sidebar (`add_private_to_sidebar`), which is one user
+		changing another user's navigation.
+
+		System writes are left alone. An install, a migration, a patch or a fixture import is the
+		site building itself rather than a user acting, and they run as Administrator in any case.
+		"""
+		if self.public or not self.for_user:
+=== get_link_groups ===
+					show_alert=False,
+					ignore_permissions=True,
+				)
+			frappe.db.set_value("Workspace", new_label, {"for_user": new_name, "label": new_label})
+
+	def get_link_groups(self):
+		cards = []
+		current_card = frappe._dict(
+			{
+				"label": "Link",
+				"type": "Card Break",
+				"icon": None,
+				"hidden": False,
+			}
+		)
+
+		card_links = []
+
+		for link in self.links:
+			link = link.as_dict()
+			if link.type == "Card Break":
+				if card_links and (
+					not current_card.get("only_for")
+					or current_card.get("only_for") == frappe.get_system_settings("country")
+				):
+					current_card["links"] = card_links
+					cards.append(current_card)
+
+				current_card = link
+				card_links = []
+			elif not link.get("only_for") or link.get("only_for") == frappe.get_system_settings("country"):
+				card_links.append(link)
+
+		current_card["links"] = card_links
+		cards.append(current_card)
+
+		return cards
+
+	def build_links_table_from_card(self, config):
+		for idx, card in enumerate(config):
+			links = loads(card.get("links"))
+=== workspace_link.json ===
+9:  "label",
+27:   "fieldname": "type",
+28:   "fieldtype": "Select",
+30:   "label": "Type",
+31:   "options": "Link\nCard Break",
+35:   "fieldname": "label",
+36:   "fieldtype": "Data",
+38:   "label": "Label",
+43:   "fieldname": "icon",
+44:   "fieldtype": "Data",
+45:   "label": "Icon"
+50:   "fieldname": "hidden",
+51:   "fieldtype": "Check",
+52:   "label": "Hidden"
+56:   "fieldname": "link_details_section",
+57:   "fieldtype": "Section Break",
+58:   "label": "Link Details"
+61:   "fieldname": "link_type",
+62:   "fieldtype": "Select",
+64:   "label": "Link Type",
+66:   "options": "DocType\nPage\nReport",
+70:   "fieldname": "link_to",
+71:   "fieldtype": "Dynamic Link",
+73:   "label": "Link To",
+75:   "options": "link_type",
+79:   "fieldname": "column_break_7",
+80:   "fieldtype": "Column Break"
+83:   "fieldname": "dependencies",
+84:   "fieldtype": "Data",
+85:   "label": "Dependencies"
+=== workspace_shortcut.json ===
+14:  "label",
+26:   "fieldname": "type",
+27:   "fieldtype": "Select",
+29:   "label": "Type",
+30:   "options": "DocType\nReport\nPage\nDashboard\nURL",
+35:   "fieldname": "link_to",
+36:   "fieldtype": "Dynamic Link",
+38:   "label": "Link To",
+39:   "options": "type"
+44:   "fieldname": "doc_view",
+45:   "fieldtype": "Select",
+47:   "label": "DocType View",
+48:   "options": "\nList\nReport Builder\nDashboard\nTree\nNew\nCalendar\nKanban\nImage"
+51:   "fieldname": "column_break_4",
+52:   "fieldtype": "Column Break"
+55:   "fieldname": "label",
+56:   "fieldtype": "Data",
+58:   "label": "Label",
+63:   "fieldname": "icon",
+64:   "fieldtype": "Data",
+65:   "label": "Icon"
+69:   "fieldname": "restrict_to_domain",
+70:   "fieldtype": "Link",
+71:   "label": "Restrict to Domain",
+72:   "options": "Domain"
+76:   "fieldname": "section_break_5",
+77:   "fieldtype": "Section Break",
+78:   "label": "Count Filter"
+81:   "fieldname": "stats_filter",
+82:   "fieldtype": "Code",
+=== workspace_number_card.json ===
+14:   "fieldname": "number_card_name",
+15:   "fieldtype": "Link",
+22:   "fieldname": "label",
+23:   "fieldtype": "Data",
+=== workspace_chart.json ===
+13:   "fieldname": "chart_name",
+14:   "fieldtype": "Link",
+21:   "fieldname": "label",
+22:   "fieldtype": "Data",
+=== page_data js ===
+grep: /home/frappe/frappe-bench/apps/frappe/frappe/desk/doctype/workspace/../../public/js/frappe/views/workspace/workspace.js: No such file or directory

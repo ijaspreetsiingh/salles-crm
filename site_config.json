@@ -1,0 +1,24 @@
+{
+  "db_name": "_725fc7a9164bba59",
+  "db_password": "Xmov8PJSwXgZskP8",
+  "db_type": "mariadb",
+  "db_user": "_725fc7a9164bba59",
+  "installed_apps": [
+    "frappe",
+    "erpnext",
+    "hrms"
+  ],
+  "app_include_js": [
+    "/files/jd/launcher.js?rev=jdapps20261020"
+  ],
+  "app_include_css": [
+    "/files/jd/launcher.css?rev=jdapps20261020",
+    "/files/jd/app-shell.css?rev=jdapps20261020",
+    "/files/jd/app-themes/hrm.css?rev=jdapps20261020",
+    "/files/jd/app-themes/accounts.css?rev=jdapps20261020",
+    "/files/jd/app-themes/inventory.css?rev=jdapps20261020",
+    "/files/jd/app-themes/purchase.css?rev=jdapps20261020",
+    "/files/jd/app-themes/projects.css?rev=jdapps20261020",
+    "/files/jd/app-themes/manufacturing.css?rev=jdapps20261020"
+  ]
+}

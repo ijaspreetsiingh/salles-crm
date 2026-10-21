@@ -1,0 +1,137 @@
+=== 1. include_script def ===
+./utils/jinja_globals.py:98:def include_script(path, preload=True):
+=== 2. default_workspace / home route ===
+=== 3. router home handling (45-115) ===
+
+	// click handled, but not by href
+	if (
+		!is_on_same_host || // external link
+		target_element.getAttribute("onclick") || // has a handler
+		e.ctrlKey ||
+		e.metaKey || // open in a new tab
+		href === "#" // hash is home
+	) {
+		return;
+	}
+
+	if (frappe.router.is_app_route(target_element.pathname)) {
+		// target has "/app, this is a v2 style route.
+		if (target_element.search) {
+			frappe.route_options = {};
+			let params = new URLSearchParams(target_element.search);
+			for (const [key, value] of params) {
+				frappe.route_options[key] = value;
+			}
+		}
+		if (target_element.hash) {
+			frappe.route_hash = target_element.hash;
+		}
+		return override(target_element.pathname);
+	}
+});
+
+frappe.router = {
+	current_route: null,
+	routes: {},
+	// slug -> shell, and the shell the URL on screen names, or null when it names none. Nothing
+	// writes the shell into a URL yet, so `current_shell` is only ever set by a hand-typed one.
+	shell_routes: {},
+	current_shell: null,
+
+	// Whether the route being resolved was asked for from outside the sidebar, by setting
+	// `frappe.route_flags.jump` before `set_route`. The awesomebar does: what it opens was picked
+	// from the whole desk, not from the shell on screen, so that shell is only kept when it lists
+	// what was picked (see `sidebar.shell_for_route`).
+	is_jump: false,
+	factory_views: ["form", "list", "report", "tree", "print", "dashboard"],
+	list_views: [
+		"list",
+		"kanban",
+		"report",
+		"calendar",
+		"tree",
+		"gantt",
+		"dashboard",
+		"image",
+		"inbox",
+		"map",
+	],
+	list_views_route: {
+		list: "List",
+		kanban: "Kanban",
+		report: "Report",
+		calendar: "Calendar",
+		tree: "Tree",
+		gantt: "Gantt",
+		dashboard: "Dashboard",
+		image: "Image",
+		inbox: "Inbox",
+		file: "Home",
+		home: "Home",
+		map: "Map",
+	},
+	layout_mapped: {},
+
+	is_app_route(path) {
+=== 4. menu.js structure ===
+17: * - Each panel is appended to <body> (not inside the trigger's parent), so
+153:		label_el.append(
+202:		el.appendChild(img);
+207:		el.appendChild(space);
+226:		label.appendChild(description);
+228:	el.appendChild(label);
+236:				shortcut.append("+");
+240:			shortcut.appendChild(kbd);
+242:		el.appendChild(shortcut);
+275:		panel.appendChild(empty);
+290:			group_el.appendChild(label);
+304:			group_el.appendChild(el);
+306:		panel.appendChild(group_el);
+323:	loading.append(spinner, text);
+324:	panel.appendChild(loading);
+421:				if (e.target instanceof Element && e.target.closest('[role="menu"]')) return;
+468:		document.body.appendChild(panel);
+648:		entry.panel.appendChild(failed);
+=== 5. dock css rules ===
+.dock{position:fixed;left:8px;top:50%;transform:translate(-150%,-50%);z-index:1030;width:var(--dock-width);transition:transform .28s cubic-bezier(.4,0,.2,1);max-height:calc(100vh - 32px);overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;align-items:center;gap:var(--spacing);padding:calc(var(--spacing) * 2) calc(var(--spacing) * 2.75) calc(var(--spacing) * 3);background:var(--dock-bg);border-radius:18px;box-shadow:var(--shadow-2xl)}
+.dock::-webkit-scrollbar{display:none}
+.dock.hidden{display:none}
+.dock .dock-logo{flex:0 0 auto;width:100%;height:calc(var(--page-head-height) + 1px);margin-top:calc(var(--spacing) * -2);border-bottom:1px solid var(--outline-gray-1);display:flex;align-items:center;justify-content:center;color:var(--dock-ink-active);--icon-stroke: currentColor}
+.dock .dock-logo .shell-header{display:flex;align-items:center;justify-content:center;width:var(--dock-tile);height:var(--dock-tile);padding:0;border:none;border-radius:var(--radius-4);background:transparent;cursor:pointer}
+.dock .dock-logo .title-container,.dock .dock-logo .drop-icon{display:none}
+.dock .dock-logo .header-logo img{background:transparent}
+.dock .dock-logo .header-logo .icon-container{border-radius:var(--radius-4);overflow:hidden}
+.dock .dock-logo+.dock-items{margin-top:calc(var(--spacing) * -1);padding-top:calc(var(--spacing) * 3)}
+.dock .dock-items{flex:1 1 auto;width:100%;display:flex;flex-direction:column;align-items:center;gap:var(--spacing)}
+.dock-item{position:relative;flex:0 0 auto;width:var(--dock-tile);height:var(--dock-tile);padding:0;display:flex;align-items:center;justify-content:center;border:none;border-radius:var(--radius-4);background:transparent;color:var(--dock-ink);--icon-stroke: currentColor;cursor:pointer;transition:background-color .15s ease,color .15s ease}
+.dock-item svg{overflow:visible}
+.dock-item:hover,.dock-item:focus-visible{--icon-motion: running;--icon-motion-opacity: 1}
+.dock-item .dock-item-label{display:none}
+.dock-item .icon-container{border-radius:var(--radius-4);overflow:hidden}
+.dock-item:hover{background:var(--surface-gray-2);color:var(--dock-ink-hover)}
+.dock-item.active{background:var(--surface-elevation-3);box-shadow:var(--shadow-sm);color:var(--dock-ink-active)}
+.dock-item:focus-visible{outline:2px solid var(--outline-gray-4);outline-offset:2px}
+body.dock-open .dock{transform:translateY(-50%)}
+body.dock-pinned .dock{width:calc(var(--dock-width) + 1px);position:relative;top:auto;left:auto;transform:none;transition:none;flex:0 0 auto;height:100vh;height:100dvh;max-height:none;border-radius:0;box-shadow:none;border-right:1px solid var(--outline-gray-1);padding-top:calc(var(--spacing) * 2);overflow:hidden}
+body.dock-pinned .dock .dock-items{width:calc(100% + var(--spacing) * 5.5);margin-inline:calc(var(--spacing) * -2.75);padding-bottom:var(--spacing);min-height:0;overflow-y:auto;scrollbar-width:none}
+body.dock-pinned .dock .dock-items::-webkit-scrollbar{display:none}
+body.dock-pinned .dock .dock-logo .header-logo{width:32px;height:32px}
+.dock-user{display:none;flex:0 0 auto;justify-content:center;width:100%}
+body.dock-pinned .dock-user{display:flex}
+body.dock-pinned .dock .dock-user-button .avatar,body.dock-pinned .dock .dock-user-button img{width:28px;height:28px}
+body.dock-pinned .dock .dock-user-button.user-menu-active{background:var(--surface-gray-2)}
+body.dock-pinned.dock-active .body-sidebar .dropdown-navbar-user{display:none}
+body.dock-pinned.dock-active .body-sidebar-container.expanded .sidebar-header{padding-left:12px}
+body.dock-pinned.dock-active .body-sidebar-container.expanded .sidebar-header .header-logo{display:none}
+body.dock-pinned.dock-active .body-sidebar-container{--dock-sidebar-ease: .5s cubic-bezier(.65, 0, .35, 1)}
+body.dock-pinned.dock-active .body-sidebar-container .body-sidebar{transition:background .2s ease,border-color .2s ease,width var(--dock-sidebar-ease)}
+body.dock-pinned.dock-active .body-sidebar-container .body-sidebar>*{transition:transform var(--dock-sidebar-ease),opacity .3s ease .2s}
+body.dock-pinned.dock-active .body-sidebar-container .sidebar-edge{transition:left var(--dock-sidebar-ease)}
+body.dock-pinned.dock-active .body-sidebar-container .sidebar-collapse-arrow{transition:opacity .15s ease,left var(--dock-sidebar-ease),background-color .15s ease}
+.dock,.dock-item{transition:none}
+.dock{display:none}
+.dock-preview-rail{width:9%;flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:6px;background:var(--surface-gray-2);border-right:1px solid var(--outline-gray-2)}
+.dock-preview-floating{position:relative}
+.dock-preview-tray{position:absolute;top:50%;left:4px;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px;padding:4px 3px;border-radius:5px;background:var(--surface-base);box-shadow:var(--shadow-md)}
+=== 6. sidebar_setup / workspace_rendered events ===
+public/js/frappe/ui/sidebar/sidebar.js:229:		$(document).trigger("sidebar_setup", { sidebar: this });

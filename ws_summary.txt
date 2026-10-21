@@ -1,0 +1,4 @@
+Sales CRM: chart, header, link, number_card, shortcut
+Accounts App: header, link, number_card, shortcut
+HRM App: header, link, number_card, shortcut
+Invoicing: chart, number_card

@@ -1,0 +1,250 @@
+{
+ "fields": {
+  "title": "CRM",
+  "module": "CRM",
+  "app": "erpnext"
+ },
+ "items": [
+  {
+   "label": "Home",
+   "type": "Link",
+   "icon": "chart-column",
+   "hidden": 0
+  },
+  {
+   "label": "Lead",
+   "type": "Link",
+   "icon": "users-round",
+   "hidden": 0
+  },
+  {
+   "label": "Opportunity",
+   "type": "Link",
+   "icon": "lightbulb",
+   "hidden": 0
+  },
+  {
+   "label": "Customer",
+   "type": "Link",
+   "icon": "user",
+   "hidden": 0
+  },
+  {
+   "label": "Reports",
+   "type": "Section Break",
+   "icon": "sheet",
+   "hidden": 0
+  },
+  {
+   "label": "Sales Analytics",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Lead Details",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Sales Pipeline Analytics",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Opportunity Summary by Sales Stage",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Sales Funnel",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Prospects Engaged But Not Converted",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "First Response Time for Opportunity",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Campaign Efficiency",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Lead Owner Efficiency",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Maintenance",
+   "type": "Section Break",
+   "icon": "rocket",
+   "hidden": 0
+  },
+  {
+   "label": "Maintenance Schedule",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Maintenance Visit",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Warranty Claim",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Sales Pipeline",
+   "type": "Section Break",
+   "icon": "funnel",
+   "hidden": 0
+  },
+  {
+   "label": "Contract",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Appointment",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Communication",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Campaign",
+   "type": "Section Break",
+   "icon": "store",
+   "hidden": 0
+  },
+  {
+   "label": "Campaign",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Email Campaign",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "SMS Center",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "SMS Log",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Email Group",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Setup",
+   "type": "Section Break",
+   "icon": "database",
+   "hidden": 0
+  },
+  {
+   "label": "Territory",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Customer Group",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Contact",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Prospect",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Sales Person",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Sales Stage",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Lead Source",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "Settings",
+   "type": "Section Break",
+   "icon": "settings",
+   "hidden": 0
+  },
+  {
+   "label": "CRM Settings",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  },
+  {
+   "label": "SMS Settings",
+   "type": "Link",
+   "icon": null,
+   "hidden": 0
+  }
+ ],
+ "item_doctype": "Sidebar Item",
+ "ws_sales": "[{\"id\": \"header1\", \"type\": \"header\", \"data\": {\"text\": \"\\u003cspan class=\\\"h4\\\"\\u003eSales CRM Dashboard\\u003c/span\\u003e\", \"col\": 12}}, {\"id\": \"card1\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Leads\", \"col\": 4}}, {\"id\": \"card2\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Open Opportunities\", \"col\": 4}}, {\"id\": \"card3\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Pipeline Value\", \"col\": 4}}, {\"id\": \"card4\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"W",
+ "canonical": [
+  {
+   "name": "Sales"
+  }
+ ]
+}

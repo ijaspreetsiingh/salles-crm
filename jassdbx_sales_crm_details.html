@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JASSDBX Sales CRM — Details</title>
+<style>
+:root{--navy:#0f172a;--blue:#2563eb;--sky:#38bdf8;--txt:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f6f8fc}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
+body{background:var(--bg);color:var(--txt)}
+.hero{background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 60%,#2563eb 100%);color:#fff;padding:64px 24px 56px;text-align:center}
+.hero .logo{font-size:34px;font-weight:800;letter-spacing:6px}
+.hero .tag{color:var(--sky);font-size:13px;letter-spacing:3px;text-transform:uppercase;margin-top:6px}
+.hero h1{font-size:36px;margin-top:26px;font-weight:800}
+.hero p{max-width:640px;margin:14px auto 0;color:#cbd5e1;font-size:16px;line-height:1.6}
+.badges{display:flex;gap:10px;justify-content:center;margin-top:26px;flex-wrap:wrap}
+.badges span{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);padding:7px 16px;border-radius:20px;font-size:13px}
+.wrap{max-width:1040px;margin:0 auto;padding:44px 24px}
+.sec-t{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--blue);font-weight:700;text-align:center}
+.sec-h{font-size:28px;font-weight:800;text-align:center;margin:8px 0 30px}
+.mod{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.mcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px;box-shadow:0 4px 14px rgba(15,23,42,.05)}
+.mcard h3{font-size:19px;margin-bottom:4px}
+.mcard .sub{color:var(--mut);font-size:13px;margin-bottom:16px}
+.mcard ul{list-style:none}
+.mcard li{padding:9px 0 9px 28px;position:relative;font-size:14.5px;border-bottom:1px dashed var(--line)}
+.mcard li:last-child{border:none}
+.mcard li::before{content:"✓";position:absolute;left:0;top:9px;width:19px;height:19px;background:#dcfce7;color:#166534;border-radius:50%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.icon{font-size:30px;margin-bottom:10px;display:block}
+.flow{display:flex;gap:0;align-items:stretch;flex-wrap:wrap;justify-content:center}
+.step{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;min-width:160px;text-align:center;box-shadow:0 3px 10px rgba(15,23,42,.05)}
+.step b{display:block;font-size:15px;margin-bottom:4px}
+.step span{font-size:12px;color:var(--mut)}
+.arrow{display:flex;align-items:center;font-size:22px;color:var(--blue);padding:0 8px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;text-align:center}
+.kpi b{display:block;font-size:26px;color:var(--blue)}
+.kpi span{font-size:12.5px;color:var(--mut)}
+.info{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.info table{width:100%;border-collapse:collapse;font-size:14.5px}
+.info td{padding:13px 20px;border-bottom:1px solid var(--line)}
+.info td:first-child{font-weight:700;width:34%;background:#f8fafc}
+.info tr:last-child td{border:none}
+.foot{background:var(--navy);color:#94a3b8;text-align:center;padding:26px;font-size:13px}
+.foot b{color:#fff;letter-spacing:3px}
+@media(max-width:820px){.mod{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.arrow{display:none}.step{margin-bottom:10px}}
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="logo">JASSDBX</div>
+  <div class="tag">Sales CRM + Selling</div>
+  <h1>One Software. Complete Sales Process.</h1>
+  <p>JASSDBX ek web-based sales software hai jisme CRM aur Selling dono ek jagah merge hain — lead se lekar invoice tak, sab kuch ek hi jagah.</p>
+  <div class="badges"><span>100% Web Based</span><span>No Installation</span><span>CRM + Selling Merged</span><span>ERPNext Alternative</span></div>
+</div>
+
+<div class="wrap">
+  <div class="sec-t">Modules</div>
+  <div class="sec-h">Kya-Kya Milega</div>
+  <div class="mod">
+    <div class="mcard">
+      <span class="icon">👤</span>
+      <h3>CRM</h3>
+      <div class="sub">Customer Relationship Management</div>
+      <ul>
+        <li><b>Leads</b> — naye leads capture karo, source & status track karo</li>
+        <li><b>Lead Convert</b> — ek click me lead ko Customer + Deal banao</li>
+        <li><b>Deals Pipeline</b> — drag & drop kanban se deals stage-wise move karo</li>
+        <li><b>Customers</b> — complete customer master with contact details</li>
+      </ul>
+    </div>
+    <div class="mcard">
+      <span class="icon">🛒</span>
+      <h3>Selling</h3>
+      <div class="sub">Sales & Billing</div>
+      <ul>
+        <li><b>Items</b> — product/service master with rate & stock</li>
+        <li><b>Quotations</b> — customer ko quote bhejo (QTN-0001 series)</li>
+        <li><b>Sales Orders</b> — accepted quote se order banao (SO series)</li>
+        <li><b>Sales Invoices</b> — GST invoice generate karo, paid/unpaid track (INV series)</li>
+      </ul>
+    </div>
+    <div class="mcard">
+      <span class="icon">📊</span>
+      <h3>Dashboard & Reports</h3>
+      <div class="sub">Live Insight</div>
+      <ul>
+        <li>KPI cards — leads, open deals, won value, revenue</li>
+        <li>Pipeline by Stage chart</li>
+        <li>Revenue by Customer report</li>
+        <li>Lead funnel + Stock summary</li>
+      </ul>
+    </div>
+    <div class="mcard">
+      <span class="icon">⚙️</span>
+      <h3>Features</h3>
+      <div class="sub">Built-in</div>
+      <ul>
+        <li>Auto document numbering (QTN/SO/INV)</li>
+        <li>Auto GST @18% calculation</li>
+        <li>Search & filter har module me</li>
+        <li>Data browser me auto-save (localStorage)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" style="padding-top:0">
+  <div class="sec-t">Workflow</div>
+  <div class="sec-h">Sales Process Flow</div>
+  <div class="flow">
+    <div class="step"><b>Lead</b><span>Naya lead aaya</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Deal</b><span>Pipeline me track</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Quotation</b><span>Price quote bheja</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Sales Order</b><span>Order confirm hua</span></div>
+    <div class="arrow">→</div>
+    <div class="step"><b>Invoice</b><span>Billing + payment</span></div>
+  </div>
+</div>
+
+<div class="wrap" style="padding-top:0">
+  <div class="sec-t">Numbers</div>
+  <div class="sec-h">Ek Nazar Me</div>
+  <div class="kpis">
+    <div class="kpi"><b>2</b><span>Merged Modules<br>(CRM + Selling)</span></div>
+    <div class="kpi"><b>8</b><span>Core Sections</span></div>
+    <div class="kpi"><b>5</b><span>Stage Sales Pipeline</span></div>
+    <div class="kpi"><b>1</b><span>Single HTML File</span></div>
+  </div>
+</div>
+
+<div class="wrap" style="padding-top:0">
+  <div class="sec-t">Details</div>
+  <div class="sec-h">Software Information</div>
+  <div class="info">
+    <table>
+      <tr><td>Software Name</td><td>JASSDBX Sales CRM</td></tr>
+      <tr><td>Type</td><td>Web Based Sales CRM + Selling Software</td></tr>
+      <tr><td>Merged Modules</td><td>CRM (Leads, Deals, Customers) + Selling (Items, Quotations, Sales Orders, Invoices)</td></tr>
+      <tr><td>Based On</td><td>ERPNext workflow concept — rebranded as JASSDBX</td></tr>
+      <tr><td>Technology</td><td>Single HTML file — browser me directly open hota hai</td></tr>
+      <tr><td>Data Storage</td><td>Browser local storage (server nahi chahiye)</td></tr>
+      <tr><td>Access</td><td>File ko share karo — koi bhi browser me open karke use kar sakta hai</td></tr>
+      <tr><td>Best For</td><td>Sales team — daily lead, deal, quotation, order & billing work</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="foot"><b>JASSDBX</b> · Sales CRM + Selling · Web Based</div>
+</body>
+</html>

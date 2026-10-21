@@ -1,0 +1,92 @@
+=== 1. home_shell ===
+	for kind, name, module in homeless:
+		shell = shells.shell_of_app(app_of_module(module)) or home
+		if shell:
+			canonical[kind][name] = shell
+
+	return canonical, home
+
+
+def home_shell(
+	module_sidebars: dict, canonical: dict, workspace_shells: dict, default_workspace: str | None = None
+) -> str | None:
+	"""The shell a user is taken to when nothing else says where to go.
+
+	The shell of the user's default workspace, if they set one and can see it. Otherwise the
+	shell the ladder placed the most entities in, which is where this user's work actually is:
+	for a user who may only see Selling it is Selling, not whichever of their shells sorts first
+	(`Custom Workspaces`). Ties go to the one earlier in the payload, so the answer is the same
+	on every boot.
+
+	`workspace_shells` is the workspace-to-shell map, passed in rather than read from `canonical`
+	because it is not shipped (see `ROUTABLE_ENTITY_KINDS`). A default workspace missing from it
+	is one this user cannot reach, so the count answers instead.
+
+	Nothing here reads the database. The default workspace comes from the caller, which is what
+	lets the boot hand over the value it already loaded.
+	"""
+	if not module_sidebars:
+		return None
+
+	if default_workspace and (shell := workspace_shells.get(default_workspace)):
+		return shell
+
+	placed = Counter(shell for found in canonical.values() for shell in found.values())
+	# The Private shell holds no entity, so the count can never choose it, and it must not win a
+	# tie either: home is where this user's work is, and their own pages are not where a route
+	# naming nothing should land. It is still their home when they made it their default workspace,
+	# which the step above answers.
+	candidates = [shell for shell in module_sidebars if shell != PRIVATE_MODULE] or list(module_sidebars)
+	return max(candidates, key=lambda shell: placed[shell])
+
+
+def app_of_module(module: str | None) -> str | None:
+	if not module:
+		return None
+	return (frappe.local.module_app or {}).get(frappe.scrub(module))
+
+=== 2. bundled_asset ===
+sed: can't read /home/frappe/frappe-bench/apps/frappe/frappe/utils/bundled_asset.py: No such file or directory
+=== 3. workspace view wrapper ===
+54:		this.wrapper = $(wrapper);
+119:		this.body = this.wrapper.find(".layout-main-section");
+341:			this.wrapper.find(".workspace-header").hide();
+342:			this.wrapper
+380:			this.wrapper.find(".workspace-title").html(__(this._page.title));
+381:			this.wrapper
+1012:			this.wrapper.find(".workspace-header").removeClass("hidden");
+1023:		this.wrapper.find(".page-head").removeClass("hidden");
+1024:		this.wrapper.find(".workspace-header").addClass("hidden");
+=== 4. router parse for /desk and home ===
+57:	if (frappe.router.is_app_route(target_element.pathname)) {
+69:		return override(target_element.pathname);
+121:			return path[0] === "desk";
+128:			this.routes[this.slug(doctype)] = { doctype: doctype };
+132:				this.routes[this.slug(doctype_layout.name)] = {
+147:			this.shell_routes[this.shell_slug(shell)] = shell;
+169:		delete this.shell_routes["private"];
+203:	async parse(route) {
+281:		if (this.routes[segment]) return "doctype";
+338:		const segments = this.strip_prefix(window.location.pathname).split("/");
+355:		return this.routes[route[0]];
+359:		let doctype_route = this.routes[route[0]];
+594:		if (route && ["desk", "app"].includes(route[0])) {
+595:			// we only need subpath, remove "app" (or "desk")
+605:		// `set_route(location.pathname)`, or the body-level handler above passing the `href` of a
+618:			shell = this.shell_routes[route.shift()];
+755:		const path = window.location.pathname;
+766:			route = window.location.pathname;
+774:		if (route == "desk") route = route.substr(4); // for app
+864:		this.current_shell = this.shell_routes[route[0]] || null;
+912:		let rest = this.strip_prefix(window.location.pathname);
+941:		if (path === window.location.pathname) return;
+957:		const rest = this.strip_prefix(window.location.pathname).split("/").slice(1).join("/");
+=== 5. frappe.set_route workspace usage ===
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/views/workspace/workspace.js:40:		name: "Workspaces",
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:213:		// /desk/settings = ["Workspaces", "Settings"]
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:214:		// /desk/private/settings = ["Workspaces", "private", "Settings"]
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:223:				return ["Workspaces", frappe.workspaces[route[0]].name];
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:228:				if (!route[1]) return ["Workspaces", "private"];
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:231:				if (page) return ["Workspaces", "private", page.name];
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/router.js:253:				return ["Workspaces", "private"];
+/home/frappe/frappe-bench/apps/frappe/frappe/public/js/frappe/ui/toolbar/search_utils.js:50:				["List", "Tree", "Workspaces", "query-report"].includes(route[0]) ||

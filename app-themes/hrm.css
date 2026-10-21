@@ -1,0 +1,39 @@
+/*
+ * JassDBX HRM theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-hrm
+ * (HRM workspace, /desk/hrm-app, and DocTypes in the HR modules).
+ */
+
+body.jd-app-hrm.jd-desk-mode {
+	--jd-app-color: #1E6E5C;
+	--jd-app-surface: #F2F9F6;
+	--jd-accent: #1E6E5C;
+	--jd-accent-hover: #17594B;
+	--jd-accent-soft: #E7F2EE;
+}
+
+body.jd-app-hrm.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-hrm.jd-desk-mode .jd-apps-toggle,
+body.jd-app-hrm.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-hrm.jd-desk-mode .body-sidebar-container,
+body.jd-app-hrm.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-hrm.jd-desk-mode {
+	--jd-app-color: #5EC9A8;
+	--jd-app-surface: #16231F;
+	--jd-accent: #5EC9A8;
+	--jd-accent-hover: #7AD4B9;
+	--jd-accent-soft: #203D38;
+}
+
+body.jd-app-hrm.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}

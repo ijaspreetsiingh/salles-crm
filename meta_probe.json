@@ -1,0 +1,3441 @@
+{
+ "meta": {
+  "Opportunity": {
+   "fields": {
+    "naming_series": {
+     "type": "Select",
+     "options": "CRM-OPP-.YYYY.-"
+    },
+    "opportunity_from": {
+     "type": "Link",
+     "options": null
+    },
+    "party_name": {
+     "type": "Dynamic Link"
+    },
+    "customer_name": {
+     "type": "Data"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Open\nQuotation\nConverted\nLost\nReplied\nClosed"
+    },
+    "column_break0": {
+     "type": "Column Break"
+    },
+    "opportunity_type": {
+     "type": "Link",
+     "options": null
+    },
+    "opportunity_owner": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_10": {
+     "type": "Column Break"
+    },
+    "sales_stage": {
+     "type": "Link",
+     "options": null
+    },
+    "expected_closing": {
+     "type": "Date"
+    },
+    "probability": {
+     "type": "Percent"
+    },
+    "organization_details_section": {
+     "type": "Section Break"
+    },
+    "no_of_employees": {
+     "type": "Select",
+     "options": "1-10\n11-50\n51-200\n201-500\n501-1000\n1000+"
+    },
+    "annual_revenue": {
+     "type": "Currency"
+    },
+    "customer_group": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_23": {
+     "type": "Column Break"
+    },
+    "industry": {
+     "type": "Link",
+     "options": null
+    },
+    "market_segment": {
+     "type": "Link",
+     "options": null
+    },
+    "website": {
+     "type": "Data"
+    },
+    "column_break_31": {
+     "type": "Column Break"
+    },
+    "city": {
+     "type": "Data"
+    },
+    "state": {
+     "type": "Data"
+    },
+    "country": {
+     "type": "Link",
+     "options": null
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "section_break_14": {
+     "type": "Section Break"
+    },
+    "currency": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_36": {
+     "type": "Column Break"
+    },
+    "conversion_rate": {
+     "type": "Float"
+    },
+    "column_break_17": {
+     "type": "Column Break"
+    },
+    "opportunity_amount": {
+     "type": "Currency"
+    },
+    "base_opportunity_amount": {
+     "type": "Currency"
+    },
+    "utm_analytics_section": {
+     "type": "Section Break"
+    },
+    "utm_source": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_medium": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_emai": {
+     "type": "Column Break"
+    },
+    "utm_campaign": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_content": {
+     "type": "Data"
+    },
+    "more_info": {
+     "type": "Section Break"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "transaction_date": {
+     "type": "Date"
+    },
+    "column_break1": {
+     "type": "Column Break"
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "amended_from": {
+     "type": "Link",
+     "options": null
+    },
+    "title": {
+     "type": "Data"
+    },
+    "first_response_time": {
+     "type": "Duration"
+    },
+    "lost_detail_section": {
+     "type": "Section Break"
+    },
+    "lost_reasons": {
+     "type": "Table MultiSelect"
+    },
+    "order_lost_reason": {
+     "type": "Small Text"
+    },
+    "column_break_56": {
+     "type": "Column Break"
+    },
+    "competitors": {
+     "type": "Table MultiSelect"
+    },
+    "contact_info": {
+     "type": "Tab Break"
+    },
+    "primary_contact_section": {
+     "type": "Section Break"
+    },
+    "contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "job_title": {
+     "type": "Data"
+    },
+    "column_break_54": {
+     "type": "Column Break"
+    },
+    "contact_email": {
+     "type": "Data"
+    },
+    "contact_mobile": {
+     "type": "Data"
+    },
+    "column_break_22": {
+     "type": "Column Break"
+    },
+    "whatsapp": {
+     "type": "Data"
+    },
+    "phone": {
+     "type": "Data"
+    },
+    "phone_ext": {
+     "type": "Data"
+    },
+    "address_contact_section": {
+     "type": "Section Break"
+    },
+    "address_html": {
+     "type": "HTML"
+    },
+    "customer_address": {
+     "type": "Link",
+     "options": null
+    },
+    "address_display": {
+     "type": "Text Editor"
+    },
+    "column_break3": {
+     "type": "Column Break"
+    },
+    "contact_html": {
+     "type": "HTML"
+    },
+    "contact_display": {
+     "type": "Small Text"
+    },
+    "items_section": {
+     "type": "Tab Break"
+    },
+    "items": {
+     "type": "Table"
+    },
+    "section_break_32": {
+     "type": "Section Break"
+    },
+    "base_total": {
+     "type": "Currency"
+    },
+    "column_break_33": {
+     "type": "Column Break"
+    },
+    "total": {
+     "type": "Currency"
+    },
+    "activities_tab": {
+     "type": "Tab Break"
+    },
+    "open_activities_html": {
+     "type": "HTML"
+    },
+    "all_activities_section": {
+     "type": "Section Break"
+    },
+    "all_activities_html": {
+     "type": "HTML"
+    },
+    "notes_tab": {
+     "type": "Tab Break"
+    },
+    "notes_html": {
+     "type": "HTML"
+    },
+    "notes": {
+     "type": "Table"
+    },
+    "dashboard_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 0
+  },
+  "Lead": {
+   "fields": {
+    "naming_series": {
+     "type": "Select",
+     "options": "CRM-LEAD-.YYYY.-"
+    },
+    "salutation": {
+     "type": "Link",
+     "options": null
+    },
+    "first_name": {
+     "type": "Data"
+    },
+    "middle_name": {
+     "type": "Data"
+    },
+    "last_name": {
+     "type": "Data"
+    },
+    "column_break_1": {
+     "type": "Column Break"
+    },
+    "lead_name": {
+     "type": "Data"
+    },
+    "job_title": {
+     "type": "Data"
+    },
+    "gender": {
+     "type": "Link",
+     "options": null
+    },
+    "col_break123": {
+     "type": "Column Break"
+    },
+    "lead_owner": {
+     "type": "Link",
+     "options": null
+    },
+    "status": {
+     "type": "Select",
+     "options": "Lead\nOpen\nReplied\nOpportunity\nQuotation\nLost Quotation\nInterested\nConverted\nDo Not Contact"
+    },
+    "customer": {
+     "type": "Link",
+     "options": null
+    },
+    "type": {
+     "type": "Select",
+     "options": "\nClient\nChannel Partner\nConsultant"
+    },
+    "request_type": {
+     "type": "Select",
+     "options": "\nProduct Enquiry\nRequest for Information\nSuggestions\nOther"
+    },
+    "contact_info_tab": {
+     "type": "Section Break"
+    },
+    "email_id": {
+     "type": "Data"
+    },
+    "website": {
+     "type": "Data"
+    },
+    "column_break_20": {
+     "type": "Column Break"
+    },
+    "mobile_no": {
+     "type": "Data"
+    },
+    "whatsapp_no": {
+     "type": "Data"
+    },
+    "column_break_16": {
+     "type": "Column Break"
+    },
+    "phone": {
+     "type": "Data"
+    },
+    "phone_ext": {
+     "type": "Data"
+    },
+    "organization_section": {
+     "type": "Section Break"
+    },
+    "company_name": {
+     "type": "Data"
+    },
+    "no_of_employees": {
+     "type": "Select",
+     "options": "1-10\n11-50\n51-200\n201-500\n501-1000\n1000+"
+    },
+    "column_break_28": {
+     "type": "Column Break"
+    },
+    "annual_revenue": {
+     "type": "Currency"
+    },
+    "industry": {
+     "type": "Link",
+     "options": null
+    },
+    "market_segment": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_31": {
+     "type": "Column Break"
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "fax": {
+     "type": "Data"
+    },
+    "address_section": {
+     "type": "Section Break"
+    },
+    "address_html": {
+     "type": "HTML"
+    },
+    "column_break_38": {
+     "type": "Column Break"
+    },
+    "city": {
+     "type": "Data"
+    },
+    "state": {
+     "type": "Data"
+    },
+    "country": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break2": {
+     "type": "Column Break"
+    },
+    "contact_html": {
+     "type": "HTML"
+    },
+    "utm_analytics_section": {
+     "type": "Section Break"
+    },
+    "utm_source": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_medium": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_gkxo": {
+     "type": "Column Break"
+    },
+    "utm_campaign": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_content": {
+     "type": "Data"
+    },
+    "qualification_tab": {
+     "type": "Section Break"
+    },
+    "qualification_status": {
+     "type": "Select",
+     "options": "Unqualified\nIn Process\nQualified"
+    },
+    "column_break_64": {
+     "type": "Column Break"
+    },
+    "qualified_by": {
+     "type": "Link",
+     "options": null
+    },
+    "qualified_on": {
+     "type": "Date"
+    },
+    "other_info_tab": {
+     "type": "Section Break"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_22": {
+     "type": "Column Break"
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "image": {
+     "type": "Attach Image"
+    },
+    "title": {
+     "type": "Data"
+    },
+    "column_break_50": {
+     "type": "Column Break"
+    },
+    "disabled": {
+     "type": "Check"
+    },
+    "unsubscribed": {
+     "type": "Check"
+    },
+    "blog_subscriber": {
+     "type": "Check"
+    },
+    "activities_tab": {
+     "type": "Tab Break"
+    },
+    "open_activities_html": {
+     "type": "HTML"
+    },
+    "all_activities_section": {
+     "type": "Section Break"
+    },
+    "all_activities_html": {
+     "type": "HTML"
+    },
+    "notes_tab": {
+     "type": "Tab Break"
+    },
+    "notes_html": {
+     "type": "HTML"
+    },
+    "notes": {
+     "type": "Table"
+    },
+    "dashboard_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 1
+  },
+  "Quotation": {
+   "fields": {
+    "customer_section": {
+     "type": "Section Break"
+    },
+    "naming_series": {
+     "type": "Select",
+     "options": "SAL-QTN-.YYYY.-"
+    },
+    "quotation_to": {
+     "type": "Link",
+     "options": null
+    },
+    "party_name": {
+     "type": "Dynamic Link"
+    },
+    "customer_name": {
+     "type": "Data"
+    },
+    "column_break_7": {
+     "type": "Column Break"
+    },
+    "transaction_date": {
+     "type": "Date"
+    },
+    "valid_till": {
+     "type": "Date"
+    },
+    "column_break1": {
+     "type": "Column Break"
+    },
+    "order_type": {
+     "type": "Select",
+     "options": "\nSales\nMaintenance\nShopping Cart"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "has_unit_price_items": {
+     "type": "Check"
+    },
+    "amended_from": {
+     "type": "Link",
+     "options": null
+    },
+    "currency_and_price_list": {
+     "type": "Section Break"
+    },
+    "currency": {
+     "type": "Link",
+     "options": null
+    },
+    "conversion_rate": {
+     "type": "Float"
+    },
+    "column_break2": {
+     "type": "Column Break"
+    },
+    "selling_price_list": {
+     "type": "Link",
+     "options": null
+    },
+    "price_list_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "plc_conversion_rate": {
+     "type": "Float"
+    },
+    "ignore_pricing_rule": {
+     "type": "Check"
+    },
+    "items_section": {
+     "type": "Section Break"
+    },
+    "scan_barcode": {
+     "type": "Data"
+    },
+    "last_scanned_warehouse": {
+     "type": "Data"
+    },
+    "items": {
+     "type": "Table"
+    },
+    "sec_break23": {
+     "type": "Section Break"
+    },
+    "total_qty": {
+     "type": "Float"
+    },
+    "total_net_weight": {
+     "type": "Float"
+    },
+    "column_break_28": {
+     "type": "Column Break"
+    },
+    "base_total": {
+     "type": "Currency"
+    },
+    "base_net_total": {
+     "type": "Currency"
+    },
+    "column_break_31": {
+     "type": "Column Break"
+    },
+    "total": {
+     "type": "Currency"
+    },
+    "net_total": {
+     "type": "Currency"
+    },
+    "taxes_section": {
+     "type": "Section Break"
+    },
+    "tax_category": {
+     "type": "Link",
+     "options": null
+    },
+    "taxes_and_charges": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_36": {
+     "type": "Column Break"
+    },
+    "shipping_rule": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_34": {
+     "type": "Column Break"
+    },
+    "incoterm": {
+     "type": "Link",
+     "options": null
+    },
+    "named_place": {
+     "type": "Data"
+    },
+    "section_break_36": {
+     "type": "Section Break"
+    },
+    "taxes": {
+     "type": "Table"
+    },
+    "section_break_39": {
+     "type": "Section Break"
+    },
+    "base_total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "column_break_42": {
+     "type": "Column Break"
+    },
+    "total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "totals": {
+     "type": "Section Break"
+    },
+    "base_grand_total": {
+     "type": "Currency"
+    },
+    "base_rounding_adjustment": {
+     "type": "Currency"
+    },
+    "base_rounded_total": {
+     "type": "Currency"
+    },
+    "base_in_words": {
+     "type": "Data"
+    },
+    "column_break3": {
+     "type": "Column Break"
+    },
+    "grand_total": {
+     "type": "Currency"
+    },
+    "rounding_adjustment": {
+     "type": "Currency"
+    },
+    "rounded_total": {
+     "type": "Currency"
+    },
+    "disable_rounded_total": {
+     "type": "Check"
+    },
+    "in_words": {
+     "type": "Data"
+    },
+    "section_break_44": {
+     "type": "Section Break"
+    },
+    "apply_discount_on": {
+     "type": "Select",
+     "options": "\nGrand Total\nNet Total"
+    },
+    "base_discount_amount": {
+     "type": "Currency"
+    },
+    "coupon_code": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_46": {
+     "type": "Column Break"
+    },
+    "additional_discount_percentage": {
+     "type": "Float"
+    },
+    "discount_amount": {
+     "type": "Currency"
+    },
+    "referral_sales_partner": {
+     "type": "Link",
+     "options": null
+    },
+    "sec_tax_breakup": {
+     "type": "Section Break"
+    },
+    "other_charges_calculation": {
+     "type": "Text Editor"
+    },
+    "item_wise_tax_details": {
+     "type": "Table"
+    },
+    "bundle_items_section": {
+     "type": "Section Break"
+    },
+    "packed_items": {
+     "type": "Table"
+    },
+    "pricing_rule_details": {
+     "type": "Section Break"
+    },
+    "pricing_rules": {
+     "type": "Table"
+    },
+    "address_and_contact_tab": {
+     "type": "Tab Break"
+    },
+    "billing_address_section": {
+     "type": "Section Break"
+    },
+    "customer_address": {
+     "type": "Link",
+     "options": null
+    },
+    "address_display": {
+     "type": "Text Editor"
+    },
+    "col_break98": {
+     "type": "Column Break"
+    },
+    "contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "contact_display": {
+     "type": "Small Text"
+    },
+    "contact_mobile": {
+     "type": "Small Text"
+    },
+    "contact_email": {
+     "type": "Data"
+    },
+    "shipping_address_section": {
+     "type": "Section Break"
+    },
+    "shipping_address_name": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_81": {
+     "type": "Column Break"
+    },
+    "shipping_address": {
+     "type": "Text Editor"
+    },
+    "company_address_section": {
+     "type": "Section Break"
+    },
+    "company_address": {
+     "type": "Link",
+     "options": null
+    },
+    "company_address_display": {
+     "type": "Text Editor"
+    },
+    "column_break_87": {
+     "type": "Column Break"
+    },
+    "company_contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "terms_tab": {
+     "type": "Tab Break"
+    },
+    "payment_schedule_section": {
+     "type": "Section Break"
+    },
+    "payment_terms_template": {
+     "type": "Link",
+     "options": null
+    },
+    "payment_schedule": {
+     "type": "Table"
+    },
+    "terms_section_break": {
+     "type": "Section Break"
+    },
+    "tc_name": {
+     "type": "Link",
+     "options": null
+    },
+    "terms": {
+     "type": "Text Editor"
+    },
+    "more_info_tab": {
+     "type": "Tab Break"
+    },
+    "auto_repeat_section": {
+     "type": "Section Break"
+    },
+    "auto_repeat": {
+     "type": "Link",
+     "options": null
+    },
+    "update_auto_repeat_reference": {
+     "type": "Button"
+    },
+    "print_settings": {
+     "type": "Section Break"
+    },
+    "letter_head": {
+     "type": "Link",
+     "options": null
+    },
+    "group_same_items": {
+     "type": "Check"
+    },
+    "column_break_73": {
+     "type": "Column Break"
+    },
+    "select_print_heading": {
+     "type": "Link",
+     "options": null
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "lost_reasons_section": {
+     "type": "Section Break"
+    },
+    "lost_reasons": {
+     "type": "Table MultiSelect"
+    },
+    "competitors": {
+     "type": "Table MultiSelect"
+    },
+    "column_break_117": {
+     "type": "Column Break"
+    },
+    "order_lost_reason": {
+     "type": "Small Text"
+    },
+    "utm_analytics_section": {
+     "type": "Section Break"
+    },
+    "utm_source": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_medium": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_fozg": {
+     "type": "Column Break"
+    },
+    "utm_campaign": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_content": {
+     "type": "Data"
+    },
+    "additional_info_section": {
+     "type": "Section Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Draft\nOpen\nReplied\nPartially Ordered\nOrdered\nLost\nCancelled\nExpired"
+    },
+    "customer_group": {
+     "type": "Link",
+     "options": null
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "title": {
+     "type": "Data"
+    },
+    "column_break_108": {
+     "type": "Column Break"
+    },
+    "opportunity": {
+     "type": "Link",
+     "options": null
+    },
+    "enq_det": {
+     "type": "Text"
+    },
+    "supplier_quotation": {
+     "type": "Link",
+     "options": null
+    },
+    "connections_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 0
+  },
+  "Customer": {
+   "fields": {
+    "basic_info": {
+     "type": "Section Break"
+    },
+    "naming_series": {
+     "type": "Select",
+     "options": "CUST-.YYYY.-"
+    },
+    "customer_name": {
+     "type": "Data"
+    },
+    "customer_type": {
+     "type": "Select",
+     "options": "Company\nIndividual\nPartnership"
+    },
+    "alias": {
+     "type": "Data"
+    },
+    "gender": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break0": {
+     "type": "Column Break"
+    },
+    "customer_group": {
+     "type": "Link",
+     "options": null
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "image": {
+     "type": "Attach Image"
+    },
+    "section_break_hwkr": {
+     "type": "Section Break"
+    },
+    "default_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "default_bank_account": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_yvyu": {
+     "type": "Column Break"
+    },
+    "default_price_list": {
+     "type": "Link",
+     "options": null
+    },
+    "payment_terms": {
+     "type": "Link",
+     "options": null
+    },
+    "loyalty_points_tab": {
+     "type": "Section Break"
+    },
+    "loyalty_program": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_54": {
+     "type": "Column Break"
+    },
+    "loyalty_program_tier": {
+     "type": "Data"
+    },
+    "contact_and_address_tab": {
+     "type": "Tab Break"
+    },
+    "address_contacts": {
+     "type": "Section Break"
+    },
+    "address_html": {
+     "type": "HTML"
+    },
+    "column_break1": {
+     "type": "Column Break"
+    },
+    "contact_html": {
+     "type": "HTML"
+    },
+    "primary_address_and_contact_detail": {
+     "type": "Section Break"
+    },
+    "column_break_26": {
+     "type": "Column Break"
+    },
+    "customer_primary_address": {
+     "type": "Link",
+     "options": null
+    },
+    "primary_address": {
+     "type": "Text Editor"
+    },
+    "column_break_nwor": {
+     "type": "Column Break"
+    },
+    "customer_primary_contact": {
+     "type": "Link",
+     "options": null
+    },
+    "mobile_no": {
+     "type": "Read Only"
+    },
+    "email_id": {
+     "type": "Read Only"
+    },
+    "first_name": {
+     "type": "Read Only"
+    },
+    "last_name": {
+     "type": "Read Only"
+    },
+    "accounting_tab": {
+     "type": "Tab Break"
+    },
+    "default_receivable_accounts": {
+     "type": "Section Break"
+    },
+    "default_accounts_column": {
+     "type": "Column Break"
+    },
+    "accounts": {
+     "type": "Table"
+    },
+    "credit_limit_section": {
+     "type": "Section Break"
+    },
+    "credit_limit_column": {
+     "type": "Column Break"
+    },
+    "credit_limits": {
+     "type": "Table"
+    },
+    "internal_customer_section": {
+     "type": "Section Break"
+    },
+    "is_internal_customer": {
+     "type": "Check"
+    },
+    "represents_company": {
+     "type": "Link",
+     "options": null
+    },
+    "section_break_nrvh": {
+     "type": "Section Break"
+    },
+    "companies": {
+     "type": "Table"
+    },
+    "tax_tab": {
+     "type": "Tab Break"
+    },
+    "taxation_section": {
+     "type": "Section Break"
+    },
+    "tax_id": {
+     "type": "Data"
+    },
+    "tax_category": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_21": {
+     "type": "Column Break"
+    },
+    "tax_withholding_group": {
+     "type": "Link",
+     "options": null
+    },
+    "tax_withholding_category": {
+     "type": "Link",
+     "options": null
+    },
+    "settings_tab": {
+     "type": "Tab Break"
+    },
+    "so_required": {
+     "type": "Check"
+    },
+    "dn_required": {
+     "type": "Check"
+    },
+    "column_break_53": {
+     "type": "Column Break"
+    },
+    "disabled": {
+     "type": "Check"
+    },
+    "is_frozen": {
+     "type": "Check"
+    },
+    "sales_team_tab": {
+     "type": "Tab Break"
+    },
+    "account_manager": {
+     "type": "Link",
+     "options": null
+    },
+    "sales_team": {
+     "type": "Table"
+    },
+    "sales_team_section": {
+     "type": "Section Break"
+    },
+    "default_sales_partner": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_66": {
+     "type": "Column Break"
+    },
+    "default_commission_rate": {
+     "type": "Float"
+    },
+    "portal_users_tab": {
+     "type": "Tab Break"
+    },
+    "portal_users": {
+     "type": "Table"
+    },
+    "more_info_tab": {
+     "type": "Tab Break"
+    },
+    "references_section": {
+     "type": "Section Break"
+    },
+    "lead_name": {
+     "type": "Link",
+     "options": null
+    },
+    "opportunity_name": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_wlbg": {
+     "type": "Column Break"
+    },
+    "prospect_name": {
+     "type": "Link",
+     "options": null
+    },
+    "section_break_objq": {
+     "type": "Section Break"
+    },
+    "market_segment": {
+     "type": "Link",
+     "options": null
+    },
+    "industry": {
+     "type": "Link",
+     "options": null
+    },
+    "website": {
+     "type": "Data"
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "customer_pos_id": {
+     "type": "Data"
+    },
+    "column_break_hdmn": {
+     "type": "Column Break"
+    },
+    "customer_details": {
+     "type": "Text"
+    },
+    "supplier_numbers_section": {
+     "type": "Section Break"
+    },
+    "supplier_numbers_column": {
+     "type": "Column Break"
+    },
+    "supplier_numbers": {
+     "type": "Table"
+    },
+    "connections_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 3
+  },
+  "Sales Invoice": {
+   "fields": {
+    "customer_section": {
+     "type": "Section Break"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "company_tax_id": {
+     "type": "Data"
+    },
+    "naming_series": {
+     "type": "Select",
+     "options": "ACC-SINV-.YYYY.-\nACC-SINV-RET-.YYYY.-"
+    },
+    "customer": {
+     "type": "Link",
+     "options": null
+    },
+    "customer_name": {
+     "type": "Small Text"
+    },
+    "tax_id": {
+     "type": "Data"
+    },
+    "column_break1": {
+     "type": "Column Break"
+    },
+    "posting_date": {
+     "type": "Date"
+    },
+    "posting_time": {
+     "type": "Time"
+    },
+    "set_posting_time": {
+     "type": "Check"
+    },
+    "due_date": {
+     "type": "Date"
+    },
+    "column_break_14": {
+     "type": "Column Break"
+    },
+    "is_pos": {
+     "type": "Check"
+    },
+    "pos_profile": {
+     "type": "Link",
+     "options": null
+    },
+    "is_consolidated": {
+     "type": "Check"
+    },
+    "is_return": {
+     "type": "Check"
+    },
+    "return_against": {
+     "type": "Link",
+     "options": null
+    },
+    "update_outstanding_for_self": {
+     "type": "Check"
+    },
+    "update_billed_amount_in_sales_order": {
+     "type": "Check"
+    },
+    "update_billed_amount_in_delivery_note": {
+     "type": "Check"
+    },
+    "is_debit_note": {
+     "type": "Check"
+    },
+    "apply_tds": {
+     "type": "Check"
+    },
+    "amended_from": {
+     "type": "Link",
+     "options": null
+    },
+    "is_created_using_pos": {
+     "type": "Check"
+    },
+    "pos_closing_entry": {
+     "type": "Link",
+     "options": null
+    },
+    "has_subcontracted": {
+     "type": "Check"
+    },
+    "accounting_dimensions_section": {
+     "type": "Section Break"
+    },
+    "cost_center": {
+     "type": "Link",
+     "options": null
+    },
+    "dimension_col_break": {
+     "type": "Column Break"
+    },
+    "project": {
+     "type": "Link",
+     "options": null
+    },
+    "currency_and_price_list": {
+     "type": "Section Break"
+    },
+    "currency": {
+     "type": "Link",
+     "options": null
+    },
+    "conversion_rate": {
+     "type": "Float"
+    },
+    "column_break2": {
+     "type": "Column Break"
+    },
+    "selling_price_list": {
+     "type": "Link",
+     "options": null
+    },
+    "price_list_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "plc_conversion_rate": {
+     "type": "Float"
+    },
+    "ignore_pricing_rule": {
+     "type": "Check"
+    },
+    "items_section": {
+     "type": "Section Break"
+    },
+    "scan_barcode": {
+     "type": "Data"
+    },
+    "last_scanned_warehouse": {
+     "type": "Data"
+    },
+    "update_stock": {
+     "type": "Check"
+    },
+    "column_break_39": {
+     "type": "Column Break"
+    },
+    "set_warehouse": {
+     "type": "Link",
+     "options": null
+    },
+    "set_target_warehouse": {
+     "type": "Link",
+     "options": null
+    },
+    "section_break_42": {
+     "type": "Section Break"
+    },
+    "items": {
+     "type": "Table"
+    },
+    "section_break_30": {
+     "type": "Section Break"
+    },
+    "total_qty": {
+     "type": "Float"
+    },
+    "total_net_weight": {
+     "type": "Float"
+    },
+    "column_break_32": {
+     "type": "Column Break"
+    },
+    "base_total": {
+     "type": "Currency"
+    },
+    "base_net_total": {
+     "type": "Currency"
+    },
+    "column_break_52": {
+     "type": "Column Break"
+    },
+    "total": {
+     "type": "Currency"
+    },
+    "net_total": {
+     "type": "Currency"
+    },
+    "taxes_section": {
+     "type": "Section Break"
+    },
+    "tax_category": {
+     "type": "Link",
+     "options": null
+    },
+    "taxes_and_charges": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_38": {
+     "type": "Column Break"
+    },
+    "shipping_rule": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_55": {
+     "type": "Column Break"
+    },
+    "incoterm": {
+     "type": "Link",
+     "options": null
+    },
+    "named_place": {
+     "type": "Data"
+    },
+    "section_break_40": {
+     "type": "Section Break"
+    },
+    "taxes": {
+     "type": "Table"
+    },
+    "section_break_43": {
+     "type": "Section Break"
+    },
+    "base_total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "column_break_47": {
+     "type": "Column Break"
+    },
+    "total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "totals_section": {
+     "type": "Section Break"
+    },
+    "use_company_roundoff_cost_center": {
+     "type": "Check"
+    },
+    "grand_total": {
+     "type": "Currency"
+    },
+    "in_words": {
+     "type": "Small Text"
+    },
+    "column_break5": {
+     "type": "Column Break"
+    },
+    "disable_rounded_total": {
+     "type": "Check"
+    },
+    "rounding_adjustment": {
+     "type": "Currency"
+    },
+    "rounded_total": {
+     "type": "Currency"
+    },
+    "base_totals_section": {
+     "type": "Section Break"
+    },
+    "base_grand_total": {
+     "type": "Currency"
+    },
+    "base_in_words": {
+     "type": "Small Text"
+    },
+    "column_break_xjag": {
+     "type": "Column Break"
+    },
+    "base_rounding_adjustment": {
+     "type": "Currency"
+    },
+    "base_rounded_total": {
+     "type": "Currency"
+    },
+    "section_break_pxwz": {
+     "type": "Section Break"
+    },
+    "total_advance": {
+     "type": "Currency"
+    },
+    "column_break_iaso": {
+     "type": "Column Break"
+    },
+    "outstanding_amount": {
+     "type": "Currency"
+    },
+    "section_tax_withholding_entry": {
+     "type": "Section Break"
+    },
+    "tax_withholding_group": {
+     "type": "Link",
+     "options": null
+    },
+    "ignore_tax_withholding_threshold": {
+     "type": "Check"
+    },
+    "override_tax_withholding_entries": {
+     "type": "Check"
+    },
+    "tax_withholding_entries": {
+     "type": "Table"
+    },
+    "additional_discount_section": {
+     "type": "Section Break"
+    },
+    "apply_discount_on": {
+     "type": "Select",
+     "options": "\nGrand Total\nNet Total"
+    },
+    "base_discount_amount": {
+     "type": "Currency"
+    },
+    "coupon_code": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_51": {
+     "type": "Column Break"
+    },
+    "additional_discount_percentage": {
+     "type": "Float"
+    },
+    "discount_amount": {
+     "type": "Currency"
+    },
+    "is_cash_or_non_trade_discount": {
+     "type": "Check"
+    },
+    "additional_discount_account": {
+     "type": "Link",
+     "options": null
+    },
+    "sec_tax_breakup": {
+     "type": "Section Break"
+    },
+    "other_charges_calculation": {
+     "type": "Text Editor"
+    },
+    "item_wise_tax_details": {
+     "type": "Table"
+    },
+    "pricing_rule_details": {
+     "type": "Section Break"
+    },
+    "pricing_rules": {
+     "type": "Table"
+    },
+    "packing_list": {
+     "type": "Section Break"
+    },
+    "packed_items": {
+     "type": "Table"
+    },
+    "product_bundle_help": {
+     "type": "HTML"
+    },
+    "time_sheet_list": {
+     "type": "Section Break"
+    },
+    "timesheets": {
+     "type": "Table"
+    },
+    "section_break_104": {
+     "type": "Section Break"
+    },
+    "total_billing_hours": {
+     "type": "Float"
+    },
+    "column_break_106": {
+     "type": "Column Break"
+    },
+    "total_billing_amount": {
+     "type": "Currency"
+    },
+    "payments_tab": {
+     "type": "Tab Break"
+    },
+    "payments_section": {
+     "type": "Section Break"
+    },
+    "cash_bank_account": {
+     "type": "Link",
+     "options": null
+    },
+    "payments": {
+     "type": "Table"
+    },
+    "section_break_84": {
+     "type": "Section Break"
+    },
+    "base_paid_amount": {
+     "type": "Currency"
+    },
+    "column_break_86": {
+     "type": "Column Break"
+    },
+    "paid_amount": {
+     "type": "Currency"
+    },
+    "section_break_88": {
+     "type": "Section Break"
+    },
+    "base_change_amount": {
+     "type": "Currency"
+    },
+    "column_break_90": {
+     "type": "Column Break"
+    },
+    "change_amount": {
+     "type": "Currency"
+    },
+    "account_for_change_amount": {
+     "type": "Link",
+     "options": null
+    },
+    "advances_section": {
+     "type": "Section Break"
+    },
+    "allocate_advances_automatically": {
+     "type": "Check"
+    },
+    "only_include_allocated_payments": {
+     "type": "Check"
+    },
+    "get_advances": {
+     "type": "Button"
+    },
+    "advances": {
+     "type": "Table"
+    },
+    "write_off_section": {
+     "type": "Section Break"
+    },
+    "write_off_amount": {
+     "type": "Currency"
+    },
+    "base_write_off_amount": {
+     "type": "Currency"
+    },
+    "write_off_outstanding_amount_automatically": {
+     "type": "Check"
+    },
+    "column_break_74": {
+     "type": "Column Break"
+    },
+    "write_off_account": {
+     "type": "Link",
+     "options": null
+    },
+    "write_off_cost_center": {
+     "type": "Link",
+     "options": null
+    },
+    "loyalty_points_redemption": {
+     "type": "Section Break"
+    },
+    "redeem_loyalty_points": {
+     "type": "Check"
+    },
+    "loyalty_points": {
+     "type": "Int"
+    },
+    "loyalty_amount": {
+     "type": "Currency"
+    },
+    "column_break_77": {
+     "type": "Column Break"
+    },
+    "loyalty_program": {
+     "type": "Link",
+     "options": null
+    },
+    "dont_create_loyalty_points": {
+     "type": "Check"
+    },
+    "loyalty_redemption_account": {
+     "type": "Link",
+     "options": null
+    },
+    "loyalty_redemption_cost_center": {
+     "type": "Link",
+     "options": null
+    },
+    "contact_and_address_tab": {
+     "type": "Tab Break"
+    },
+    "address_and_contact": {
+     "type": "Section Break"
+    },
+    "customer_address": {
+     "type": "Link",
+     "options": null
+    },
+    "address_display": {
+     "type": "Text Editor"
+    },
+    "col_break4": {
+     "type": "Column Break"
+    },
+    "contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "contact_display": {
+     "type": "Small Text"
+    },
+    "contact_mobile": {
+     "type": "Small Text"
+    },
+    "contact_email": {
+     "type": "Data"
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "shipping_address_section": {
+     "type": "Section Break"
+    },
+    "shipping_address_name": {
+     "type": "Link",
+     "options": null
+    },
+    "shipping_address": {
+     "type": "Text Editor"
+    },
+    "shipping_addr_col_break": {
+     "type": "Column Break"
+    },
+    "dispatch_address_name": {
+     "type": "Link",
+     "options": null
+    },
+    "dispatch_address": {
+     "type": "Text Editor"
+    },
+    "company_address_section": {
+     "type": "Section Break"
+    },
+    "company_address": {
+     "type": "Link",
+     "options": null
+    },
+    "company_address_display": {
+     "type": "Text Editor"
+    },
+    "company_addr_col_break": {
+     "type": "Column Break"
+    },
+    "company_contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "terms_tab": {
+     "type": "Tab Break"
+    },
+    "payment_schedule_section": {
+     "type": "Section Break"
+    },
+    "ignore_default_payment_terms_template": {
+     "type": "Check"
+    },
+    "payment_terms_template": {
+     "type": "Link",
+     "options": null
+    },
+    "payment_schedule": {
+     "type": "Table"
+    },
+    "terms_section_break": {
+     "type": "Section Break"
+    },
+    "tc_name": {
+     "type": "Link",
+     "options": null
+    },
+    "terms": {
+     "type": "Text Editor"
+    },
+    "more_info_tab": {
+     "type": "Tab Break"
+    },
+    "customer_po_details": {
+     "type": "Section Break"
+    },
+    "po_no": {
+     "type": "Data"
+    },
+    "column_break_23": {
+     "type": "Column Break"
+    },
+    "po_date": {
+     "type": "Date"
+    },
+    "more_info": {
+     "type": "Section Break"
+    },
+    "debit_to": {
+     "type": "Link",
+     "options": null
+    },
+    "party_account_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "is_opening": {
+     "type": "Select",
+     "options": "No\nYes"
+    },
+    "column_break8": {
+     "type": "Column Break"
+    },
+    "unrealized_profit_loss_account": {
+     "type": "Link",
+     "options": null
+    },
+    "against_income_account": {
+     "type": "Small Text"
+    },
+    "commission_section": {
+     "type": "Section Break"
+    },
+    "column_break_rdiw": {
+     "type": "Column Break"
+    },
+    "sales_partner": {
+     "type": "Link",
+     "options": null
+    },
+    "amount_eligible_for_commission": {
+     "type": "Currency"
+    },
+    "column_break10": {
+     "type": "Column Break"
+    },
+    "commission_rate": {
+     "type": "Float"
+    },
+    "total_commission": {
+     "type": "Currency"
+    },
+    "sales_team_section": {
+     "type": "Section Break"
+    },
+    "sales_team": {
+     "type": "Table"
+    },
+    "edit_printing_settings": {
+     "type": "Section Break"
+    },
+    "letter_head": {
+     "type": "Link",
+     "options": null
+    },
+    "group_same_items": {
+     "type": "Check"
+    },
+    "column_break_84": {
+     "type": "Column Break"
+    },
+    "select_print_heading": {
+     "type": "Link",
+     "options": null
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "subscription_section": {
+     "type": "Section Break"
+    },
+    "subscription": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_140": {
+     "type": "Column Break"
+    },
+    "from_date": {
+     "type": "Date"
+    },
+    "to_date": {
+     "type": "Date"
+    },
+    "automation_section": {
+     "type": "Section Break"
+    },
+    "auto_repeat": {
+     "type": "Link",
+     "options": null
+    },
+    "update_auto_repeat_reference": {
+     "type": "Button"
+    },
+    "utm_analytics_section": {
+     "type": "Section Break"
+    },
+    "column_break_rdke": {
+     "type": "Column Break"
+    },
+    "utm_source": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_medium": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_ixxw": {
+     "type": "Column Break"
+    },
+    "utm_campaign": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_content": {
+     "type": "Data"
+    },
+    "more_information": {
+     "type": "Section Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "\nDraft\nReturn\nCredit Note Issued\nSubmitted\nPaid\nPartly Paid\nUnpaid\nUnpaid and Discounted\nPartly Paid and Discounted\nOverdue and Discounted\nOverdue\nCancelled\nInternal Transfer"
+    },
+    "remarks": {
+     "type": "Small Text"
+    },
+    "customer_group": {
+     "type": "Link",
+     "options": null
+    },
+    "title": {
+     "type": "Data"
+    },
+    "column_break_imbx": {
+     "type": "Column Break"
+    },
+    "is_internal_customer": {
+     "type": "Check"
+    },
+    "represents_company": {
+     "type": "Link",
+     "options": null
+    },
+    "inter_company_invoice_reference": {
+     "type": "Link",
+     "options": null
+    },
+    "is_discounted": {
+     "type": "Check"
+    },
+    "connections_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 5
+  },
+  "Sales Order": {
+   "fields": {
+    "customer_section": {
+     "type": "Section Break"
+    },
+    "column_break0": {
+     "type": "Column Break"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "naming_series": {
+     "type": "Select",
+     "options": "SAL-ORD-.YYYY.-"
+    },
+    "customer": {
+     "type": "Link",
+     "options": null
+    },
+    "customer_name": {
+     "type": "Data"
+    },
+    "column_break_7": {
+     "type": "Column Break"
+    },
+    "order_type": {
+     "type": "Select",
+     "options": "\nSales\nMaintenance\nShopping Cart"
+    },
+    "transaction_date": {
+     "type": "Date"
+    },
+    "transaction_time": {
+     "type": "Time"
+    },
+    "delivery_date": {
+     "type": "Date"
+    },
+    "column_break1": {
+     "type": "Column Break"
+    },
+    "tax_id": {
+     "type": "Data"
+    },
+    "skip_delivery_note": {
+     "type": "Check"
+    },
+    "has_unit_price_items": {
+     "type": "Check"
+    },
+    "is_subcontracted": {
+     "type": "Check"
+    },
+    "amended_from": {
+     "type": "Link",
+     "options": null
+    },
+    "accounting_dimensions_section": {
+     "type": "Section Break"
+    },
+    "cost_center": {
+     "type": "Link",
+     "options": null
+    },
+    "dimension_col_break": {
+     "type": "Column Break"
+    },
+    "project": {
+     "type": "Link",
+     "options": null
+    },
+    "currency_and_price_list": {
+     "type": "Section Break"
+    },
+    "currency": {
+     "type": "Link",
+     "options": null
+    },
+    "conversion_rate": {
+     "type": "Float"
+    },
+    "column_break2": {
+     "type": "Column Break"
+    },
+    "selling_price_list": {
+     "type": "Link",
+     "options": null
+    },
+    "price_list_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "plc_conversion_rate": {
+     "type": "Float"
+    },
+    "ignore_pricing_rule": {
+     "type": "Check"
+    },
+    "sec_warehouse": {
+     "type": "Section Break"
+    },
+    "scan_barcode": {
+     "type": "Data"
+    },
+    "last_scanned_warehouse": {
+     "type": "Data"
+    },
+    "column_break_28": {
+     "type": "Column Break"
+    },
+    "set_warehouse": {
+     "type": "Link",
+     "options": null
+    },
+    "reserve_stock": {
+     "type": "Check"
+    },
+    "items_section": {
+     "type": "Section Break"
+    },
+    "items": {
+     "type": "Table"
+    },
+    "section_break_31": {
+     "type": "Section Break"
+    },
+    "total_qty": {
+     "type": "Float"
+    },
+    "total_net_weight": {
+     "type": "Float"
+    },
+    "column_break_33": {
+     "type": "Column Break"
+    },
+    "base_total": {
+     "type": "Currency"
+    },
+    "base_net_total": {
+     "type": "Currency"
+    },
+    "column_break_33a": {
+     "type": "Column Break"
+    },
+    "total": {
+     "type": "Currency"
+    },
+    "net_total": {
+     "type": "Currency"
+    },
+    "taxes_section": {
+     "type": "Section Break"
+    },
+    "tax_category": {
+     "type": "Link",
+     "options": null
+    },
+    "taxes_and_charges": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_38": {
+     "type": "Column Break"
+    },
+    "shipping_rule": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_49": {
+     "type": "Column Break"
+    },
+    "incoterm": {
+     "type": "Link",
+     "options": null
+    },
+    "named_place": {
+     "type": "Data"
+    },
+    "section_break_40": {
+     "type": "Section Break"
+    },
+    "taxes": {
+     "type": "Table"
+    },
+    "section_break_43": {
+     "type": "Section Break"
+    },
+    "base_total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "column_break_46": {
+     "type": "Column Break"
+    },
+    "total_taxes_and_charges": {
+     "type": "Currency"
+    },
+    "totals_section": {
+     "type": "Section Break"
+    },
+    "grand_total": {
+     "type": "Currency"
+    },
+    "in_words": {
+     "type": "Data"
+    },
+    "disable_rounded_total": {
+     "type": "Check"
+    },
+    "column_break_nuxg": {
+     "type": "Column Break"
+    },
+    "rounding_adjustment": {
+     "type": "Currency"
+    },
+    "rounded_total": {
+     "type": "Currency"
+    },
+    "base_totals_section": {
+     "type": "Section Break"
+    },
+    "base_grand_total": {
+     "type": "Currency"
+    },
+    "base_in_words": {
+     "type": "Data"
+    },
+    "column_break_bgfw": {
+     "type": "Column Break"
+    },
+    "base_rounding_adjustment": {
+     "type": "Currency"
+    },
+    "base_rounded_total": {
+     "type": "Currency"
+    },
+    "section_break_efew": {
+     "type": "Section Break"
+    },
+    "advance_paid": {
+     "type": "Currency"
+    },
+    "additional_discount_section": {
+     "type": "Section Break"
+    },
+    "apply_discount_on": {
+     "type": "Select",
+     "options": "\nGrand Total\nNet Total"
+    },
+    "base_discount_amount": {
+     "type": "Currency"
+    },
+    "coupon_code": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_50": {
+     "type": "Column Break"
+    },
+    "additional_discount_percentage": {
+     "type": "Float"
+    },
+    "discount_amount": {
+     "type": "Currency"
+    },
+    "sec_tax_breakup": {
+     "type": "Section Break"
+    },
+    "other_charges_calculation": {
+     "type": "Text Editor"
+    },
+    "item_wise_tax_details": {
+     "type": "Table"
+    },
+    "packing_list": {
+     "type": "Section Break"
+    },
+    "packed_items": {
+     "type": "Table"
+    },
+    "pricing_rule_details": {
+     "type": "Section Break"
+    },
+    "pricing_rules": {
+     "type": "Table"
+    },
+    "contact_info": {
+     "type": "Tab Break"
+    },
+    "billing_address_column": {
+     "type": "Section Break"
+    },
+    "customer_address": {
+     "type": "Link",
+     "options": null
+    },
+    "address_display": {
+     "type": "Text Editor"
+    },
+    "customer_group": {
+     "type": "Link",
+     "options": null
+    },
+    "territory": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_84": {
+     "type": "Column Break"
+    },
+    "contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "contact_display": {
+     "type": "Small Text"
+    },
+    "contact_phone": {
+     "type": "Data"
+    },
+    "contact_mobile": {
+     "type": "Small Text"
+    },
+    "contact_email": {
+     "type": "Data"
+    },
+    "shipping_address_column": {
+     "type": "Section Break"
+    },
+    "shipping_address_name": {
+     "type": "Link",
+     "options": null
+    },
+    "shipping_address": {
+     "type": "Text Editor"
+    },
+    "column_break_93": {
+     "type": "Column Break"
+    },
+    "dispatch_address_name": {
+     "type": "Link",
+     "options": null
+    },
+    "dispatch_address": {
+     "type": "Text Editor"
+    },
+    "col_break46": {
+     "type": "Section Break"
+    },
+    "company_address": {
+     "type": "Link",
+     "options": null
+    },
+    "company_address_display": {
+     "type": "Text Editor"
+    },
+    "column_break_92": {
+     "type": "Column Break"
+    },
+    "company_contact_person": {
+     "type": "Link",
+     "options": null
+    },
+    "payment_schedule_section": {
+     "type": "Tab Break"
+    },
+    "payment_terms_section": {
+     "type": "Section Break"
+    },
+    "ignore_default_payment_terms_template": {
+     "type": "Check"
+    },
+    "payment_terms_template": {
+     "type": "Link",
+     "options": null
+    },
+    "payment_schedule": {
+     "type": "Table"
+    },
+    "terms_section_break": {
+     "type": "Section Break"
+    },
+    "tc_name": {
+     "type": "Link",
+     "options": null
+    },
+    "terms": {
+     "type": "Text Editor"
+    },
+    "more_info": {
+     "type": "Tab Break"
+    },
+    "section_break_78": {
+     "type": "Section Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "\nDraft\nOn Hold\nTo Pay\nTo Deliver and Bill\nTo Bill\nTo Deliver\nCompleted\nCancelled\nClosed"
+    },
+    "delivery_status": {
+     "type": "Select",
+     "options": "Not Delivered\nFully Delivered\nPartly Delivered\nClosed\nNot Applicable"
+    },
+    "per_delivered": {
+     "type": "Percent"
+    },
+    "column_break_81": {
+     "type": "Column Break"
+    },
+    "per_billed": {
+     "type": "Percent"
+    },
+    "per_picked": {
+     "type": "Percent"
+    },
+    "billing_status": {
+     "type": "Select",
+     "options": "Not Billed\nFully Billed\nPartly Billed\nClosed"
+    },
+    "advance_payment_status": {
+     "type": "Select",
+     "options": "Not Requested\nRequested\nPartially Paid\nFully Paid"
+    },
+    "sales_team_section_break": {
+     "type": "Section Break"
+    },
+    "sales_partner": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break7": {
+     "type": "Column Break"
+    },
+    "amount_eligible_for_commission": {
+     "type": "Currency"
+    },
+    "commission_rate": {
+     "type": "Float"
+    },
+    "total_commission": {
+     "type": "Currency"
+    },
+    "section_break1": {
+     "type": "Section Break"
+    },
+    "sales_team": {
+     "type": "Table"
+    },
+    "loyalty_points_redemption": {
+     "type": "Section Break"
+    },
+    "loyalty_points": {
+     "type": "Int"
+    },
+    "column_break_116": {
+     "type": "Column Break"
+    },
+    "loyalty_amount": {
+     "type": "Currency"
+    },
+    "auto_repeat_section": {
+     "type": "Section Break"
+    },
+    "from_date": {
+     "type": "Date"
+    },
+    "to_date": {
+     "type": "Date"
+    },
+    "column_break_108": {
+     "type": "Column Break"
+    },
+    "auto_repeat": {
+     "type": "Link",
+     "options": null
+    },
+    "update_auto_repeat_reference": {
+     "type": "Button"
+    },
+    "printing_details": {
+     "type": "Section Break"
+    },
+    "letter_head": {
+     "type": "Link",
+     "options": null
+    },
+    "group_same_items": {
+     "type": "Check"
+    },
+    "column_break4": {
+     "type": "Column Break"
+    },
+    "select_print_heading": {
+     "type": "Link",
+     "options": null
+    },
+    "language": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_analytics_section": {
+     "type": "Section Break"
+    },
+    "utm_source": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_medium": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_ijxt": {
+     "type": "Column Break"
+    },
+    "utm_campaign": {
+     "type": "Link",
+     "options": null
+    },
+    "utm_content": {
+     "type": "Data"
+    },
+    "additional_info_section": {
+     "type": "Section Break"
+    },
+    "is_internal_customer": {
+     "type": "Check"
+    },
+    "po_no": {
+     "type": "Data"
+    },
+    "po_date": {
+     "type": "Date"
+    },
+    "represents_company": {
+     "type": "Link",
+     "options": null
+    },
+    "title": {
+     "type": "Data"
+    },
+    "column_break_yvzv": {
+     "type": "Column Break"
+    },
+    "inter_company_order_reference": {
+     "type": "Link",
+     "options": null
+    },
+    "party_account_currency": {
+     "type": "Link",
+     "options": null
+    },
+    "connections_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 5
+  },
+  "Event": {
+   "fields": {
+    "details": {
+     "type": "Section Break"
+    },
+    "subject": {
+     "type": "Small Text"
+    },
+    "event_category": {
+     "type": "Select",
+     "options": "Event\nMeeting\nCall\nSent/Received Email\nOther"
+    },
+    "event_type": {
+     "type": "Select",
+     "options": "Private\nPublic"
+    },
+    "color": {
+     "type": "Color"
+    },
+    "repeat_this_event": {
+     "type": "Check"
+    },
+    "location": {
+     "type": "Data"
+    },
+    "column_break_4": {
+     "type": "Column Break"
+    },
+    "starts_on": {
+     "type": "Datetime"
+    },
+    "ends_on": {
+     "type": "Datetime"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Open\nCompleted\nClosed\nCancelled"
+    },
+    "sender": {
+     "type": "Data"
+    },
+    "attending": {
+     "type": "Select",
+     "options": "\nYes\nNo\nMaybe"
+    },
+    "all_day": {
+     "type": "Check"
+    },
+    "sync_with_google_calendar": {
+     "type": "Check"
+    },
+    "add_video_conferencing": {
+     "type": "Check"
+    },
+    "sb_00": {
+     "type": "Section Break"
+    },
+    "google_calendar": {
+     "type": "Link",
+     "options": null
+    },
+    "google_calendar_id": {
+     "type": "Data"
+    },
+    "cb_00": {
+     "type": "Column Break"
+    },
+    "google_calendar_event_id": {
+     "type": "Data"
+    },
+    "google_meet_link": {
+     "type": "Small Text"
+    },
+    "pulled_from_google_calendar": {
+     "type": "Check"
+    },
+    "section_break_13": {
+     "type": "Section Break"
+    },
+    "repeat_on": {
+     "type": "Select",
+     "options": "\nDaily\nWeekly\nMonthly\nQuarterly\nHalf Yearly\nYearly"
+    },
+    "repeat_till": {
+     "type": "Date"
+    },
+    "column_break_16": {
+     "type": "Column Break"
+    },
+    "monday": {
+     "type": "Check"
+    },
+    "tuesday": {
+     "type": "Check"
+    },
+    "wednesday": {
+     "type": "Check"
+    },
+    "thursday": {
+     "type": "Check"
+    },
+    "friday": {
+     "type": "Check"
+    },
+    "saturday": {
+     "type": "Check"
+    },
+    "sunday": {
+     "type": "Check"
+    },
+    "section_break_8": {
+     "type": "Section Break"
+    },
+    "description": {
+     "type": "Text Editor"
+    },
+    "participants_tab": {
+     "type": "Tab Break"
+    },
+    "event_participants": {
+     "type": "Table"
+    },
+    "links_tab": {
+     "type": "Tab Break"
+    },
+    "section_break_jlqd": {
+     "type": "Section Break"
+    },
+    "reference_doctype": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_pjkw": {
+     "type": "Column Break"
+    },
+    "reference_docname": {
+     "type": "Dynamic Link"
+    },
+    "section_break_qemp": {
+     "type": "Section Break"
+    },
+    "links": {
+     "type": "Table"
+    },
+    "notifications_tab": {
+     "type": "Tab Break"
+    },
+    "send_reminder": {
+     "type": "Check"
+    },
+    "notifications": {
+     "type": "Table"
+    }
+   },
+   "count": 0
+  },
+  "Project": {
+   "fields": {
+    "naming_series": {
+     "type": "Select",
+     "options": "PROJ-.####"
+    },
+    "project_name": {
+     "type": "Data"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Open\nOn hold\nCompleted\nCancelled"
+    },
+    "project_type": {
+     "type": "Link",
+     "options": null
+    },
+    "percent_complete_method": {
+     "type": "Select",
+     "options": "Manual\nTask Completion\nTask Progress\nTask Weight"
+    },
+    "column_break_5": {
+     "type": "Column Break"
+    },
+    "project_template": {
+     "type": "Link",
+     "options": null
+    },
+    "priority": {
+     "type": "Select",
+     "options": "Medium\nLow\nHigh"
+    },
+    "department": {
+     "type": "Link",
+     "options": null
+    },
+    "is_active": {
+     "type": "Select",
+     "options": "Yes\nNo"
+    },
+    "percent_complete": {
+     "type": "Percent"
+    },
+    "section_break_18": {
+     "type": "Section Break"
+    },
+    "expected_start_date": {
+     "type": "Date"
+    },
+    "actual_start_date": {
+     "type": "Date"
+    },
+    "actual_time": {
+     "type": "Float"
+    },
+    "column_break_20": {
+     "type": "Column Break"
+    },
+    "expected_end_date": {
+     "type": "Date"
+    },
+    "actual_end_date": {
+     "type": "Date"
+    },
+    "costing_tab": {
+     "type": "Tab Break"
+    },
+    "project_details": {
+     "type": "Section Break"
+    },
+    "estimated_costing": {
+     "type": "Currency"
+    },
+    "total_costing_amount": {
+     "type": "Currency"
+    },
+    "total_expense_claim": {
+     "type": "Currency"
+    },
+    "total_purchase_cost": {
+     "type": "Currency"
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_28": {
+     "type": "Column Break"
+    },
+    "total_sales_amount": {
+     "type": "Currency"
+    },
+    "total_billable_amount": {
+     "type": "Currency"
+    },
+    "total_billed_amount": {
+     "type": "Currency"
+    },
+    "total_consumed_material_cost": {
+     "type": "Currency"
+    },
+    "cost_center": {
+     "type": "Link",
+     "options": null
+    },
+    "margin": {
+     "type": "Section Break"
+    },
+    "gross_margin": {
+     "type": "Currency"
+    },
+    "column_break_37": {
+     "type": "Column Break"
+    },
+    "per_gross_margin": {
+     "type": "Percent"
+    },
+    "monitor_progress_tab": {
+     "type": "Tab Break"
+    },
+    "collect_progress": {
+     "type": "Check"
+    },
+    "holiday_list": {
+     "type": "Link",
+     "options": null
+    },
+    "frequency": {
+     "type": "Select",
+     "options": "Hourly\nTwice Daily\nDaily\nWeekly"
+    },
+    "from_time": {
+     "type": "Time"
+    },
+    "to_time": {
+     "type": "Time"
+    },
+    "first_email": {
+     "type": "Time"
+    },
+    "second_email": {
+     "type": "Time"
+    },
+    "daily_time_to_send": {
+     "type": "Time"
+    },
+    "day_to_send": {
+     "type": "Select",
+     "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday"
+    },
+    "weekly_time_to_send": {
+     "type": "Time"
+    },
+    "column_break_45": {
+     "type": "Column Break"
+    },
+    "subject": {
+     "type": "Data"
+    },
+    "message": {
+     "type": "Text"
+    },
+    "more_info_tab": {
+     "type": "Tab Break"
+    },
+    "customer_details": {
+     "type": "Section Break"
+    },
+    "customer": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_14": {
+     "type": "Column Break"
+    },
+    "sales_order": {
+     "type": "Link",
+     "options": null
+    },
+    "users_section": {
+     "type": "Section Break"
+    },
+    "users": {
+     "type": "Table"
+    },
+    "copied_from": {
+     "type": "Data"
+    },
+    "section_break0": {
+     "type": "Section Break"
+    },
+    "notes": {
+     "type": "Text Editor"
+    },
+    "connections_tab": {
+     "type": "Tab Break"
+    }
+   },
+   "count": 0
+  },
+  "ToDo": {
+   "fields": {
+    "description_and_status": {
+     "type": "Section Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Open\nClosed\nCancelled"
+    },
+    "priority": {
+     "type": "Select",
+     "options": "High\nMedium\nLow"
+    },
+    "column_break_2": {
+     "type": "Column Break"
+    },
+    "color": {
+     "type": "Color"
+    },
+    "date": {
+     "type": "Date"
+    },
+    "allocated_to": {
+     "type": "Link",
+     "options": null
+    },
+    "description_section": {
+     "type": "Section Break"
+    },
+    "description": {
+     "type": "Text Editor"
+    },
+    "section_break_6": {
+     "type": "Section Break"
+    },
+    "reference_type": {
+     "type": "Link",
+     "options": null
+    },
+    "reference_name": {
+     "type": "Dynamic Link"
+    },
+    "column_break_10": {
+     "type": "Column Break"
+    },
+    "role": {
+     "type": "Link",
+     "options": null
+    },
+    "assigned_by": {
+     "type": "Link",
+     "options": null
+    },
+    "assigned_by_full_name": {
+     "type": "Read Only"
+    },
+    "sender": {
+     "type": "Data"
+    },
+    "assignment_rule": {
+     "type": "Link",
+     "options": null
+    }
+   },
+   "count": 0
+  },
+  "Communication": {
+   "fields": {
+    "subject": {
+     "type": "Small Text"
+    },
+    "section_break_10": {
+     "type": "Section Break"
+    },
+    "communication_medium": {
+     "type": "Select",
+     "options": "\nEmail\nChat\nPhone\nSMS\nEvent\nMeeting\nVisit\nOther"
+    },
+    "sender": {
+     "type": "Data"
+    },
+    "column_break_4": {
+     "type": "Column Break"
+    },
+    "recipients": {
+     "type": "Code"
+    },
+    "cc": {
+     "type": "Code"
+    },
+    "bcc": {
+     "type": "Code"
+    },
+    "phone_no": {
+     "type": "Data"
+    },
+    "delivery_status": {
+     "type": "Select",
+     "options": "\nSent\nBounced\nOpened\nMarked As Spam\nRejected\nDelayed\nSoft-Bounced\nClicked\nRecipient Unsubscribed\nError\nExpired\nSending\nRead\nScheduled"
+    },
+    "section_break_8": {
+     "type": "Section Break"
+    },
+    "content": {
+     "type": "Text Editor"
+    },
+    "status_section": {
+     "type": "Section Break"
+    },
+    "text_content": {
+     "type": "Code"
+    },
+    "communication_type": {
+     "type": "Select",
+     "options": "Communication\nAutomated Message"
+    },
+    "column_break_5": {
+     "type": "Column Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Open\nReplied\nClosed\nLinked"
+    },
+    "sent_or_received": {
+     "type": "Select",
+     "options": "Sent\nReceived"
+    },
+    "additional_info": {
+     "type": "Section Break"
+    },
+    "communication_date": {
+     "type": "Datetime"
+    },
+    "read_receipt": {
+     "type": "Check"
+    },
+    "send_after": {
+     "type": "Datetime"
+    },
+    "column_break_14": {
+     "type": "Column Break"
+    },
+    "sender_full_name": {
+     "type": "Data"
+    },
+    "read_by_recipient": {
+     "type": "Check"
+    },
+    "read_by_recipient_on": {
+     "type": "Datetime"
+    },
+    "reference_section": {
+     "type": "Section Break"
+    },
+    "reference_doctype": {
+     "type": "Link",
+     "options": null
+    },
+    "reference_name": {
+     "type": "Dynamic Link"
+    },
+    "reference_owner": {
+     "type": "Read Only"
+    },
+    "email_account": {
+     "type": "Link",
+     "options": null
+    },
+    "company": {
+     "type": "Link",
+     "options": null
+    },
+    "in_reply_to": {
+     "type": "Link",
+     "options": null
+    },
+    "user": {
+     "type": "Link",
+     "options": null
+    },
+    "column_break_27": {
+     "type": "Column Break"
+    },
+    "email_template": {
+     "type": "Link",
+     "options": null
+    },
+    "unread_notification_sent": {
+     "type": "Check"
+    },
+    "seen": {
+     "type": "Check"
+    },
+    "_user_tags": {
+     "type": "Data"
+    },
+    "timeline_links_sections": {
+     "type": "Section Break"
+    },
+    "timeline_links": {
+     "type": "Table"
+    },
+    "email_inbox": {
+     "type": "Section Break"
+    },
+    "message_id": {
+     "type": "Small Text"
+    },
+    "uid": {
+     "type": "Int"
+    },
+    "imap_folder": {
+     "type": "Data"
+    },
+    "email_status": {
+     "type": "Select",
+     "options": "Open\nSpam\nTrash"
+    },
+    "has_attachment": {
+     "type": "Check"
+    }
+   },
+   "count": 0
+  },
+  "Comment": {
+   "fields": {
+    "comment_type": {
+     "type": "Select",
+     "options": "Comment\nLike\nInfo\nLabel\nWorkflow\nCreated\nSubmitted\nCancelled\nUpdated\nDeleted\nAssigned\nAssignment Completed\nAttachment\nAttachment Removed\nShared\nUnshared\nBot\nRelinked\nEdit"
+    },
+    "comment_email": {
+     "type": "Data"
+    },
+    "subject": {
+     "type": "Text"
+    },
+    "comment_by": {
+     "type": "Data"
+    },
+    "published": {
+     "type": "Check"
+    },
+    "seen": {
+     "type": "Check"
+    },
+    "column_break_5": {
+     "type": "Column Break"
+    },
+    "reference_doctype": {
+     "type": "Link",
+     "options": null
+    },
+    "reference_name": {
+     "type": "Dynamic Link"
+    },
+    "reference_owner": {
+     "type": "Data"
+    },
+    "section_break_10": {
+     "type": "Section Break"
+    },
+    "content": {
+     "type": "HTML Editor"
+    },
+    "ip_address": {
+     "type": "Data"
+    }
+   },
+   "count": 138
+  },
+  "Sales Person": {
+   "fields": {
+    "name_and_employee_id": {
+     "type": "Section Break"
+    },
+    "sales_person_name": {
+     "type": "Data"
+    },
+    "parent_sales_person": {
+     "type": "Link",
+     "options": null
+    },
+    "commission_rate": {
+     "type": "Data"
+    },
+    "is_group": {
+     "type": "Check"
+    },
+    "enabled": {
+     "type": "Check"
+    },
+    "cb0": {
+     "type": "Column Break"
+    },
+    "employee": {
+     "type": "Link",
+     "options": null
+    },
+    "department": {
+     "type": "Link",
+     "options": null
+    },
+    "lft": {
+     "type": "Int"
+    },
+    "rgt": {
+     "type": "Int"
+    },
+    "old_parent": {
+     "type": "Data"
+    },
+    "target_details_section_break": {
+     "type": "Section Break"
+    },
+    "targets": {
+     "type": "Table"
+    }
+   },
+   "count": 6
+  },
+  "Contact": {
+   "fields": {
+    "contact_section": {
+     "type": "Section Break"
+    },
+    "first_name": {
+     "type": "Data"
+    },
+    "middle_name": {
+     "type": "Data"
+    },
+    "last_name": {
+     "type": "Data"
+    },
+    "full_name": {
+     "type": "Data"
+    },
+    "email_id": {
+     "type": "Data"
+    },
+    "user": {
+     "type": "Link",
+     "options": null
+    },
+    "address": {
+     "type": "Link",
+     "options": null
+    },
+    "sync_with_google_contacts": {
+     "type": "Check"
+    },
+    "cb00": {
+     "type": "Column Break"
+    },
+    "status": {
+     "type": "Select",
+     "options": "Passive\nOpen\nReplied"
+    },
+    "salutation": {
+     "type": "Link",
+     "options": null
+    },
+    "designation": {
+     "type": "Data"
+    },
+    "gender": {
+     "type": "Link",
+     "options": null
+    },
+    "phone": {
+     "type": "Data"
+    },
+    "mobile_no": {
+     "type": "Data"
+    },
+    "company_name": {
+     "type": "Data"
+    },
+    "image": {
+     "type": "Attach Image"
+    },
+    "sb_00": {
+     "type": "Section Break"
+    },
+    "google_contacts": {
+     "type": "Link",
+     "options": null
+    },
+    "google_contacts_id": {
+     "type": "Data"
+    },
+    "cb_00": {
+     "type": "Column Break"
+    },
+    "pulled_from_google_contacts": {
+     "type": "Check"
+    },
+    "sb_01": {
+     "type": "Section Break"
+    },
+    "email_ids": {
+     "type": "Table"
+    },
+    "phone_nos": {
+     "type": "Table"
+    },
+    "contact_details": {
+     "type": "Section Break"
+    },
+    "links": {
+     "type": "Table"
+    },
+    "is_primary_contact": {
+     "type": "Check"
+    },
+    "is_billing_contact": {
+     "type": "Check"
+    },
+    "more_info": {
+     "type": "Section Break"
+    },
+    "department": {
+     "type": "Data"
+    },
+    "unsubscribed": {
+     "type": "Check"
+    }
+   },
+   "count": 2
+  },
+  "Campaign": {
+   "fields": {
+    "campaign": {
+     "type": "Section Break"
+    },
+    "campaign_name": {
+     "type": "Data"
+    },
+    "naming_series": {
+     "type": "Select",
+     "options": "SAL-CAM-.YYYY.-"
+    },
+    "campaign_schedules_section": {
+     "type": "Section Break"
+    },
+    "campaign_schedules": {
+     "type": "Table"
+    },
+    "description_section": {
+     "type": "Section Break"
+    },
+    "description": {
+     "type": "Text"
+    }
+   },
+   "count": 0
+  }
+ },
+ "currency": "INR",
+ "users": [
+  "jass@gmail.com",
+  "Guest",
+  "Administrator"
+ ],
+ "opps_sample": "ERR: (1054, \"Unknown column 'total_opportunity_amount' in 'SELECT'\")",
+ "leads_sample": "ERR: (1054, \"Unknown column 'source' in 'SELECT'\")",
+ "quotes_sample": "ERR: (1054, \"Unknown column 'order_status' in 'SELECT'\")",
+ "invoices_sample": [
+  {
+   "name": "ACC-SINV-2026-00005",
+   "status": "Overdue",
+   "customer": "Grant Plastics Ltd.",
+   "grand_total": 20000.0,
+   "outstanding_amount": 20000.0,
+   "due_date": "2026-07-24",
+   "posting_date": "2026-07-24",
+   "creation": "2026-10-19 11:25:28.916931"
+  },
+  {
+   "name": "ACC-SINV-2026-00004",
+   "status": "Paid",
+   "customer": "West View Software Ltd.",
+   "grand_total": 32000.0,
+   "outstanding_amount": 0.0,
+   "due_date": "2026-12-25",
+   "posting_date": "2026-12-25",
+   "creation": "2026-10-19 11:25:28.385687"
+  },
+  {
+   "name": "ACC-SINV-2026-00003",
+   "status": "Unpaid",
+   "customer": "West View Software Ltd.",
+   "grand_total": 229000.0,
+   "outstanding_amount": 229000.0,
+   "due_date": "2026-10-31",
+   "posting_date": "2026-10-31",
+   "creation": "2026-10-19 11:25:27.778247"
+  },
+  {
+   "name": "ACC-SINV-2026-00002",
+   "status": "Paid",
+   "customer": "Palmer Productions Ltd.",
+   "grand_total": 15000.0,
+   "outstanding_amount": 0.0,
+   "due_date": "2026-11-03",
+   "posting_date": "2026-11-03",
+   "creation": "2026-10-19 11:25:27.130128"
+  },
+  {
+   "name": "ACC-SINV-2026-00001",
+   "status": "Unpaid",
+   "customer": "Grant Plastics Ltd.",
+   "grand_total": 67000.0,
+   "outstanding_amount": 67000.0,
+   "due_date": "2026-11-17",
+   "posting_date": "2026-11-17",
+   "creation": "2026-10-19 11:25:26.637559"
+  }
+ ],
+ "events_sample": [],
+ "projects_sample": [],
+ "todos_sample": "ERR: (1054, \"Unknown column 'due_date' in 'SELECT'\")",
+ "comms_sample": [],
+ "counts": {
+  "Opportunity": 0,
+  "Lead": 1,
+  "Quotation": 0,
+  "Customer": 3,
+  "Sales Invoice": 5,
+  "Event": 0,
+  "Project": 0,
+  "ToDo": 0,
+  "Communication": 0
+ }
+}

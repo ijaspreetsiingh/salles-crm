@@ -1,0 +1,39 @@
+/*
+ * JassDBX Manufacturing theme.
+ * Loaded on every desk page, applies only when launcher.js sets body.jd-app-manufacturing
+ * (Manufacturing workspace and DocTypes in the Manufacturing module).
+ */
+
+body.jd-app-manufacturing.jd-desk-mode {
+	--jd-app-color: #7A5A3A;
+	--jd-app-surface: #FAF6F1;
+	--jd-accent: #7A5A3A;
+	--jd-accent-hover: #63482D;
+	--jd-accent-soft: #F0E7DB;
+}
+
+body.jd-app-manufacturing.jd-desk-mode .navbar {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
+
+body.jd-app-manufacturing.jd-desk-mode .jd-apps-toggle,
+body.jd-app-manufacturing.jd-desk-mode .sidebar-header.shell-header {
+	color: var(--jd-app-color);
+}
+
+body.jd-app-manufacturing.jd-desk-mode .body-sidebar-container,
+body.jd-app-manufacturing.jd-desk-mode .body-sidebar {
+	background: var(--jd-app-surface);
+}
+
+html[data-jd-theme="dark"] body.jd-app-manufacturing.jd-desk-mode {
+	--jd-app-color: #D2A97D;
+	--jd-app-surface: #211B15;
+	--jd-accent: #D2A97D;
+	--jd-accent-hover: #DFBE9B;
+	--jd-accent-soft: #37291D;
+}
+
+body.jd-app-manufacturing.jd-desk-mode .page-head {
+	box-shadow: inset 0 3px 0 var(--jd-app-color), 0 1px 0 var(--jd-border);
+}
