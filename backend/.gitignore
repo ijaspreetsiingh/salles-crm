@@ -1,0 +1,12 @@
+node_modules/
+dist/
+data/
+uploads/
+.env
+.env.*
+!.env.example
+*.log
+coverage/
+.DS_Store
+prisma/*.db
+prisma/*.db-journal
