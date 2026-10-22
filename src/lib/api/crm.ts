@@ -66,6 +66,7 @@ export type RecordDto = {
   branch: string;
   date: string;
   amount: number;
+  currency: string;
   status: string;
   email: string;
   phone: string;
@@ -161,6 +162,7 @@ export function toRecordRow(dto: RecordDto): RecordRow {
     branch: dto.branch ?? "",
     date: dto.date ?? "",
     amount: Number(dto.amount) || 0,
+    currency: dto.currency ?? "",
     status: dto.status ?? "",
     email: dto.email ?? "",
     phone: dto.phone ?? "",
@@ -181,6 +183,7 @@ export function toRecordBody(row: RecordRow) {
     branch: row.branch ?? "",
     date: row.date ?? "",
     amount: Number.isFinite(row.amount) ? row.amount : 0,
+    currency: row.currency ?? "",
     status: row.status ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",

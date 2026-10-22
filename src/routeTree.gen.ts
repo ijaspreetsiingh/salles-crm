@@ -16,6 +16,7 @@ import { Route as LandingRouteImport } from './routes/landing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
 import { Route as WorkspaceModuleRouteImport } from './routes/workspace.$module'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const TasksRoute = TasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LeadSlugRoute = LeadSlugRouteImport.update({
+  id: '/lead/$slug',
+  path: '/lead/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspaceModuleRoute = WorkspaceModuleRouteImport.update({
   id: '/workspace/$module',
   path: '/workspace/$module',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/lead/$slug'
     | '/workspace/$module'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/lead/$slug'
     | '/workspace/$module'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/lead/$slug'
     | '/workspace/$module'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   TasksRoute: typeof TasksRoute
+  LeadSlugRoute: typeof LeadSlugRoute
   WorkspaceModuleRoute: typeof WorkspaceModuleRoute
 }
 
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lead/$slug': {
+      id: '/lead/$slug'
+      path: '/lead/$slug'
+      fullPath: '/lead/$slug'
+      preLoaderRoute: typeof LeadSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workspace/$module': {
       id: '/workspace/$module'
       path: '/workspace/$module'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   TasksRoute: TasksRoute,
+  LeadSlugRoute: LeadSlugRoute,
   WorkspaceModuleRoute: WorkspaceModuleRoute,
 }
 export const routeTree = rootRouteImport

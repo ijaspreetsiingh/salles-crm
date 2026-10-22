@@ -3,7 +3,7 @@
  * administration. Mirrors every router mounted under /api/v1 that the CRM UI
  * consumes beyond the core records/tasks/members layer in `crm.ts`.
  */
-import { apiDownload, apiRequest, apiUpload } from "./client";
+import { apiBlob, apiDownload, apiRequest, apiUpload } from "./client";
 
 /* ------------------------------------------------------------------ *
  * Shared shapes
@@ -199,6 +199,8 @@ export type AssistantMessageDto = {
 export type AssistantReplyDto = {
   conversationId: string;
   reply: AssistantMessageDto;
+  /** False when the assistant answered from built-in rules (LLM key not set). */
+  live: boolean;
   suggestions: string[];
 };
 
@@ -255,6 +257,8 @@ export type MessageDto = {
   body: string;
   sentBy: string | null;
   createdAt: string;
+  /** Present on newly sent outbound messages — sent | queued | failed | null. */
+  delivery?: string | null;
 };
 
 export const fetchConversations = (
@@ -537,6 +541,99 @@ export const createRole = (body: {
   description?: string;
   permissions: PermissionSetDto;
 }) => apiRequest<RoleDto>("/roles", { method: "POST", body });
+
+/* ------------------------------------------------------------------ *
+ * Finance commerce: invoices, payment links, outbox
+ * ------------------------------------------------------------------ */
+
+export type PaymentLinkDto = {
+  id: string;
+  status: string;
+  checkoutUrl: string | null;
+  configured: boolean;
+};
+
+export type OutboxEntryDto = {
+  id: string;
+  channel: string;
+  to: string;
+  subject: string;
+  body: string;
+  template: string | null;
+  status: string;
+  error: string | null;
+  relatedModule: string | null;
+  relatedReference: string;
+  createdAt: string;
+  sentAt: string | null;
+};
+
+export const downloadInvoicePdf = async (reference: string) => {
+  const blob = await apiBlob(`/finance/invoices/${encodeURIComponent(reference)}/invoice.pdf`);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `invoice-${reference}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+export const createPaymentLink = (
+  reference: string,
+  contact: { customerEmail?: string | undefined; customerPhone?: string | undefined; customerName?: string | undefined } = {},
+) =>
+  apiRequest<PaymentLinkDto>(`/finance/invoices/${encodeURIComponent(reference)}/payment-link`, {
+    method: "POST",
+    body: contact,
+  });
+
+export const sendInvoiceEmail = (reference: string, to: string, note?: string) =>
+  apiRequest<{ status: string; id: string }>(`/finance/invoices/${encodeURIComponent(reference)}/send`, {
+    method: "POST",
+    body: { to, note },
+  });
+
+export const fetchOutbox = (take = 100) =>
+  apiRequest<OutboxEntryDto[]>("/finance/outbox", { query: { take } });
+
+/* ------------------------------------------------------------------ *
+ * Flights — real Amadeus search when keys are configured
+ * ------------------------------------------------------------------ */
+
+export type FlightOfferDto = {
+  airline: string;
+  price: number;
+  currency: string;
+  departure: { airport: string; time: string };
+  arrival: { airport: string; time: string };
+  seatsLeft?: number;
+};
+
+export type FlightSearchResult = {
+  configured: boolean;
+  offers: FlightOfferDto[];
+  currency?: string;
+  message?: string;
+};
+
+export const searchFlights = (query: { from: string; to: string; date: string; adults?: number }) =>
+  apiRequest<FlightSearchResult>("/flights/search", { query });
+
+/* ------------------------------------------------------------------ *
+ * Public lead capture (no auth — used by hosted form & website widgets)
+ * ------------------------------------------------------------------ */
+
+export const submitPublicLead = (slug: string, body: Record<string, unknown>) =>
+  apiRequest<{ ok: boolean; reference: string; message: string }>(
+    `/public/lead-form/${slug}`,
+    { method: "POST", body, auth: false },
+  );
+
+export const fetchPublicLeadForm = (slug: string) =>
+  apiRequest<{
+    organization: { name: string; slug: string; supportEmail: string | null };
+    token: string;
+  }>(`/public/lead-form/${slug}`, { auth: false });
 
 export const updateRole = (
   id: string,

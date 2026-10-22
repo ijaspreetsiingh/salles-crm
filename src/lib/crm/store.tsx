@@ -52,6 +52,8 @@ type Store = {
   bootError: string | null;
   user: SessionUser | null;
   organizationName: string;
+  /** Public URL slug — used for the hosted lead form + website widget. */
+  organizationSlug: string;
   roleLabel: string;
   permissions: api.PermissionSetDto | null;
   records: Record<string, RecordRow[]>;
@@ -121,6 +123,10 @@ function buildSettings(
     taxRegime: String((org.settings ?? {})["taxRegime"] ?? defaultSettings.taxRegime),
     taxRate: Number((org.settings ?? {})["taxRate"] ?? defaultSettings.taxRate),
     invoicePrefix: String((org.settings ?? {})["invoicePrefix"] ?? defaultSettings.invoicePrefix),
+    fxRates: {
+      ...defaultSettings.fxRates,
+      ...(((org.settings ?? {})["fxRates"] ?? {}) as Record<string, number>),
+    },
     security: {
       twoFactor: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["twoFactor"] ?? defaultSettings.security.twoFactor),
       mask: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["mask"] ?? defaultSettings.security.mask),
@@ -141,6 +147,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [bootError, setBootError] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [organizationName, setOrganizationName] = useState(defaultSettings.orgName);
+  const [organizationSlug, setOrganizationSlug] = useState("");
   const [roleLabel, setRoleLabel] = useState("Workspace admin");
   const [permissions, setPermissions] = useState<api.PermissionSetDto | null>(null);
   const [records, setRecords] = useState<Record<string, RecordRow[]>>({});
@@ -219,6 +226,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setRoleLabel(api.ROLE_LABEL_BY_KEY[me.membership.roleKey] ?? "Workspace admin");
     setPermissions(me.permissions ?? { modules: "*", actions: "*" });
     setOrganizationName(organization.name);
+    setOrganizationSlug(organization.slug ?? "");
     setRecords(nextRecords);
     setTasks(taskList.map(api.toTask));
     setFields(nextFields);
@@ -402,12 +410,14 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         next.taxRegime !== prev.taxRegime ||
         next.taxRate !== prev.taxRate ||
         next.invoicePrefix !== prev.invoicePrefix ||
+        JSON.stringify(next.fxRates) !== JSON.stringify(prev.fxRates) ||
         JSON.stringify(next.security) !== JSON.stringify(prev.security)
       ) {
         orgBody["settings"] = {
           taxRegime: next.taxRegime,
           taxRate: next.taxRate,
           invoicePrefix: next.invoicePrefix,
+          fxRates: next.fxRates,
           security: next.security,
         };
       }
@@ -690,6 +700,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         bootError,
         user,
         organizationName,
+        organizationSlug,
         roleLabel,
         permissions,
         records,

@@ -49,6 +49,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (status === "unauthenticated") {
     if (path === "/" || path === "/landing") return <LandingGuest />;
+    // The hosted lead form is public — customers never see a sign-in card.
+    if (path.startsWith("/lead/")) return <>{children}</>;
     if (path === "/signup") return <LoginScreen initialMode="signup" />;
     return <LoginScreen />;
   }

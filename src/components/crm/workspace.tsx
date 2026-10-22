@@ -60,6 +60,7 @@ import { useCRM } from "@/lib/crm/store";
 import { getSchema, getTabDef, extraKeyName, type ModuleSchema } from "@/lib/crm/schema";
 import { CustomerDirectory } from "./customer-directory";
 import { GrowthReports } from "./growth-reports";
+import { WebsitePanel } from "./website-panel";
 import { ROLE_KEY_BY_LABEL } from "@/lib/api/crm";
 import { errorMessage } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/hooks";
@@ -92,6 +93,7 @@ import {
   revokeApiKey,
   runReport,
   runWorkflow,
+  searchFlights,
   sendAssistantMessage,
   sendConversationMessage,
   testWebhook,
@@ -107,6 +109,7 @@ import {
   type ReportKey,
   type RoleDto,
   type WorkflowDto,
+  type FlightSearchResult,
 } from "@/lib/api/modules";
 import { toast } from "sonner";
 import {
@@ -326,7 +329,8 @@ export function Workspace({ module }: { module: Module }) {
     (module.id === "reports" && tab !== "Growth") ||
     (module.id === "quotations" && tab === "Itinerary builder") ||
     (module.id === "automation" && tab === "Workflows") ||
-    (module.id === "flights" && tab === "Flight search");
+    (module.id === "flights" && tab === "Flight search") ||
+    (module.id === "distribution" && tab === "Website pages");
 
   const specialBody = (() => {
     if (module.id === "assistant") return <Assistant tab={tab} />;
@@ -339,6 +343,7 @@ export function Workspace({ module }: { module: Module }) {
     if (module.id === "settings") return <SettingsPanel tab={tab} />;
     if (module.id === "flights" && tab === "Flight search")
       return <FlightSearch onOpen={setRow} rows={rows} />;
+    if (module.id === "distribution" && tab === "Website pages") return <WebsitePanel />;
     return null;
   })();
 
@@ -592,6 +597,7 @@ function Assistant({ tab }: { tab: string }) {
     "Show me today's priorities",
     "What is this month's net profit?",
   ]);
+  const [liveMode, setLiveMode] = useState<boolean | null>(null);
 
   // Conversation history is stored server-side against the workspace.
   const { data: history } = useApiQuery(
@@ -620,6 +626,7 @@ function Assistant({ tab }: { tab: string }) {
     sendAssistantMessage(value)
       .then((res) => {
         setMessages((prev) => [...prev, res.reply]);
+        setLiveMode(res.live ?? null);
         if (res.suggestions.length) setSuggestions(res.suggestions);
       })
       .catch((e) => toast.error(errorMessage(e, "Assistant is unavailable")))
@@ -639,6 +646,12 @@ function Assistant({ tab }: { tab: string }) {
             : "What can we make easier today?"}
         </h2>
         <p>Your travel team's assistant, grounded in this workspace.</p>
+        {liveMode === false ? (
+          <small className="assistant-setup-hint">
+            Running on built-in answers. Add an <b>LLM_API_KEY</b> on the server to switch to the
+            full AI model.
+          </small>
+        ) : null}
       </div>
       {messages.length === 0 ? (
         <div className="prompt-grid">
@@ -855,7 +868,17 @@ function Inbox({ tab }: { tab: string }) {
               sendConversationMessage(active.id, value)
                 .then((msg) => {
                   setPending((prev) => [...prev, msg]);
-                  toast.success("Reply added to the thread");
+                  toast.success(
+                    // Email/WhatsApp replies go out through the real providers
+                    // (or sit queued in the outbox until SMTP/WhatsApp is set up).
+                    msg.delivery === "sent"
+                      ? "Delivered"
+                      : msg.delivery === "failed"
+                        ? "Provider rejected the message — check the outbox"
+                        : msg.delivery === "queued"
+                          ? "Queued for delivery — connect SMTP/WhatsApp in server settings to send live"
+                          : "Reply added to the thread",
+                  );
                 })
                 .catch((err) => toast.error(errorMessage(err, "Could not send reply")));
             }}
@@ -2181,6 +2204,31 @@ function SettingsPanel({ tab }: { tab: string }) {
             </select>
           </label>
         </div>
+        <div className="fx-rates-block">
+          <h3>FX rates (INR per unit)</h3>
+          <p>
+            Foreign-currency invoices show the rate used so the INR tax value is never a mystery.
+            Update these whenever your bank rate moves.
+          </p>
+          <div className="fx-rates-grid">
+            {(["USD", "EUR", "GBP", "AED", "SGD"] as const).map((code) => (
+              <label key={code}>
+                1 {code} = ? INR
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={settings.fxRates[code] ?? ""}
+                  onChange={(e) =>
+                    updateSettings({
+                      fxRates: { ...settings.fxRates, [code]: Number(e.target.value) || 0 },
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </div>
         <div className="dialog-actions">
           <Button onClick={() => toast.success("Tax settings saved")}>
             <Check /> Save preferences
@@ -2807,9 +2855,30 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
   const { settings } = useCRM();
   const currency = settings.currency;
   const [trip, setTrip] = useState("Round trip");
+  const [from, setFrom] = useState("DEL");
+  const [to, setTo] = useState("DPS");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [adults, setAdults] = useState("1");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<FlightSearchResult | null>(null);
   const [searched, setSearched] = useState(false);
-  const [from, setFrom] = useState("Delhi (DEL)");
-  const [to, setTo] = useState("Bali (DPS)");
+
+  const runSearch = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const outcome = await searchFlights({ from, to, date, adults: Number(adults) || 1 });
+      setResult(outcome);
+      setSearched(true);
+    } catch (err) {
+      toast.error(errorMessage(err));
+      setResult({ configured: true, offers: [] });
+      setSearched(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       <div className="flight-search-panel">
@@ -2825,24 +2894,18 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
             </Button>
           ))}
         </div>
-        <form
-          className="flight-search-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setSearched(true);
-          }}
-        >
+        <form className="flight-search-form" onSubmit={(e) => void runSearch(e)}>
           <label>
-            From
-            <input value={from} onChange={(e) => setFrom(e.target.value)} required />
+            From (IATA)
+            <input value={from} onChange={(e) => setFrom(e.target.value.toUpperCase())} required maxLength={3} pattern="[A-Za-z]{3}" />
           </label>
           <label>
-            To
-            <input value={to} onChange={(e) => setTo(e.target.value)} required />
+            To (IATA)
+            <input value={to} onChange={(e) => setTo(e.target.value.toUpperCase())} required maxLength={3} pattern="[A-Za-z]{3}" />
           </label>
           <label>
             Departure
-            <input type="date" required />
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </label>
           {trip !== "One way" && (
             <label>
@@ -2852,60 +2915,77 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
           )}
           <label>
             Travellers
-            <select>
-              <option>2 adults · Economy</option>
-              <option>1 adult · Economy</option>
-              <option>2 adults · Business</option>
+            <select value={adults} onChange={(e) => setAdults(e.target.value)}>
+              {["1", "2", "3", "4", "5"].map((n) => (
+                <option key={n} value={n}>
+                  {n} adult{n === "1" ? "" : "s"}
+                </option>
+              ))}
             </select>
           </label>
-          <Button>
-            <Search /> Search flights
+          <Button disabled={busy}>
+            <Search /> {busy ? "Searching…" : "Search live fares"}
           </Button>
         </form>
       </div>
-      <div className="integration-notice">
-        <Plane size={19} />
-        <div>
-          <strong>Sample flight inventory</strong>
-          <p>
-            Fares and availability are illustrative. No PNR, ticket or supplier booking is created.
-          </p>
+      {searched && result && !result.configured ? (
+        <div className="integration-notice">
+          <Plane size={19} />
+          <div>
+            <strong>Live flight search needs a one-time setup</strong>
+            <p>{result.message}</p>
+          </div>
         </div>
-      </div>
-      {searched ? (
-        <div className="flight-results">
-          <h3>
-            Sample flights · {from} → {to}
-          </h3>
-          {rows.slice(0, 3).map((r, i) => (
-            <div className="flight-result" key={r.id}>
-              <span className={`airline-logo tone-${i}`}>{["SQ", "EK", "AI"][i]}</span>
-              <div>
-                <h4>{["Singapore Airlines", "Emirates", "Air India"][i]}</h4>
-                <small>Economy · 25 kg baggage</small>
-              </div>
-              <div className="flight-times">
-                <strong>{["09:00", "11:30", "14:00"][i]}</strong>
-                <span>
-                  8h 20m · 1 stop
+      ) : null}
+      {searched && result ? (
+        result.configured && result.offers.length > 0 ? (
+          <div className="flight-results">
+            <h3>
+              Live fares · {from} → {to}
+            </h3>
+            {result.offers.map((offer, i) => (
+              <div className="flight-result" key={`${offer.airline}-${i}`}>
+                <span className={`airline-logo tone-${i % 3}`}>{offer.airline.slice(0, 2).toUpperCase()}</span>
+                <div>
+                  <h4>{offer.airline}</h4>
+                  <small>{offer.seatsLeft != null ? `${offer.seatsLeft} seats left` : "Availability live"}</small>
+                </div>
+                <div className="flight-times">
+                  <strong>{offer.departure.time.slice(11, 16)}</strong>
+                  <span>{offer.departure.airport}</span>
                   <ArrowRight size={16} />
-                </span>
-                <strong>{["19:50", "22:20", "00:50"][i]}</strong>
+                  <span>{offer.arrival.airport}</span>
+                  <strong>{offer.arrival.time.slice(11, 16)}</strong>
+                </div>
+                <div>
+                  <strong>
+                    {money(offer.price, offer.currency || currency)}
+                  </strong>
+                  <small>per traveller · live fare</small>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const match = rows.find((r) => r.destination.toLowerCase().includes(to.toLowerCase()));
+                    if (match) onOpen(match);
+                    else toast.info("Save these details against a booking once the customer chooses a fare.");
+                  }}
+                >
+                  View details
+                </Button>
               </div>
-              <div>
-                <strong>{money([48500, 52600, 46200][i] ?? 0, currency)}</strong>
-                <small>per traveller · Sample fare</small>
-              </div>
-              <Button variant="outline" onClick={() => onOpen(r)}>
-                View details
-              </Button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : result.configured ? (
+          <EmptyState
+            title="No flights found"
+            description={`No published fares for ${from} → ${to} on ${date}. Try another date or route.`}
+          />
+        ) : null
       ) : (
         <EmptyState
           title="Find your next connection"
-          description="Search to explore sample flight options."
+          description="Search live Amadeus fares the moment credentials are set — no more made-up sample data."
         />
       )}
     </>

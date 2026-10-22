@@ -81,6 +81,8 @@ router.post(
     return ok(res, {
       conversationId,
       reply: toDto(assistantMessage),
+      /** Tells the UI whether replies come from the real model or local rules. */
+      live: Boolean(live),
       suggestions: [
         "Draft a quotation for the Bali enquiry",
         "Which destination is performing best?",

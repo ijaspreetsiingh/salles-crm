@@ -51,10 +51,20 @@ router.post(
 
     const body = req.body as z.infer<typeof leadSchema>;
 
-    const reference = await nextReference(organization.id, {
+    // Website enquiries can arrive in bursts — reference uniqueness matters
+    // more than a perfect sequence, so retries add a time suffix on conflict.
+    let reference = await nextReference(organization.id, {
       id: "leads",
       prefix: "LD",
     } as ModuleDef);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = await prisma.record.findFirst({
+        where: { organizationId: organization.id, reference },
+        select: { id: true },
+      });
+      if (!existing) break;
+      reference = `${reference}-${Date.now().toString(36).slice(-4)}`;
+    }
 
     const record = await prisma.record.create({
       data: {

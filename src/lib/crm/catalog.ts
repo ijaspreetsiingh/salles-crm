@@ -288,6 +288,7 @@ export type RecordRow = {
   branch: string;
   date: string; // ISO yyyy-mm-dd
   amount: number;
+  currency?: string;
   status: string;
   email: string;
   phone: string;
@@ -341,6 +342,8 @@ export type Settings = {
   taxRegime: string;
   taxRate: number;
   invoicePrefix: string;
+  /** INR value of 1 unit of each currency — used on tax invoices for FX truth. */
+  fxRates: Record<string, number>;
   security: { twoFactor: boolean; mask: boolean; quiet: boolean };
 };
 
@@ -356,6 +359,7 @@ export const defaultSettings: Settings = {
   taxRegime: "GST",
   taxRate: 18,
   invoicePrefix: "HT-INV-",
+  fxRates: { USD: 84, EUR: 91, GBP: 108, AED: 23, SGD: 63 },
   security: { twoFactor: true, mask: true, quiet: false },
   branches: ["Mumbai", "Delhi", "Bengaluru"],
   employees: [

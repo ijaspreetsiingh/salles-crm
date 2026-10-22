@@ -417,6 +417,9 @@ export function CRMShell({ children }: { children: ReactNode }) {
     prefs.set({ favouriteModules: next });
   };
 
+  // Public lead-form pages render standalone — no workspace chrome around them.
+  if (path.startsWith("/lead/")) return <div className="public-page">{children}</div>;
+
   return (
     <div
       className={`shell ${prefsState.sidebarCollapsed ? "is-collapsed" : ""} ${mobileOpen ? "is-mobile-open" : ""}`}

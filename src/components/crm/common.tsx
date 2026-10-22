@@ -19,6 +19,9 @@ import {
   Receipt,
   PlaneTakeoff,
   UserCheck,
+  Download,
+  ExternalLink,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +40,7 @@ import { JourneyRail } from "./journey";
 import { StatusHint } from "./help";
 import { errorMessage, apiBlob } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/hooks";
-import { deleteAttachment, fetchAttachments, uploadAttachment } from "@/lib/api/modules";
+import { deleteAttachment, fetchAttachments, uploadAttachment, downloadInvoicePdf, createPaymentLink, sendInvoiceEmail } from "@/lib/api/modules";
 import { toast } from "sonner";
 
 export function Status({ value }: { value: string }) {
@@ -389,6 +392,7 @@ export function RecordDialog({
   const [notes, setNotes] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [financeBusy, setFinanceBusy] = useState(false);
   const [workflowTarget, setWorkflowTarget] = useState<{
     module: Module;
     data: Partial<RecordRow>;
@@ -438,6 +442,7 @@ export function RecordDialog({
       branch: initialData?.branch ?? settings.branches[0] ?? "",
       date: initialData?.date ?? new Date().toISOString().slice(0, 10),
       amount: initialData?.amount ?? 0,
+      currency: initialData?.currency ?? "",
       status: initialData?.status ?? schema.statuses[0] ?? "New",
       email: initialData?.email ?? "",
       phone: initialData?.phone ?? "",
@@ -465,6 +470,9 @@ export function RecordDialog({
       if (raw === "") delete extras[f.id];
       else extras[f.id] = f.type === "number" ? Number(raw) : raw;
     });
+
+    const currencyRaw = String(fd.get("f:currency") ?? "").trim();
+    if (currencyRaw) next.currency = currencyRaw;
 
     const relatedIds = modules
       .flatMap((m) => getRows(m.id))
@@ -544,6 +552,28 @@ export function RecordDialog({
     }
     const inputType =
       field.type === "number" ? "number" : field.type === "date" ? "date" : (field.type as string);
+    if (field.key === "amount") {
+      // Multi-currency: the amount field carries its own currency select so a
+      // booking can be quoted in USD/EUR/AED and the invoice stays honest.
+      return (
+        <span className="amount-with-currency">
+          <input
+            name={`f:${field.key}`}
+            type={inputType}
+            defaultValue={String(value)}
+            placeholder={field.placeholder}
+            required={field.required}
+            min={0}
+            step="any"
+          />
+          <select name="f:currency" defaultValue={row?.currency || settings.currency} className="currency-select">
+            {["INR", "USD", "EUR", "GBP", "AED", "SGD"].map((code) => (
+              <option key={code}>{code}</option>
+            ))}
+          </select>
+        </span>
+      );
+    }
     return (
       <input
         name={`f:${field.key}`}
@@ -593,6 +623,41 @@ export function RecordDialog({
     }
 
     setWorkflowTarget({ module: targetModuleMeta, data });
+  };
+
+  /** Real invoice commerce: PDF download, Razorpay payment link, email copy. */
+  const handleFinanceAction = async (action: "pdf" | "link" | "email") => {
+    if (!row) return;
+    setFinanceBusy(true);
+    try {
+      if (action === "pdf") {
+        await downloadInvoicePdf(row.id);
+        toast.success("Invoice PDF downloaded");
+      } else if (action === "link") {
+        const link = await createPaymentLink(row.id, {
+          customerEmail: row.email || undefined,
+          customerPhone: row.phone || undefined,
+          customerName: row.name,
+        });
+        if (link.configured && link.checkoutUrl) {
+          await navigator.clipboard?.writeText(link.checkoutUrl).catch(() => undefined);
+          toast.success("Razorpay payment link copied — share it with the customer");
+        } else {
+          toast.info("Payment link recorded. Add RAZORPAY_KEY_ID/SECRET on the server to charge real money.");
+        }
+      } else {
+        if (!row.email) {
+          toast.error("Add the customer's email first");
+          return;
+        }
+        const result = await sendInvoiceEmail(row.id, row.email, "We look forward to confirming your trip.");
+        toast.success(result.status === "sent" ? "Invoice emailed" : "Invoice email queued — set up SMTP to send live");
+      }
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setFinanceBusy(false);
+    }
   };
 
   if (workflowTarget) {
@@ -679,7 +744,7 @@ export function RecordDialog({
                   </p>
                 </div>
                 <div className="record-hero__value">
-                  <strong>{money(row.amount, currency)}</strong>
+                  <strong>{money(row.amount, row.currency || currency)}</strong>
                   <Status value={row.status} />
                 </div>
               </div>
@@ -766,6 +831,34 @@ export function RecordDialog({
                             onClick={() => handleAction("bookings")}
                           >
                             <PlaneTakeoff size={14} /> New Booking
+                          </Button>
+                        </>
+                      )}
+                      {module.id === "finance" && row && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={financeBusy}
+                            onClick={() => void handleFinanceAction("pdf")}
+                          >
+                            <Download size={14} /> Invoice PDF
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={financeBusy}
+                            onClick={() => void handleFinanceAction("link")}
+                          >
+                            <ExternalLink size={14} /> Payment link
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={financeBusy || !row.email}
+                            onClick={() => void handleFinanceAction("email")}
+                          >
+                            <Share2 size={14} /> Email invoice
                           </Button>
                         </>
                       )}

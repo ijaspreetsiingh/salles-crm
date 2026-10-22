@@ -6418,3 +6418,209 @@ th.align-right .th-sort {
   line-height: 1.6;
   color: var(--muted);
 }
+
+
+/* ================= Real-world commerce: amounts, FX, lead form, website ================= */
+
+.amount-with-currency {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.amount-with-currency input { flex: 1; min-width: 0; }
+.currency-select {
+  width: 92px;
+  border-radius: 10px;
+}
+
+.fx-rates-block {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--line, #e6e0d4);
+  border-radius: 14px;
+  background: rgba(47, 92, 80, 0.04);
+}
+.fx-rates-block h3 { margin: 0 0 4px; font-size: 15px; }
+.fx-rates-block p {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--muted, #6b6f71);
+  max-width: 60ch;
+}
+.fx-rates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px 14px;
+}
+
+.assistant-setup-hint {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted, #6b6f71);
+}
+
+.public-page { min-height: 100vh; }
+
+.website-panel {
+  display: grid;
+  gap: 16px;
+}
+.website-panel__card {
+  padding: 20px 22px;
+  border: 1px solid var(--line, #e6e0d4);
+  border-radius: 16px;
+  background: var(--panel, #fff);
+}
+.website-panel__card header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  color: var(--brand, #2f5c50);
+}
+.website-panel__card h3 { margin: 0; font-size: 16px; }
+.website-panel__card header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted, #6b6f71);
+  max-width: 70ch;
+}
+.website-panel__row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px dashed var(--line, #e6e0d4);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.website-panel__row code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12.5px;
+  word-break: break-all;
+  flex: 1;
+  min-width: 220px;
+}
+.website-panel__row--embed { align-items: flex-start; flex-direction: column; }
+.website-panel__row--embed > div { width: 100%; }
+.website-panel__row--embed .website-panel__actions,
+.website-panel__row--embed > button { align-self: flex-end; }
+.website-panel__hint {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--muted, #6b6f71);
+}
+.website-panel__actions { display: flex; gap: 8px; }
+
+/* Hosted lead form — public-facing page shared by every company on Traveldesk */
+.lead-form-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 18px;
+  background:
+    radial-gradient(1200px 500px at 15% -10%, rgba(47, 92, 80, 0.16), transparent 60%),
+    radial-gradient(900px 420px at 110% 110%, rgba(214, 138, 62, 0.14), transparent 65%),
+    #f6f2ea;
+}
+.lead-form-card {
+  width: min(640px, 100%);
+  padding: 34px 34px 26px;
+  border-radius: 22px;
+  background: #fffdf8;
+  box-shadow: 0 24px 60px rgba(23, 25, 26, 0.12);
+}
+.lead-form-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.lead-org-name { font-weight: 700; font-size: 14px; }
+.lead-form-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: #2f5c50;
+  color: #fbf8f2;
+}
+.lead-form-mark--ok { background: #2e7d5b; }
+.lead-form-card h1 {
+  margin: 10px 0 6px;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.lead-form-sub {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: #6b6f71;
+  line-height: 1.55;
+}
+.lead-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 14px;
+}
+.lead-form-grid label,
+.lead-form-card .lead-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3c4143;
+}
+.lead-form-grid label svg { display: inline-block; margin-right: 4px; vertical-align: -2px; }
+.lead-form-grid input,
+.lead-form-grid select,
+.lead-form-grid textarea {
+  font-weight: 400;
+  padding: 10px 12px;
+  border: 1px solid #e0d9ca;
+  border-radius: 10px;
+  font-size: 14px;
+  background: #fff;
+}
+.lead-form-grid textarea { resize: vertical; }
+.lead-form-card .lead-notes { grid-column: 1 / -1; }
+.lead-form-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #b3462c;
+  font-weight: 600;
+}
+.lead-form-card button[type="submit"] {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 12px;
+  background: #2f5c50;
+  color: #fbf8f2;
+  font-weight: 700;
+  font-size: 14.5px;
+  cursor: pointer;
+}
+.lead-form-card button[type="submit"]:disabled { opacity: 0.6; cursor: default; }
+.lead-form-foot {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: #8a8f91;
+  line-height: 1.6;
+}
+.lead-ref { font-size: 13.5px; color: #3c4143; }
+
+@media (max-width: 560px) {
+  .lead-form-grid { grid-template-columns: 1fr; }
+  .lead-form-card { padding: 26px 20px; }
+}
