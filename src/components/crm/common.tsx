@@ -466,12 +466,50 @@ export function RecordDialog({
       else extras[f.id] = f.type === "number" ? Number(raw) : raw;
     });
 
+    const relatedIds = modules
+      .flatMap((m) => getRows(m.id))
+      .filter(
+        (candidate) =>
+          candidate.id !== next.id &&
+          candidate.name.trim().toLowerCase() === next.name.trim().toLowerCase() &&
+          (!next.destination ||
+            !candidate.destination ||
+            candidate.destination.trim().toLowerCase() === next.destination.trim().toLowerCase()),
+      )
+      .map((candidate) => candidate.id);
+    if (relatedIds.length > 0) (extras as Record<string, unknown>)["relatedRefs"] = relatedIds;
+    else delete (extras as Record<string, unknown>)["relatedRefs"];
+
     if (Object.keys(extras).length > 0) next.extra = extras;
     else delete next.extra;
+
+    const emailLooksValid = (value: string) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+    for (const field of schema.fields) {
+      const raw = String(fd.get(`f:${field.key}`) ?? "").trim();
+      if (field.required && raw === "") {
+        toast.error(`Please add ${field.label.toLowerCase()} before saving`);
+        return;
+      }
+      if (field.type === "email" && raw && !emailLooksValid(raw)) {
+        toast.error(`Please enter a valid email for ${field.label.toLowerCase()}`);
+        return;
+      }
+      if (field.type === "number" && raw && Number(raw) < 0) {
+        toast.error(`${field.label} cannot be negative`);
+        return;
+      }
+    }
 
     if (!next.name.trim()) {
       toast.error("Please add a name before saving");
       return;
+    }
+
+    if (
+      create &&
+      getRows(module.id).some((existing) => existing.name.trim().toLowerCase() === next.name.trim().toLowerCase())
+    ) {
+      toast.warning(`A ${module.noun} named "${next.name.trim()}" already exists. Saving anyway.`);
     }
 
     if (create) save(module.id, next);

@@ -604,3 +604,36 @@ export const bulkRecords = (
 
 export const exportRecordsCsv = (moduleId: string, filters: Filters = {}) =>
   apiDownload(`/workspace/${moduleId}/export.csv`, filters);
+
+export type PlatformOrgDto = {
+  id: string;
+  name: string;
+  slug: string;
+  supportEmail: string | null;
+  createdAt: string;
+  members: number;
+  planKey: string | null;
+  status: string;
+};
+
+export type PlatformPlanDto = PlanDto & { priceYearly: number; limits: Record<string, number>; position: number };
+
+export const fetchPlatformOrganizations = () => apiRequest<PlatformOrgDto[]>("/platform/organizations");
+export const fetchPlatformPlans = () => apiRequest<PlatformPlanDto[]>("/platform/plans");
+export const createPlatformPlan = (body: {
+  key: string;
+  name: string;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  features: string[];
+  popular: boolean;
+  position: number;
+}) => apiRequest<PlatformPlanDto>("/platform/plans", { method: "POST", body });
+export const deletePlatformPlan = (key: string) =>
+  apiRequest<{ deleted: boolean }>(`/platform/plans/${key}`, { method: "DELETE" });
+export const setOrganizationPlan = (orgId: string, body: { planKey: string; status?: string }) =>
+  apiRequest<{ organizationId: string; planKey: string; status: string }>(
+    `/platform/organizations/${orgId}/plan`,
+    { method: "PATCH", body },
+  );

@@ -169,7 +169,21 @@ const SPECIAL_TAB_MODULES = new Set([
 
 export function Workspace({ module }: { module: Module }) {
   const guide = guideFor(module);
-  const { getRows, update, settings, fields, user } = useCRM();
+  const { getRows, update, settings, fields, user, permissions } = useCRM();
+  const allowed =
+    !permissions || permissions.modules === "*" || permissions.modules.includes(module.id);
+  if (!allowed) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
+        <div className="glass-card w-full max-w-md p-8 text-center">
+          <h1 className="text-2xl font-bold text-foreground">Access denied</h1>
+          <p className="mt-2 text-sm text-muted">
+            Your role cannot open the {module.name} workspace.
+          </p>
+        </div>
+      </div>
+    );
+  }
   const currency = settings.currency;
   const schema = getSchema(module.id);
   const customFields = fields[module.id] ?? [];
@@ -1762,7 +1776,7 @@ function SettingsPanel({ tab }: { tab: string }) {
     status: authStatus,
   } = useCRM();
   const [permissions, setPermissions] = useState<Record<string, boolean>>({});
-  const [security, setSecurity] = useState({ twoFactor: true, mask: true, quiet: false });
+  const security = settings.security;
   const [cycleDraft, setCycleDraft] = useState<string | null>(null);
   const [planDraft, setPlanDraft] = useState<string | null>(null);
   const [savingBilling, setSavingBilling] = useState(false);
@@ -2063,7 +2077,7 @@ function SettingsPanel({ tab }: { tab: string }) {
     return (
       <div className="settings-workspace">
         <h2>Security preferences</h2>
-        <p>Demo controls. Actual security requires server-side enforcement.</p>
+        <p>These preferences are stored for this browser. Account security itself is enforced by the server.</p>
         {(
           [
             [
@@ -2085,14 +2099,16 @@ function SettingsPanel({ tab }: { tab: string }) {
                 type="checkbox"
                 aria-label={title}
                 checked={security[key]}
-                onChange={(e) => setSecurity({ ...security, [key]: e.target.checked })}
+                onChange={(e) =>
+                  updateSettings({ security: { ...security, [key]: e.target.checked } })
+                }
               />
               <span />
             </label>
           </div>
         ))}
         <div className="dialog-actions">
-          <Button onClick={() => toast.success("Preferences saved for this visit")}>
+          <Button onClick={() => toast.success("Preferences saved")}>
             <Check /> Save preferences
           </Button>
         </div>
@@ -2107,7 +2123,10 @@ function SettingsPanel({ tab }: { tab: string }) {
         <div className="form-grid">
           <label>
             Tax regime
-            <select defaultValue="GST">
+            <select
+              value={settings.taxRegime}
+              onChange={(e) => updateSettings({ taxRegime: e.target.value })}
+            >
               <option>GST</option>
               <option>VAT</option>
               <option>No tax</option>
@@ -2115,7 +2134,13 @@ function SettingsPanel({ tab }: { tab: string }) {
           </label>
           <label>
             Default rate (%)
-            <input type="number" min="0" max="100" defaultValue="18" />
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={settings.taxRate}
+              onChange={(e) => updateSettings({ taxRate: Number(e.target.value) })}
+            />
           </label>
           <label>
             GSTIN
@@ -2126,7 +2151,10 @@ function SettingsPanel({ tab }: { tab: string }) {
           </label>
           <label>
             Invoice prefix
-            <input defaultValue="HT-INV-" />
+            <input
+              value={settings.invoicePrefix}
+              onChange={(e) => updateSettings({ invoicePrefix: e.target.value })}
+            />
           </label>
           <label>
             Financial year
@@ -2383,7 +2411,7 @@ function SettingsPanel({ tab }: { tab: string }) {
     return (
       <div className="settings-workspace">
         <h2>Audit logs</h2>
-        <p>Every record change in this workspace, newest first. Stored on this device.</p>
+        <p>Every record change in this workspace, newest first. Stored on the server.</p>
         <div className="report-filter-band">
           <select
             aria-label="Filter audit module"
@@ -2431,6 +2459,53 @@ function SettingsPanel({ tab }: { tab: string }) {
               ))}
           </div>
         )}
+      </div>
+    );
+
+  if (tab === "Company admin")
+    return (
+      <div className="settings-workspace">
+        <h2>Company admin</h2>
+        <p>Organisation-level controls for {settings.orgName}. The Traveldesk platform console lives in its own portal.</p>
+        <div className="subscription-summary">
+          <div>
+            <h3>{settings.orgName}</h3>
+            <p>
+              {settings.employees.length} team members A� {settings.branches.length} branches A� {settings.currency}
+            </p>
+          </div>
+          <Status value="Active" />
+        </div>
+        <h3>Team</h3>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Branch</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {settings.employees.map((e) => (
+                <tr key={e.name}>
+                  <td>{e.name}</td>
+                  <td>{e.role}</td>
+                  <td>{e.branch}</td>
+                  <td>
+                    <Status value={e.active ? "Active" : "Inactive"} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="dialog-actions">
+          <Button variant="outline" onClick={() => { resetDemoData(); toast.success("Workspace data reloaded"); }}>
+            <Trash2 /> Reload demo data
+          </Button>
+        </div>
       </div>
     );
 

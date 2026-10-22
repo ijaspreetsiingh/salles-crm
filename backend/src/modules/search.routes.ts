@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { MODULE_MAP } from "../domain/modules";
+import { applyBranchScope } from "../services/records";
 
 const router = Router();
 router.use(requireAuth);
@@ -17,19 +18,27 @@ router.get(
     const organizationId = req.auth!.organizationId;
     const contains = { contains: q } as const;
 
+    const allowedModules =
+      req.auth!.permissions.modules === "*" ? null : req.auth!.permissions.modules;
+    const recordWhere = applyBranchScope(
+      {
+        organizationId,
+        deletedAt: null,
+        OR: [
+          { name: contains },
+          { reference: contains },
+          { destination: contains },
+          { email: contains },
+          { phone: contains },
+        ],
+      },
+      req.auth!,
+    );
+    if (allowedModules) recordWhere.moduleId = { in: allowedModules };
+
     const [records, tasks, conversations, members] = await Promise.all([
       prisma.record.findMany({
-        where: {
-          organizationId,
-          deletedAt: null,
-          OR: [
-            { name: contains },
-            { reference: contains },
-            { destination: contains },
-            { email: contains },
-            { phone: contains },
-          ],
-        },
+        where: recordWhere,
         take: 20,
         orderBy: { updatedAt: "desc" },
       }),

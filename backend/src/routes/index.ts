@@ -16,6 +16,10 @@ import conversationRoutes from "../modules/conversations.routes";
 import workflowRoutes from "../modules/workflows.routes";
 import integrationRoutes from "../modules/integrations.routes";
 import billingRoutes from "../modules/billing.routes";
+import platformRoutes from "../modules/platform.routes";
+import financeRoutes, { webhookRouter as razorpayWebhook } from "../modules/finance.routes";
+import publicRoutes from "../modules/public.routes";
+import flightsRoutes from "../modules/flights.routes";
 import searchRoutes from "../modules/search.routes";
 import uploadRoutes from "../modules/uploads.routes";
 import apiKeyRoutes from "../modules/apiKeys.routes";
@@ -54,7 +58,16 @@ export function buildRoutes(): Router {
 
   // Commerce & files
   router.use("/billing", billingRoutes);
+  router.use("/platform", platformRoutes);
+  router.use("/finance", financeRoutes);
+  router.use("/flights", flightsRoutes);
   router.use("/uploads", uploadRoutes);
+
+  // Public lead capture for every travel company's website
+  router.use("/public", publicRoutes);
+
+  // Signature-verified payment webhooks (no auth middleware)
+  router.use("/webhooks/razorpay", razorpayWebhook);
 
   return router;
 }

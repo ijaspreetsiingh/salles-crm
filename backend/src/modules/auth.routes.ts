@@ -79,7 +79,14 @@ async function issueSession(userId: string, organizationId: string, meta: { ip?:
     accessToken,
     refreshToken,
     expiresIn: env.ACCESS_TOKEN_TTL,
-    user: { id: user.id, name: user.name, email: user.email, phone: user.phone, avatarUrl: user.avatarUrl },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      avatarUrl: user.avatarUrl,
+      isPlatformAdmin: env.PLATFORM_ADMIN_EMAILS.includes(user.email.toLowerCase()),
+    },
     membership: { organizationId, roleKey: membership.roleKey, branchId: membership.branchId },
   };
 }
@@ -305,6 +312,7 @@ router.get(
         phone: user.phone,
         avatarUrl: user.avatarUrl,
         lastLoginAt: user.lastLoginAt,
+        isPlatformAdmin: env.PLATFORM_ADMIN_EMAILS.includes(user.email.toLowerCase()),
       },
       organization,
       membership: {

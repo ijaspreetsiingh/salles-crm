@@ -120,6 +120,10 @@ export function relatedRecords(
 
   for (const [moduleId, rows] of Object.entries(all)) {
     const found = rows.filter((candidate) => {
+      if (candidate.id === record.id) return false;
+      const recordRefs = Array.isArray(record.extra?.["relatedRefs"]) ? (record.extra?.["relatedRefs"] as unknown[]) : [];
+      const candidateRefs = Array.isArray(candidate.extra?.["relatedRefs"]) ? (candidate.extra?.["relatedRefs"] as unknown[]) : [];
+      if (recordRefs.includes(candidate.id) || candidateRefs.includes(record.id)) return true;
       // 1 — the candidate's reference is named in this record.
       if (references.has(candidate.id)) return true;
       const candidateText = `${candidate.detail ?? ""} ${candidate.notes ?? ""}`.toLowerCase();
@@ -127,9 +131,13 @@ export function relatedRecords(
       if (record.id && candidateText.includes(record.id.toLowerCase())) return true;
       if (!name || name.length < 3) return false;
       // 3 — the candidate names this record ("Quotation for Aarav Sharma").
-      if (candidateText.includes(name)) return true;
+      const sameDestination =
+        !record.destination ||
+        !candidate.destination ||
+        record.destination.trim().toLowerCase() === candidate.destination.trim().toLowerCase();
+      if (candidateText.includes(name) && sameDestination) return true;
       // 4 — both are the same traveller (the enquiry and the booking share a name).
-      return candidate.name.trim().toLowerCase() === name;
+      return candidate.name.trim().toLowerCase() === name && sameDestination;
     });
     if (found.length) out[moduleId] = found;
   }

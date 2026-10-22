@@ -338,6 +338,10 @@ export type Settings = {
   financialYear: string;
   branches: string[];
   employees: Employee[];
+  taxRegime: string;
+  taxRate: number;
+  invoicePrefix: string;
+  security: { twoFactor: boolean; mask: boolean; quiet: boolean };
 };
 
 export const defaultSettings: Settings = {
@@ -349,6 +353,10 @@ export const defaultSettings: Settings = {
   address: "Level 4, Maker Chambers, Nariman Point, Mumbai 400021",
   currency: "INR",
   financialYear: "April – March",
+  taxRegime: "GST",
+  taxRate: 18,
+  invoicePrefix: "HT-INV-",
+  security: { twoFactor: true, mask: true, quiet: false },
   branches: ["Mumbai", "Delhi", "Bengaluru"],
   employees: [
     { name: "Sarah Wilson", role: "Workspace administrator", branch: "Mumbai", active: true },

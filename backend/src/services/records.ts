@@ -18,6 +18,7 @@ export type RecordDto = {
   branchId: string | null;
   date: string;
   amount: number;
+  currency: string;
   status: string;
   email: string;
   phone: string;
@@ -44,6 +45,7 @@ export function toRecordDto(record: RecordModel): RecordDto {
     branchId: record.branchId,
     date: record.date,
     amount: record.amount,
+    currency: record.currency || "",
     status: record.status,
     email: record.email,
     phone: record.phone,
@@ -96,7 +98,7 @@ export async function resolveOwnerBranch(
 export async function nextReference(organizationId: string, module: ModuleDef): Promise<string> {
   const latest = await prisma.record.findFirst({
     where: { organizationId, moduleId: module.id },
-    orderBy: { reference: "desc" },
+    orderBy: { createdAt: "desc" },
     select: { reference: true },
   });
   const match = latest?.reference?.match(/(\d+)$/);
@@ -123,7 +125,9 @@ export function applyBranchScope(
   requestedBranch?: string,
 ): Prisma.RecordWhereInput {
   if (requestedBranch) {
-    where.branchName = { contains: requestedBranch };
+    // An explicit branch filter selects that branch exactly, so a name like
+    // "Mumbai" never accidentally matches "Mumbai East".
+    where.branchName = requestedBranch;
     return where;
   }
   if (!isBranchScoped(auth.roleKey)) return where;
@@ -155,7 +159,7 @@ export function buildRecordWhere(
     deletedAt: null,
   };
 
-  const { status, destination, owner, branch, source, search, tab, from, to, q, ownerId, mine } =
+  const { status, destination, owner, branch, source, search, tab, from, to, q, ownerId } =
     query as Record<string, string | undefined>;
 
   if (status && status !== "all") where.status = { in: status.split(",") };
@@ -170,7 +174,6 @@ export function buildRecordWhere(
     };
   }
   if (ownerId) where.ownerId = ownerId;
-  if (mine === "true") where.ownerId = auth?.branchId ? undefined : where.ownerId;
 
   const freeText = search || q;
   if (freeText) {

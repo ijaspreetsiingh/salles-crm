@@ -10,7 +10,10 @@ import { parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 
 const router = Router();
-router.use(requireAuth);
+router.use((req, res, next) => {
+  if (req.method === "GET" && req.path === "/plans") return next();
+  return requireAuth(req, res, next);
+});
 
 const changeSchema = z.object({
   planKey: z.string().min(2).optional(),

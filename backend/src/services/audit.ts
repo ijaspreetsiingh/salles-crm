@@ -6,6 +6,7 @@ export type AuditAction =
   | "Created"
   | "Updated"
   | "Deleted"
+  | "Restored"
   | "Login"
   | "Logout"
   | "Export"

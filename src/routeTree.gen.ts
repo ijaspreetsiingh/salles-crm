@@ -10,7 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as InsightsRouteImport } from './routes/insights'
+import { Route as LandingRouteImport } from './routes/landing'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as WorkspaceModuleRouteImport } from './routes/workspace.$module'
 
@@ -19,9 +23,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InsightsRoute = InsightsRouteImport.update({
   id: '/insights',
   path: '/insights',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LandingRoute = LandingRouteImport.update({
+  id: '/landing',
+  path: '/landing',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TasksRoute = TasksRouteImport.update({
@@ -37,34 +61,75 @@ const WorkspaceModuleRoute = WorkspaceModuleRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/insights': typeof InsightsRoute
+  '/landing': typeof LandingRoute
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/insights': typeof InsightsRoute
+  '/landing': typeof LandingRoute
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/insights': typeof InsightsRoute
+  '/landing': typeof LandingRoute
+  '/login': typeof LoginRoute
+  '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/insights' | '/tasks' | '/workspace/$module'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/insights'
+    | '/landing'
+    | '/login'
+    | '/signup'
+    | '/tasks'
+    | '/workspace/$module'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/insights' | '/tasks' | '/workspace/$module'
-  id: '__root__' | '/' | '/insights' | '/tasks' | '/workspace/$module'
+  to:
+    | '/'
+    | '/admin'
+    | '/insights'
+    | '/landing'
+    | '/login'
+    | '/signup'
+    | '/tasks'
+    | '/workspace/$module'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/insights'
+    | '/landing'
+    | '/login'
+    | '/signup'
+    | '/tasks'
+    | '/workspace/$module'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
   InsightsRoute: typeof InsightsRoute
+  LandingRoute: typeof LandingRoute
+  LoginRoute: typeof LoginRoute
+  SignupRoute: typeof SignupRoute
   TasksRoute: typeof TasksRoute
   WorkspaceModuleRoute: typeof WorkspaceModuleRoute
 }
@@ -78,11 +143,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/insights': {
       id: '/insights'
       path: '/insights'
       fullPath: '/insights'
       preLoaderRoute: typeof InsightsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/landing': {
+      id: '/landing'
+      path: '/landing'
+      fullPath: '/landing'
+      preLoaderRoute: typeof LandingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tasks': {
@@ -104,7 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
   InsightsRoute: InsightsRoute,
+  LandingRoute: LandingRoute,
+  LoginRoute: LoginRoute,
+  SignupRoute: SignupRoute,
   TasksRoute: TasksRoute,
   WorkspaceModuleRoute: WorkspaceModuleRoute,
 }

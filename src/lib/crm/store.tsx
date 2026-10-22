@@ -19,6 +19,7 @@ import {
   type Task,
 } from "./catalog";
 import * as api from "@/lib/api/crm";
+import { updateSubscription } from "@/lib/api/modules";
 import { ApiError, errorMessage, tokenStore } from "@/lib/api/client";
 import { toast } from "sonner";
 
@@ -41,6 +42,8 @@ export type SessionUser = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  /** True when this account also manages the platform (/admin portal). */
+  isPlatformAdmin: boolean;
 };
 
 type Store = {
@@ -50,12 +53,21 @@ type Store = {
   user: SessionUser | null;
   organizationName: string;
   roleLabel: string;
+  permissions: api.PermissionSetDto | null;
   records: Record<string, RecordRow[]>;
   tasks: Task[];
   audit: AuditEntry[];
   fields: Record<string, CustomField[]>;
   settings: Settings;
   login: (email: string, password: string) => Promise<void>;
+  register: (
+    organizationName: string,
+    name: string,
+    email: string,
+    password: string,
+    phone?: string,
+    planKey?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
   getRows: (id: string, tab?: string) => RecordRow[];
@@ -106,6 +118,14 @@ function buildSettings(
     address: org.address ?? "",
     currency: org.currency ?? "INR",
     financialYear: org.financialYear ?? "April – March",
+    taxRegime: String((org.settings ?? {})["taxRegime"] ?? defaultSettings.taxRegime),
+    taxRate: Number((org.settings ?? {})["taxRate"] ?? defaultSettings.taxRate),
+    invoicePrefix: String((org.settings ?? {})["invoicePrefix"] ?? defaultSettings.invoicePrefix),
+    security: {
+      twoFactor: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["twoFactor"] ?? defaultSettings.security.twoFactor),
+      mask: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["mask"] ?? defaultSettings.security.mask),
+      quiet: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["quiet"] ?? defaultSettings.security.quiet),
+    },
     branches: branches.filter((b) => b.active).map((b) => b.name),
     employees,
   };
@@ -122,6 +142,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [organizationName, setOrganizationName] = useState(defaultSettings.orgName);
   const [roleLabel, setRoleLabel] = useState("Workspace admin");
+  const [permissions, setPermissions] = useState<api.PermissionSetDto | null>(null);
   const [records, setRecords] = useState<Record<string, RecordRow[]>>({});
   const [tasks, setTasks] = useState<Task[]>(() => seedTasks());
   const [audit, setAudit] = useState<AuditEntry[]>([]);
@@ -180,7 +201,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     }
 
     branchIds.current = new Map(branches.map((b) => [b.name, b.id]));
-    memberIds.current = new Map(members.map((m) => [m.name, m.id]));
+    memberIds.current = new Map(members.map((m) => [`${m.name}::${m.email ?? ""}`, m.id]));
 
     const nextFields: Record<string, CustomField[]> = {};
     for (const dto of customFields) {
@@ -193,8 +214,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       email: me.user.email,
       phone: me.user.phone ?? null,
       avatarUrl: me.user.avatarUrl ?? null,
+      isPlatformAdmin: me.user.isPlatformAdmin === true,
     });
     setRoleLabel(api.ROLE_LABEL_BY_KEY[me.membership.roleKey] ?? "Workspace admin");
+    setPermissions(me.permissions ?? { modules: "*", actions: "*" });
     setOrganizationName(organization.name);
     setRecords(nextRecords);
     setTasks(taskList.map(api.toTask));
@@ -238,6 +261,35 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     [loadWorkspace],
   );
 
+  const register = useCallback(
+    async (
+      organizationName: string,
+      name: string,
+      email: string,
+      password: string,
+      phone?: string,
+      planKey?: string,
+    ) => {
+      const session = await api.register({
+        organizationName,
+        name,
+        email,
+        password,
+        ...(phone ? { phone } : {}),
+      });
+      tokenStore.set(session.accessToken, session.refreshToken);
+      await loadWorkspace();
+      if (planKey) {
+        try {
+          await updateSubscription({ planKey });
+        } catch {
+          // Plan selection is best-effort; the workspace still opens.
+        }
+      }
+    },
+    [loadWorkspace],
+  );
+
   const logout = useCallback(async () => {
     await api.logout();
     tokenStore.clear();
@@ -246,6 +298,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     memberIds.current = new Map();
     setUser(null);
     setRoleLabel("Workspace admin");
+    setPermissions(null);
     setOrganizationName(defaultSettings.orgName);
     setRecords({});
     setTasks(seedTasks());
@@ -345,6 +398,19 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (next.address !== prev.address) orgBody["address"] = next.address;
       if (next.currency !== prev.currency) orgBody["currency"] = next.currency;
       if (next.financialYear !== prev.financialYear) orgBody["financialYear"] = next.financialYear;
+      if (
+        next.taxRegime !== prev.taxRegime ||
+        next.taxRate !== prev.taxRate ||
+        next.invoicePrefix !== prev.invoicePrefix ||
+        JSON.stringify(next.security) !== JSON.stringify(prev.security)
+      ) {
+        orgBody["settings"] = {
+          taxRegime: next.taxRegime,
+          taxRate: next.taxRate,
+          invoicePrefix: next.invoicePrefix,
+          security: next.security,
+        };
+      }
       if (Object.keys(orgBody).length > 0) queueOrgPatch(orgBody);
 
       if (next.branches !== prev.branches) {
@@ -385,10 +451,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
                 roleKey,
                 ...(branchId ? { branchId } : {}),
               })
-              .then((res) => memberIds.current.set(name, res.id))
+              .then((res) => memberIds.current.set(`${name}::${employee.email ?? ""}`, res.id))
               .catch((error) => toast.error(errorMessage(error, `Could not invite ${name}`)));
           } else if (existing.active !== employee.active) {
-            const id = memberIds.current.get(name) ?? existing.id;
+            const id = memberIds.current.get(`${name}::${employee.email ?? ""}`) ?? existing.id;
             if (!id) continue;
             void api
               .updateMember(id, { active: employee.active })
@@ -396,9 +462,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        for (const [name] of before) {
+        for (const [name, employee] of before) {
           if (after.has(name)) continue;
-          const id = memberIds.current.get(name);
+          const id = memberIds.current.get(`${name}::${employee.email ?? ""}`);
           if (!id) continue;
           void api
             .updateMember(id, { active: false })
@@ -625,12 +691,14 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         user,
         organizationName,
         roleLabel,
+        permissions,
         records,
         tasks,
         audit,
         fields,
         settings,
         login,
+        register,
         logout,
         reload,
         getRows,

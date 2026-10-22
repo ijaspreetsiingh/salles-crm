@@ -53,6 +53,8 @@ model Organization {
   usage          UsageRecord[]
   attachments    Attachment[]
   apiKeys        ApiKey[]
+  outbox         EmailOutbox[]
+  payments       Payment[]
 }
 
 model User {
@@ -185,6 +187,7 @@ model Record {
   branchName     String    @default("")
   date           String    @default("")
   amount         Float     @default(0)
+  currency       String    @default("") // ISO code; empty = organisation default
   status         String    @default("Pending")
   email          String    @default("")
   phone          String    @default("")
@@ -544,4 +547,49 @@ model Attachment {
 
   @@index([organizationId, moduleId])
   @@index([organizationId, recordId])
+}
+
+model EmailOutbox {
+  id             String    @id @default(cuid())
+  organizationId String
+  channel        String    @default("email") // email | whatsapp
+  to             String
+  subject        String    @default("")
+  body           String    @default("")
+  template       String?
+  status         String    @default("queued") // queued | sent | failed
+  error          String?
+  providerRef    String?
+  userId         String?
+  relatedModule  String?
+  relatedReference String  @default("")
+  createdAt      DateTime  @default(now())
+  sentAt         DateTime?
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
+}
+
+model Payment {
+  id                String    @id @default(cuid())
+  organizationId    String
+  recordReference   String    @default("") // invoice / finance record reference
+  amount            Float     @default(0)
+  currency          String    @default("INR")
+  method            String    @default("Razorpay")
+  status            String    @default("created") // created | paid | failed
+  provider          String    @default("razorpay")
+  providerOrderId   String?
+  providerPaymentId String?
+  signature         String?
+  checkoutUrl       String?
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([organizationId, recordReference])
 }

@@ -76,7 +76,10 @@ type PaletteGroup = {
 export function CRMShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { getRows, tasks, settings, organizationName, roleLabel, user, logout, status } = useCRM();
+  const { getRows, tasks, settings, organizationName, roleLabel, user, logout, status, permissions } = useCRM();
+  const moduleAllowed = (id: string) =>
+    !permissions || permissions.modules === "*" || permissions.modules.includes(id);
+  const visibleModules = modules.filter((m) => moduleAllowed(m.id));
   const [prefsState, setPrefs] = usePrefs();
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -129,7 +132,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
 
   const counts = useMemo(() => {
     const out: Record<string, { total: number; alert: number }> = {};
-    for (const module of modules) {
+    for (const module of visibleModules) {
       const rows = getRows(module.id);
       const alertStatuses = ALERT_STATUS[module.id];
       out[module.id] = {
@@ -138,7 +141,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
       };
     }
     return out;
-  }, [getRows]);
+  }, [getRows, visibleModules]);
 
   /** How many things are waiting for this person right now. */
   const needsYou = useMemo(() => {
@@ -279,7 +282,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
         }
       }
     } else if (q.length >= 2) {
-      for (const module of modules) {
+      for (const module of visibleModules) {
         for (const row of getRows(module.id)) {
           if (!`${row.name} ${row.id} ${row.destination}`.toLowerCase().includes(q)) continue;
           recordItems.push({
@@ -382,7 +385,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
       { id: "people", label: "People", items: peopleItems },
       { id: "actions", label: "Actions", items: actionList },
     ].filter((g) => g.items.length > 0);
-  }, [query, apiResults, tasks, settings.employees, getRows, navigate]);
+  }, [query, apiResults, tasks, settings.employees, getRows, navigate, visibleModules]);
 
   /* --------------------------------------------------------- handlers */
 
@@ -510,7 +513,9 @@ export function CRMShell({ children }: { children: ReactNode }) {
                   {alerts > 0 && <span className="sidebar__grouptotal">{alerts}</span>}
                 </button>
                 {expanded &&
-                  group.entries.map((entry) => {
+                  group.entries
+                    .filter((entry) => moduleAllowed(entry.id))
+                    .map((entry) => {
                     const count = counts[entry.id];
                     return (
                       <Link
@@ -627,7 +632,14 @@ export function CRMShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main id="main-content">{children}</main>
+        <main id="main-content">
+          {status !== "ready" && (
+            <div className="demo-banner" role="status">
+              You are viewing demo data. Sign in to use your own workspace.
+            </div>
+          )}
+          {children}
+        </main>
       </div>
 
       {/* ------------------------------------------------ Command palette */}
@@ -771,7 +783,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
             ["Role", roleLabel],
             ["Organisation", organizationName],
             ["Branch", branch],
-            ["Pages available", `${modules.length}`],
+            ["Pages available", `${visibleModules.length}`],
           ].map(([k, v]) => (
             <div key={k} className="rounded-2xl border border-line bg-glass-2 p-3">
               <dt className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">
@@ -787,7 +799,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
             Favourite pages
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {modules.slice(0, 12).map((m) => {
+            {visibleModules.slice(0, 12).map((m) => {
               const on = favourites.includes(m.id);
               return (
                 <button
@@ -807,6 +819,18 @@ export function CRMShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="mt-5 flex gap-2">
+          {user?.isPlatformAdmin && (
+            <button
+              type="button"
+              className="h-10 rounded-full bg-pine px-4 text-[13px] font-semibold text-on-pine transition-opacity hover:opacity-90"
+              onClick={() => {
+                setProfileOpen(false);
+                void navigate({ to: "/admin" });
+              }}
+            >
+              Platform admin
+            </button>
+          )}
           <button
             type="button"
             className="h-10 rounded-full border border-line-2 px-4 text-[13px] font-semibold text-foreground transition-colors hover:bg-well"

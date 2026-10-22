@@ -1948,6 +1948,7 @@ export const schemas: Record<string, ModuleSchema> = {
       { label: "Tax settings", hint: "GST and tax defaults." },
       { label: "Audit logs", hint: "Complete change history." },
       { label: "Security", hint: "Passwords and sessions." },
+      { label: "Company admin", hint: "Organisation-level administration." },
       { label: "Custom fields", hint: "Your own extra fields." },
     ],
   },

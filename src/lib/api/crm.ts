@@ -30,6 +30,13 @@ export type SessionUserDto = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  /** True when this email is listed in the platform's PLATFORM_ADMIN_EMAILS. */
+  isPlatformAdmin?: boolean;
+};
+
+export type PermissionSetDto = {
+  modules: "*" | string[];
+  actions: "*" | string[];
 };
 
 export type SessionDto = {
@@ -38,12 +45,14 @@ export type SessionDto = {
   user: SessionUserDto;
   membership: { organizationId: string; roleKey: string; branchId: string | null };
   organization?: OrganizationDto;
+  permissions?: PermissionSetDto;
 };
 
 export type MeDto = {
   user: SessionUserDto & { lastLoginAt?: string | null };
   organization: OrganizationDto;
   membership: { roleKey: string; branchId: string | null };
+  permissions?: PermissionSetDto;
 };
 
 export type RecordDto = {
@@ -206,6 +215,14 @@ export function toCustomField(dto: CustomFieldDto): CustomField {
 
 export const login = (email: string, password: string) =>
   apiRequest<SessionDto>("/auth/login", { method: "POST", body: { email, password }, auth: false });
+
+export const register = (body: {
+  organizationName: string;
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+}) => apiRequest<SessionDto>("/auth/register", { method: "POST", body, auth: false });
 
 export const logout = () =>
   apiRequest<{ loggedOut: boolean }>("/auth/logout", { method: "POST", body: {} }).catch(() => ({

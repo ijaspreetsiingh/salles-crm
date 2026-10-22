@@ -32,10 +32,19 @@ const recordBodySchema = z.object({
   destination: z.string().max(160).optional(),
   owner: z.string().max(120).optional(),
   branch: z.string().max(120).optional(),
-  date: z.string().max(40).optional(),
+  date: z
+    .string()
+    .max(40)
+    .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), "Invalid date")
+    .optional(),
   amount: z.coerce.number().min(0).max(1_000_000_000).optional(),
+  currency: z
+    .string()
+    .max(6)
+    .refine((v) => v === undefined || v === "" || /^[A-Z]{3}$/.test(v), "Invalid currency code")
+    .optional(),
   status: z.string().max(60).optional(),
-  email: z.string().max(160).optional(),
+  email: z.string().max(160).refine((v) => v === "" || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v), "Invalid email").optional(),
   phone: z.string().max(40).optional(),
   source: z.string().max(60).optional(),
   notes: z.string().max(4000).optional(),
@@ -53,6 +62,12 @@ const bulkSchema = z.object({
 const statusOf = (moduleId: string, value?: string) => {
   const module = MODULES.find((m) => m.id === moduleId)!;
   return value ?? module.statuses[0] ?? "Pending";
+};
+
+const assertValidStatus = (module: { statuses: string[] }, value?: string) => {
+  if (value !== undefined && !module.statuses.includes(value)) {
+    throw new BadRequestError(`"${value}" is not a valid status for this module`);
+  }
 };
 
 /** Module catalogue for the navigation shell. */
@@ -73,13 +88,19 @@ router.get(
   requirePermission("view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
+    const allowedModules =
+      req.auth!.permissions.modules === "*" ? null : req.auth!.permissions.modules;
     const records = await prisma.record.findMany({
       where: applyBranchScope({ organizationId, deletedAt: null }, req.auth!),
       orderBy: { createdAt: "desc" },
+      // Hard ceiling — dashboards must never load a company's entire history
+      // in one response. Old records stay reachable through module lists.
+      take: 5000,
     });
 
     const grouped: Record<string, ReturnType<typeof toRecordDto>[]> = {};
     for (const record of records) {
+      if (allowedModules && !allowedModules.includes(record.moduleId)) continue;
       const bucket = (grouped[record.moduleId] ??= []);
       bucket.push(toRecordDto(record));
     }
@@ -232,6 +253,7 @@ router.post(
     if (!module) throw new NotFoundError("Module");
 
     const body = req.body as z.infer<typeof recordBodySchema>;
+    assertValidStatus(module, body.status);
     const organizationId = req.auth!.organizationId;
     const { ownerId, ownerName, branchId, branchName } = await resolveOwnerBranch(
       organizationId,
@@ -254,6 +276,7 @@ router.post(
         branchName,
         date: body.date ?? new Date().toISOString().slice(0, 10),
         amount: body.amount ?? 0,
+        currency: body.currency ?? "",
         status: statusOf(module.id, body.status),
         email: body.email ?? "",
         phone: body.phone ?? "",
@@ -306,6 +329,7 @@ router.patch(
     if (!existing) throw new NotFoundError("Record");
 
     const body = req.body as Partial<z.infer<typeof recordBodySchema>>;
+    assertValidStatus(module, body.status);
     const resolved =
       body.owner !== undefined || body.branch !== undefined
         ? await resolveOwnerBranch(
@@ -323,6 +347,7 @@ router.patch(
         destination: body.destination,
         date: body.date,
         amount: body.amount,
+        currency: body.currency === "" ? "" : body.currency,
         status: body.status,
         email: body.email,
         phone: body.phone,
@@ -385,6 +410,37 @@ router.delete(
     });
 
     return ok(res, { deleted: true });
+  }),
+);
+
+/** Restores a soft-deleted record (admin recovery). */
+router.post(
+  "/:module/records/:id/restore",
+  requirePermission("edit"),
+  asyncHandler(async (req, res) => {
+    const module = MODULES.find((m) => m.id === req.params.module);
+    if (!module) throw new NotFoundError("Module");
+
+    const existing = await prisma.record.findFirst({
+      where: { id: req.params.id, organizationId: req.auth!.organizationId, deletedAt: { not: null } },
+    });
+    if (!existing) throw new NotFoundError("Deleted record");
+
+    const record = await prisma.record.update({
+      where: { id: existing.id },
+      data: { deletedAt: null, updatedById: req.auth!.userId },
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Restored",
+      moduleId: module.id,
+      recordId: record.id,
+      label: `${record.reference} restored`,
+      req,
+    });
+
+    return ok(res, toRecordDto(record));
   }),
 );
 

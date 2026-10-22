@@ -8,6 +8,8 @@ import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { recordAudit } from "../services/audit";
+import { sendEmail } from "../services/email";
+import { sendWhatsApp } from "../services/whatsapp";
 
 const router = Router();
 router.use(requireAuth);
@@ -143,9 +145,9 @@ router.post(
 );
 
 /**
- * Appends a message to a thread. Outbound delivery is stored against the thread
- * so the CRM timeline stays the single source of truth; no external supplier or
- * payment provider is ever contacted from here.
+ * Appends a message to a thread. Outbound email/WhatsApp messages are now
+ * delivered for real (SMTP / WhatsApp Cloud API) and every delivery attempt
+ * is recorded in the outbox so the timeline always shows the truth.
  */
 router.post(
   "/:id/messages",
@@ -157,12 +159,43 @@ router.post(
     if (!conversation) throw new NotFoundError("Conversation");
 
     const body = req.body as z.infer<typeof messageSchema>;
+    const channel = body.channel ?? conversation.channel;
+
+    // Deliver outbound email / WhatsApp traffic through the real providers.
+    let delivery: { status: string } | null = null;
+    if (body.direction === "out" && !body.templateId) {
+      const to = channel === "WhatsApp" ? conversation.contactPhone : conversation.contactEmail;
+      const toAddress = to ?? "";
+      if (toAddress) {
+        if (channel === "Email") {
+          delivery = await sendEmail({
+            organizationId: req.auth!.organizationId,
+            to: toAddress,
+            subject: conversation.subject,
+            body: body.body,
+            template: body.templateId ?? undefined,
+            userId: req.auth!.userId,
+            relatedModule: "inbox",
+            relatedReference: conversation.id,
+          });
+        } else if (channel === "WhatsApp") {
+          delivery = await sendWhatsApp({
+            organizationId: req.auth!.organizationId,
+            to: toAddress,
+            body: body.body,
+            userId: req.auth!.userId,
+            relatedReference: conversation.id,
+          });
+        }
+      }
+    }
+
     const [message] = await Promise.all([
       prisma.message.create({
         data: {
           conversationId: conversation.id,
           direction: body.direction,
-          channel: body.channel ?? conversation.channel,
+          channel,
           body: body.body,
           templateId: body.templateId,
           sentById: req.auth!.userId,
@@ -181,6 +214,7 @@ router.post(
       moduleId: "inbox",
       recordId: conversation.id,
       label: `Message sent to ${conversation.contactName}`,
+      meta: delivery ? { delivery: delivery.status, channel } : undefined,
       req,
     });
 
@@ -191,6 +225,7 @@ router.post(
       body: message.body,
       sentBy: message.sentByName,
       createdAt: message.createdAt.toISOString(),
+      delivery: delivery?.status ?? null,
     });
   }),
 );

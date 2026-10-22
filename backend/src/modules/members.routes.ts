@@ -5,13 +5,39 @@ import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { ConflictError, NotFoundError } from "../lib/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { hashPassword } from "../lib/password";
 import { ROLE_MAP } from "../domain/rbac";
 import { recordAudit } from "../services/audit";
+import { parseJson } from "../lib/utils";
+import { sendEmail } from "../services/email";
 
 const router = Router();
 router.use(requireAuth);
+
+/**
+ * Enforces the seat limit of the organisation's active plan. This is the one
+ * piece of SaaS billing that has to happen server-side — a company on the
+ * Starter plan cannot invite a sixth teammate.
+ */
+async function assertSeatsAvailable(organizationId: string): Promise<void> {
+  const subscription = await prisma.subscription.findUnique({ where: { organizationId } });
+  if (!subscription) return; // grandfathered organisations without a subscription row
+  const plan = await prisma.plan.findUnique({ where: { key: subscription.planKey } });
+  if (!plan) return;
+  const seatLimit = parseJson<Record<string, number>>(plan.limits, {}).seats;
+  if (typeof seatLimit !== "number" || seatLimit < 1) return;
+  const activeSeats = await prisma.membership.count({
+    where: { organizationId, active: true },
+  });
+  // A deactivated teammate keeps occupying the record but not a seat; inviting
+  // someone new must fit inside the limit.
+  if (activeSeats >= seatLimit) {
+    throw new ForbiddenError(
+      `Your ${plan.name} plan includes ${seatLimit} team members. Invite fewer people or upgrade to a bigger plan.`,
+    );
+  }
+}
 
 const inviteSchema = z.object({
   name: z.string().min(2).max(80),
@@ -71,6 +97,8 @@ router.post(
     const { name, email, phone, roleKey, branchId, password } = req.body as z.infer<typeof inviteSchema>;
     const organizationId = req.auth!.organizationId;
 
+    await assertSeatsAvailable(organizationId);
+
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       const membership = await prisma.membership.findUnique({
@@ -93,6 +121,29 @@ router.post(
 
     const membership = await prisma.membership.create({
       data: { userId: user.id, organizationId, roleKey, branchId: branchId ?? null },
+    });
+
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { name: true, supportEmail: true },
+    });
+    await sendEmail({
+      organizationId,
+      to: user.email,
+      subject: `You have been added to ${organization.name} on Traveldesk`,
+      body: [
+        `Hi ${name},`,
+        "",
+        `${req.auth!.name} added you to the ${organization.name} travel workspace on Traveldesk.`,
+        "",
+        "Sign in with the temporary password your admin shared and change it right away:",
+        `${process.env.APP_URL ?? "http://localhost:8080"}`,
+        "",
+        `${organization.name}`,
+      ].join("\n"),
+      template: "member_invite",
+      userId: req.auth!.userId,
+      relatedModule: "settings",
     });
 
     await recordAudit({

@@ -25,6 +25,37 @@ import { buildChainConversations, buildChainRecords, buildChainTasks } from "./s
 
 const ORG_SLUG = "horizon-travel";
 
+/**
+ * The platform super admin — the person who owns this SaaS, manages tenants
+ * and plans on /platform. Safe to call on every boot: it only creates what
+ * is missing and never resets an existing account.
+ */
+async function ensureSuperAdmin(organizationId: string) {
+  const email = env.SEED_SUPER_ADMIN_EMAIL.toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email } });
+  const user =
+    existing ??
+    (await prisma.user.create({
+      data: {
+        email,
+        name: "Traveldesk Super Admin",
+        passwordHash: await hashPassword(env.SEED_SUPER_ADMIN_PASSWORD),
+        active: true,
+      },
+    }));
+  if (!existing) console.log(`✓ Platform super admin created — login: ${email}`);
+  await prisma.membership.upsert({
+    where: { userId_organizationId: { userId: user.id, organizationId } },
+    update: { active: true },
+    create: {
+      userId: user.id,
+      organizationId,
+      roleKey: "admin",
+      active: true,
+    },
+  });
+}
+
 async function seedPlans() {
   for (const plan of PLAN_SEED) {
     await prisma.plan.upsert({
@@ -58,6 +89,7 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
   const existing = await prisma.organization.findUnique({ where: { slug: ORG_SLUG } });
   if (existing) {
     if (!options.reset) {
+      await ensureSuperAdmin(existing.id);
       console.log(`✓ Demo organisation "${ORG_SEED.name}" already seeded — skipping.`);
       return;
     }
@@ -299,6 +331,7 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
   }
 
   // Subscription + usage for the SaaS screens
+  await ensureSuperAdmin(organization.id);
   await prisma.subscription.create({
     data: {
       organizationId: organization.id,
