@@ -597,6 +597,158 @@ export const fetchOutbox = (take = 100) =>
   apiRequest<OutboxEntryDto[]>("/finance/outbox", { query: { take } });
 
 /* ------------------------------------------------------------------ *
+ * Call logs & consent — the real Communications records
+ * ------------------------------------------------------------------ */
+
+export type CallLogDto = {
+  id: string;
+  contactName: string;
+  contactPhone: string;
+  direction: "Inbound" | "Outbound";
+  outcome: string;
+  durationMinutes: number;
+  notes: string;
+  recordId: string | null;
+  owner: string;
+  calledAt: string;
+};
+
+export const fetchCallLogs = (take = 100) =>
+  apiRequest<CallLogDto[]>("/comms", { query: { take } });
+
+export const createCallLog = (body: {
+  contactName: string;
+  contactPhone?: string | undefined;
+  direction: "Inbound" | "Outbound";
+  outcome: string;
+  durationMinutes: number;
+  notes?: string | undefined;
+  recordId?: string | undefined;
+  owner?: string | undefined;
+}) => apiRequest<CallLogDto>("/comms", { method: "POST", body });
+
+export const deleteCallLog = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/comms/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export type ConsentDto = {
+  id: string;
+  contactEmail: string;
+  contactPhone: string;
+  contactName: string;
+  email: boolean;
+  whatsapp: boolean;
+  calls: boolean;
+  source: string;
+  capturedAt: string;
+  updatedAt: string;
+};
+
+export const fetchConsents = () => apiRequest<ConsentDto[]>("/comms/consents");
+
+export const saveConsent = (body: {
+  contactEmail: string;
+  contactPhone?: string | undefined;
+  contactName?: string | undefined;
+  email: boolean;
+  whatsapp: boolean;
+  calls: boolean;
+  source?: string | undefined;
+}) => apiRequest<ConsentDto>("/comms/consents", { method: "PUT", body });
+
+export const createMessageTemplate = (body: {
+  channel: string;
+  name: string;
+  body: string;
+}) => apiRequest<{ id: string; channel: string; name: string; body: string }>("/conversations/templates", { method: "POST", body });
+
+export const deleteMessageTemplate = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/conversations/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/* ------------------------------------------------------------------ *
+ * Channels — the organisation's own email / WhatsApp accounts
+ * ------------------------------------------------------------------ */
+
+export type ChannelStatusDto = {
+  email: {
+    configured: boolean;
+    source: "settings" | "env" | "none";
+    host: string;
+    user: string;
+    from: string;
+    hasPassword: boolean;
+  };
+  whatsapp: {
+    configured: boolean;
+    source: "settings" | "env" | "none";
+    detail: string;
+    phoneNumberId: string;
+    hasToken: boolean;
+  };
+};
+
+export const fetchChannelStatus = () =>
+  apiRequest<ChannelStatusDto>("/channels");
+
+export const saveEmailChannel = (body: {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass?: string | undefined;
+  from?: string | undefined;
+}) => apiRequest<{ saved: boolean }>("/channels/email", { method: "PUT", body });
+
+export const removeEmailChannel = () =>
+  apiRequest<{ saved: boolean }>("/channels/email", { method: "DELETE" });
+
+export const saveWhatsAppChannel = (body: {
+  phoneNumberId: string;
+  token?: string | undefined;
+}) => apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "PUT", body });
+
+export const removeWhatsAppChannel = () =>
+  apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "DELETE" });
+
+export const sendEmailTest = (to: string) =>
+  apiRequest<{ status: string; id: string }>("/channels/email/test", {
+    method: "POST",
+    body: { to },
+  });
+
+export const sendWhatsAppTest = (to: string) =>
+  apiRequest<{ status: string; id: string }>("/channels/whatsapp/test", {
+    method: "POST",
+    body: { to },
+  });
+
+/* ------------------------------------------------------------------ *
+ * Quotations - professional quote PDF with company masthead,
+ * itemised packages, validity and terms.
+ * ------------------------------------------------------------------ */
+
+export type QuoteItemDto = {
+  label: string;
+  qty: number;
+  rate: number;
+};
+
+export const downloadQuotationPdf = async (reference: string) => {
+  const blob = await apiBlob(`/finance/quotations/${encodeURIComponent(reference)}/quote.pdf`);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `quotation-${reference}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+export const sendQuotationEmail = (reference: string, to: string, note?: string) =>
+  apiRequest<{ status: string; id: string }>(`/finance/quotations/${encodeURIComponent(reference)}/send`, {
+    method: "POST",
+    body: { to, note },
+  });
+
+/* ------------------------------------------------------------------ *
  * Flights — real Amadeus search when keys are configured
  * ------------------------------------------------------------------ */
 

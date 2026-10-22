@@ -246,6 +246,7 @@ export const modules: Module[] = [
       "Roles & permissions",
       "Subscriptions",
       "Tax settings",
+      "Email & WhatsApp",
       "Audit logs",
       "Security",
       "Custom fields",

@@ -14,6 +14,7 @@ import {
   applyWebhookEvent,
 } from "../services/payments";
 import { generateInvoicePdf } from "../services/invoice-pdf";
+import { generateQuotationPdf } from "../services/quotation-pdf";
 import { sendEmail } from "../services/email";
 
 const router = Router();
@@ -42,6 +43,78 @@ router.get(
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Length", pdf.length);
     res.send(pdf);
+  }),
+);
+
+/** Real, printable quotation PDF for a quotations record. */
+router.get(
+  "/quotations/:reference/quote.pdf",
+  requirePermission("view"),
+  asyncHandler(async (req, res) => {
+    const { filename, stream } = await generateQuotationPdf({
+      organizationId: req.auth!.organizationId,
+      reference: req.params.reference,
+    });
+    const chunks: Buffer[] = [];
+    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    await new Promise<void>((resolve, reject) => {
+      stream.on("end", resolve);
+      stream.on("error", reject);
+      stream.end();
+    });
+    const pdf = Buffer.concat(chunks);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    res.setHeader("Content-Length", pdf.length);
+    res.send(pdf);
+  }),
+);
+
+/** Email the quotation PDF link… handled like invoices: real SMTP or queued. */
+router.post(
+  "/quotations/:reference/send",
+  requirePermission("edit"),
+  validate(z.object({ to: z.string().email(), note: z.string().max(1000).optional() })),
+  asyncHandler(async (req, res) => {
+    const reference = req.params.reference;
+    const record = await prisma.record.findFirst({
+      where: { organizationId: req.auth!.organizationId, reference, deletedAt: null },
+    });
+    if (!record) throw new NotFoundError("Quotation record");
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+    });
+    const body = req.body as { to: string; note?: string };
+    const outbox = await sendEmail({
+      organizationId: req.auth!.organizationId,
+      to: body.to,
+      subject: `Quotation ${reference} from ${organization.name}`,
+      body: [
+        `Hi ${record.name},`,
+        "",
+        `Thank you for planning with ${organization.name}. Your quotation ${reference} for ${
+          record.destination || "your trip"
+        } is ready: ${record.currency || organization.currency} ${record.amount.toLocaleString("en-IN")} (taxes included as applicable).`,
+        "The quotation is valid for 15 days — download the PDF from your Traveldesk workspace or reply to this email to proceed.",
+        ...(body.note ? ["", body.note] : []),
+        "",
+        `${organization.name}`,
+        organization.supportEmail ?? "",
+      ].join("\n"),
+      template: "quotation_send",
+      userId: req.auth!.userId,
+      relatedModule: "quotations",
+      relatedReference: reference,
+    });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: "quotations",
+      recordId: record.id,
+      label: `Quote ${reference} emailed to ${body.to}`,
+      req,
+    });
+    return ok(res, outbox);
   }),
 );
 

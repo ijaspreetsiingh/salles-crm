@@ -369,6 +369,43 @@ const recordPrefix = (module: Module) =>
 const nextRecordId = (module: Module) =>
   `${recordPrefix(module)}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 
+/** Pre-fill data when one module hands a record to the next step in the journey. */
+export function workflowDataFor(
+  targetModuleId: string,
+  sourceModuleId: string,
+  row: RecordRow,
+): Partial<RecordRow> {
+  const data: Partial<RecordRow> = {
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    destination: row.destination,
+    amount: row.amount,
+    ...(row.currency ? { currency: row.currency } : {}),
+    owner: row.owner,
+    branch: row.branch,
+    notes: `Created from ${sourceModuleId} ${row.id}`,
+  };
+  if (targetModuleId === "finance" && sourceModuleId === "bookings") {
+    data.detail = `Invoice for booking ${row.id}`;
+    data.amount = row.amount;
+    data.status = "Draft";
+  }
+  if (targetModuleId === "bookings" && sourceModuleId === "leads") {
+    data.detail = `Booking from lead ${row.id}`;
+    data.status = "Pending";
+  }
+  if (targetModuleId === "quotations" && sourceModuleId === "leads") {
+    data.detail = `Quotation for ${row.name}`;
+    data.status = "Draft";
+  }
+  if (targetModuleId === "visa" && sourceModuleId === "bookings") {
+    data.detail = `Visa application for ${row.name}`;
+    data.status = "Pending";
+  }
+  return data;
+}
+
 /** Icon + copy shown above each detail section, so sections read at a glance. */
 const SECTION_ICON = [ClipboardList, FileText, Wallet, Building2, Mail];
 
@@ -592,35 +629,7 @@ export function RecordDialog({
     if (!targetModule || !targetModuleMeta || !row) return;
 
     // Pre-fill data for the new record
-    const data: Partial<RecordRow> = {
-      name: row.name,
-      email: row.email,
-      phone: row.phone,
-      destination: row.destination,
-      amount: row.amount,
-      owner: row.owner,
-      branch: row.branch,
-      notes: `Created from ${module.noun} ${row.id}`,
-    };
-
-    // Module-specific mapping
-    if (targetModuleId === "finance" && module.id === "bookings") {
-      data.detail = `Invoice for booking ${row.id}`;
-      data.amount = row.amount;
-      data.status = "Draft";
-    }
-    if (targetModuleId === "bookings" && module.id === "leads") {
-      data.detail = `Booking from lead ${row.id}`;
-      data.status = "Pending";
-    }
-    if (targetModuleId === "quotations" && module.id === "leads") {
-      data.detail = `Quotation for ${row.name}`;
-      data.status = "Draft";
-    }
-    if (targetModuleId === "visa" && module.id === "bookings") {
-      data.detail = `Visa application for ${row.name}`;
-      data.status = "Pending";
-    }
+    const data = workflowDataFor(targetModuleId, module.id, row);
 
     setWorkflowTarget({ module: targetModuleMeta, data });
   };

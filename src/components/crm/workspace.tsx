@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -17,7 +17,9 @@ import {
   Lightbulb,
   List,
   Loader2,
+  Mail,
   MoreHorizontal,
+  Phone,
   Plane,
   Plus,
   Search,
@@ -38,7 +40,11 @@ import {
   PageHeading,
   RecordDialog,
   Status,
+  workflowDataFor,
 } from "./common";
+import { RecordSheet } from "./record-sheet";
+import { RecordCards } from "./record-cards";
+import { RowMenu } from "./row-menu";
 import { Btn, FilterMenu, Kbd, Segmented } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Ledger } from "./archetypes/ledger";
@@ -57,8 +63,12 @@ import {
   type RecordRow,
 } from "@/lib/crm/catalog";
 import { useCRM } from "@/lib/crm/store";
+import { cn } from "@/lib/utils";
+import { takeCommsFocus, takeProfileFocus, setProfileFocus, type CommsFocus } from "@/lib/crm/handoff";
 import { getSchema, getTabDef, extraKeyName, type ModuleSchema } from "@/lib/crm/schema";
 import { CustomerDirectory } from "./customer-directory";
+import { CustomerProfile } from "./customer-profile";
+import { QuotationCover } from "./quotation-cover";
 import { GrowthReports } from "./growth-reports";
 import { WebsitePanel } from "./website-panel";
 import { ROLE_KEY_BY_LABEL } from "@/lib/api/crm";
@@ -71,6 +81,11 @@ import {
   createWorkflow,
   createApiKey,
   changePassword,
+  createConversation,
+  createCallLog,
+  createMessageTemplate,
+  deleteCallLog,
+  deleteMessageTemplate,
   deleteSavedReport,
   deleteWebhook,
   deleteWorkflow,
@@ -78,6 +93,9 @@ import {
   exportRecordsCsv,
   fetchApiKeys,
   fetchAssistantMessages,
+  fetchChannelStatus,
+  fetchCallLogs,
+  fetchConsents,
   fetchConversation,
   fetchConversationChannels,
   fetchConversations,
@@ -91,11 +109,19 @@ import {
   fetchWebhooks,
   fetchWorkflows,
   revokeApiKey,
+  removeEmailChannel,
+  removeWhatsAppChannel,
   runReport,
   runWorkflow,
+  saveEmailChannel,
+  saveWhatsAppChannel,
+  saveConsent,
+  type ConsentDto,
   searchFlights,
   sendAssistantMessage,
   sendConversationMessage,
+  sendEmailTest,
+  sendWhatsAppTest,
   testWebhook,
   updateProfile,
   updateRole,
@@ -172,7 +198,8 @@ const SPECIAL_TAB_MODULES = new Set([
 
 export function Workspace({ module }: { module: Module }) {
   const guide = guideFor(module);
-  const { getRows, update, settings, fields, user, permissions } = useCRM();
+  const { getRows, update, createRecord, settings, fields, user, permissions } = useCRM();
+  const navigate = useNavigate();
   const allowed =
     !permissions || permissions.modules === "*" || permissions.modules.includes(module.id);
   if (!allowed) {
@@ -204,7 +231,18 @@ export function Workspace({ module }: { module: Module }) {
   const [row, setRow] = useState<RecordRow | null>(null);
   const [create, setCreate] = useState(false);
   const [createStage, setCreateStage] = useState<string | null>(null);
-  const [view, setView] = useState(guide.archetype === "catalogue" ? "grid" : "list");
+  /** The record being edited in the form dialog (opened from the side panel). */
+  const [editingRow, setEditingRow] = useState<RecordRow | null>(null);
+  /** The module the open side-panel record belongs to (may differ after a conversion). */
+  const [sheetModuleId, setSheetModuleId] = useState<string | null>(null);
+  /** A cross-module create (lead → booking, booking → invoice) pending in form. */
+  const [workflowCreate, setWorkflowCreate] = useState<{
+    module: Module;
+    data: Partial<RecordRow>;
+  } | null>(null);
+  const [view, setView] = useState<"list" | "board" | "cards" | "grid">(
+    guide.archetype === "catalogue" ? "grid" : "list",
+  );
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
   const [showTips, setShowTips] = useState(true);
   const [wizard, setWizard] = useState(false);
@@ -348,11 +386,31 @@ export function Workspace({ module }: { module: Module }) {
   })();
 
   const showDirectory = module.id === "customers" && view === "grid";
+  /** The full-page Customer Information cover (replaces the whole page). */
+  const [profileCover, setProfileCover] = useState<RecordRow | null>(null);
+  /** The full-page Quotation cover for the Price quotes module. */
+  const [quoteCover, setQuoteCover] = useState<RecordRow | null>(null);
+
+  // A hand-off from another page (a lead's side panel) opens the cover here.
+  useEffect(() => {
+    if (module.id !== "customers") return;
+    const requested = takeProfileFocus<RecordRow>();
+    if (requested?.id) setProfileCover(requested);
+  }, [module.id]);
+
+  const openCommunications = () => {
+    void navigate({ to: "/workspace/$module", params: { module: "inbox" } });
+  };
+
+  /** The module the open side-panel record belongs to. */
+  const sheetModule =
+    (sheetModuleId ? modules.find((m) => m.id === sheetModuleId) : undefined) ?? module;
 
   return (
     <>
       <Page
         identity={
+          profileCover || quoteCover ? null : (
           <PageIdentity
             eyebrow={module.group}
             title={plainModule(module)}
@@ -400,8 +458,10 @@ export function Workspace({ module }: { module: Module }) {
               )
             }
           />
+          )
         }
         switchboard={
+          profileCover || quoteCover ? null : (
           <>
             <Segmented
               options={tabOptions as string[]}
@@ -438,11 +498,32 @@ export function Workspace({ module }: { module: Module }) {
                   options={["This week", "This month", "Last month", "This year", "All time"]}
                   onChange={setDate}
                 />
-                {canBoard && (
+                {canBoard ? (
                   <Segmented
-                    options={["List", "Board"]}
-                    value={view === "board" ? "Board" : "List"}
-                    onChange={(next) => setView(next === "Board" ? "board" : "list")}
+                    options={["List", "Board", "Cards"]}
+                    value={view === "board" ? "Board" : view === "list" ? "List" : "Cards"}
+                    onChange={(next) =>
+                      setView(
+                        next === "Board"
+                          ? "board"
+                          : next === "List"
+                            ? "list"
+                            : module.id === "customers"
+                              ? "grid"
+                              : "cards",
+                      )
+                    }
+                    label="Layout"
+                  />
+                ) : (
+                  <Segmented
+                    options={["List", "Cards"]}
+                    value={view === "list" ? "List" : "Cards"}
+                    onChange={(next) =>
+                      setView(
+                        next === "List" ? "list" : module.id === "customers" ? "grid" : "cards",
+                      )
+                    }
                     label="Layout"
                   />
                 )}
@@ -469,9 +550,28 @@ export function Workspace({ module }: { module: Module }) {
               )}
             </div>
           </>
+          )
         }
         work={
-          isSpecialView ? (
+          profileCover ? (
+            <CustomerProfile
+              row={profileCover}
+              currency={currency}
+              onBack={() => setProfileCover(null)}
+              onOpenCommunications={openCommunications}
+            />
+          ) : quoteCover ? (
+            <QuotationCover
+              row={quoteCover}
+              currency={currency}
+              onBack={() => setQuoteCover(null)}
+              onEdit={() => {
+                setEditingRow(quoteCover);
+                setQuoteCover(null);
+              }}
+              onOpenCommunications={openCommunications}
+            />
+          ) : isSpecialView ? (
             specialBody
           ) : (
             <>
@@ -479,7 +579,8 @@ export function Workspace({ module }: { module: Module }) {
                 <CustomerDirectory
                   rows={filtered}
                   currency={currency}
-                  onOpenRecord={(r) => setRow(r)}
+                  onOpenProfile={(r) => setProfileCover(r)}
+                  onOpenCommunications={openCommunications}
                 />
               ) : view === "board" && canBoard ? (
                 <Pipeline
@@ -494,6 +595,14 @@ export function Workspace({ module }: { module: Module }) {
                   emptyDescription={guide.empty.description}
                   emptySteps={guide.empty.steps}
                 />
+              ) : view === "cards" && module.id !== "customers" ? (
+                <RecordCards
+                  rows={filtered}
+                  module={module}
+                  currency={currency}
+                  onOpen={(r) => (module.id === "quotations" ? setQuoteCover(r) : setRow(r))}
+                  emptyHint={guide.empty.title}
+                />
               ) : (
                 <Ledger
                   rows={filtered}
@@ -503,9 +612,22 @@ export function Workspace({ module }: { module: Module }) {
                   onSort={(next) =>
                     setSort(next ? { key: next.key as SortKey, dir: next.dir } : null)
                   }
-                  onOpen={(r) => setRow(r)}
+                  onOpen={(r) => (module.id === "quotations" ? setQuoteCover(r) : setRow(r))}
                   onCreate={() => openCreate()}
                   createLabel={guide.primary}
+                  rowActions={(row) => (
+                    <RowMenu
+                      module={module}
+                      row={row}
+                      onOpen={(r) =>
+                        module.id === "quotations" ? setQuoteCover(r) : setRow(r)
+                      }
+                      onEdit={(r) => {
+                        setRow(r);
+                        setEditingRow(r);
+                      }}
+                    />
+                  )}
                   emptyTitle={guide.empty.title}
                   emptyDescription={guide.empty.description}
                   emptySteps={guide.empty.steps}
@@ -557,17 +679,101 @@ export function Workspace({ module }: { module: Module }) {
           )
         }
       />
-      {(row || create) && (
+      {(create || editingRow) && (
         <RecordDialog
           module={module}
-          row={row}
+          row={editingRow}
           create={create}
           {...(createStage ? { initialData: { status: createStage } } : {})}
           onClose={() => {
-            setRow(null);
             setCreate(false);
             setCreateStage(null);
+            setEditingRow(null);
           }}
+        />
+      )}
+      {row && !editingRow && (
+        <RecordSheet
+          module={sheetModule}
+          row={row}
+          onClose={() => {
+            setRow(null);
+            setSheetModuleId(null);
+          }}
+          onEdit={() => setEditingRow(row)}
+          onWorkflow={(targetModuleId, created) => {
+            // A freshly created document opens right here in the drawer.
+            if (targetModuleId === "__open__" && created) {
+              // A freshly created quotation/proposal opens in this drawer,
+              // now as a quotation (with its PDF and send actions).
+              setRow(created);
+              setSheetModuleId("quotations");
+              toast.success(`${created.id} ready — download the PDF or email it below`);
+              return;
+            }
+            // Email / WhatsApp hand off to Communications with this contact.
+            if (targetModuleId === "__comms__") {
+              setRow(null);
+              void navigate({ to: "/workspace/$module", params: { module: "inbox" } });
+              return;
+            }
+            const workflowRow = row;
+            const targetModuleMeta = modules.find((m) => m.id === targetModuleId);
+            if (!targetModuleMeta) return;
+            // Converting a lead to a booking is a one-click action: the booking
+            // is created straight away, no second form in the way.
+            const data = workflowDataFor(targetModuleId, module.id, workflowRow);
+            if (targetModuleId === "bookings") {
+              const createdRow: RecordRow = {
+                id: `BK-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+                name: workflowRow.name,
+                detail: data.detail ?? "",
+                destination: workflowRow.destination,
+                owner: workflowRow.owner,
+                branch: workflowRow.branch,
+                date: workflowRow.date || new Date().toISOString().slice(0, 10),
+                amount: workflowRow.amount,
+                ...(workflowRow.currency ? { currency: workflowRow.currency } : {}),
+                status: data.status ?? "Pending",
+                email: workflowRow.email,
+                phone: workflowRow.phone,
+                source: workflowRow.source,
+                notes: data.notes ?? "",
+                extra: workflowRow.extra ?? {},
+              };
+              void createRecord("bookings", createdRow).then((saved) => {
+                if (!saved) return;
+                toast.success(`Booking ${saved.id} created from ${workflowRow.id}`);
+                setRow(saved);
+                setSheetModuleId("bookings");
+              });
+              return;
+            }
+            setWorkflowCreate({
+              module: targetModuleMeta,
+              data,
+            });
+          }}
+          onOpenProfile={(profileRow) => {
+            if (module.id === "quotations") {
+              setRow(null);
+              setQuoteCover(profileRow);
+              return;
+            }
+            setRow(null);
+            setProfileFocus(profileRow);
+            if (module.id !== "customers") {
+              void navigate({ to: "/workspace/$module", params: { module: "customers" } });
+            }
+          }}
+        />
+      )}
+      {workflowCreate && (
+        <RecordDialog
+          module={workflowCreate.module}
+          create
+          initialData={workflowCreate.data}
+          onClose={() => setWorkflowCreate(null)}
         />
       )}
       <FirstRunWizard
@@ -721,15 +927,29 @@ function Assistant({ tab }: { tab: string }) {
 const INBOX_FALLBACK_CHANNELS = ["Shared inbox", "WhatsApp", "Email", "Call logs"];
 
 function Inbox({ tab }: { tab: string }) {
+  // The three record-keeping tabs have their own real screens.
+  if (tab === "Call logs") return <CallLogsPanel />;
+  if (tab === "Templates") return <TemplatesPanel />;
+  if (tab === "Consent") return <ConsentPanel />;
+  return <InboxThreads tab={tab} />;
+}
+
+function InboxThreads({ tab }: { tab: string }) {
   const { status } = useCRM();
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState(tab);
   const [draft, setDraft] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pending, setPending] = useState<MessageDto[]>([]);
+  /**
+   * A record's side panel can hand this page a contact ("email Priya about
+   * LD-2402"). The conversation for that contact opens straight away, with
+   * both their email and phone ready to use.
+   */
+  const [focus, setFocus] = useState<CommsFocus | null>(null);
 
   // Conversations arrive from the shared-inbox API; channel counters drive the filter.
-  const { data: page } = useApiQuery(
+  const { data: page, reload: reloadConversations } = useApiQuery(
     () =>
       fetchConversations({
         ...(channel && channel !== "Shared inbox" ? { channel } : {}),
@@ -741,6 +961,15 @@ function Inbox({ tab }: { tab: string }) {
   const conversations = page?.items ?? [];
   const { data: channels } = useApiQuery(() => fetchConversationChannels(), [], status === "ready");
   const { data: templates } = useApiQuery(() => fetchMessageTemplates(), [], status === "ready");
+
+  // Pick up the hand-off from a record's side panel and open that contact.
+  useEffect(() => {
+    const requested = takeCommsFocus();
+    if (!requested) return;
+    setFocus(requested);
+    setChannel(requested.channel);
+    setQuery("");
+  }, []);
 
   const active: ConversationDto | undefined =
     conversations.find((c) => c.id === activeId) ?? conversations[0];
@@ -761,7 +990,45 @@ function Inbox({ tab }: { tab: string }) {
     setPending([]);
   };
 
-  if (status === "ready" && !active) return <EmptyState />;
+  // The contact handed over from a record: their email and phone, both ready.
+  const focusConversation = conversations.find(
+    (c) =>
+      (focus?.email && c.contactEmail === focus.email) ||
+      (focus?.phone && c.contactPhone === focus.phone),
+  );
+
+  // If a thread already exists for this contact, open it.
+  useEffect(() => {
+    if (!focus || !focusConversation || activeId) return;
+    setActiveId(focusConversation.id);
+  }, [focus, focusConversation, activeId]);
+
+  // If no thread exists for this contact yet, start one so the user can write.
+  const startConversation = async () => {
+    if (!focus) return;
+    try {
+      const created = await createConversation({
+        channel: focus.channel,
+        contactName: focus.name,
+        ...(focus.email ? { contactEmail: focus.email } : {}),
+        ...(focus.phone ? { contactPhone: focus.phone } : {}),
+        subject:
+          focus.channel === "Email"
+            ? `Enquiry conversation — ${focus.name}`
+            : `WhatsApp conversation — ${focus.name}`,
+      });
+      setChannel(focus.channel);
+      setActiveId(created.id);
+      setPending([]);
+      // The new thread must appear in the list, then open.
+      reloadConversations();
+      toast.success("Conversation opened");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not open the conversation"));
+    }
+  };
+
+  if (status === "ready" && !active && !focus) return <EmptyState />;
 
   return (
     <div className="inbox-workspace">
@@ -813,6 +1080,51 @@ function Inbox({ tab }: { tab: string }) {
           <p className="cost-disclaimer">No conversations in this channel yet.</p>
         )}
       </div>
+      {/* The contact handed over from a record: email and phone, both usable */}
+      {focus && (
+        <div className="conversation-main">
+          <div className="conversation-header">
+            <Avatar name={focus.name} />
+            <div>
+              <h3>{focus.name}</h3>
+              <p>
+                {[focus.email, focus.phone].filter(Boolean).join(" · ") || "No contact details"}
+                {" · "}
+                {focus.channel}
+                {focus.module ? ` · from ${focus.module}` : ""}
+              </p>
+            </div>
+            <Status value="Open" />
+          </div>
+          <div className="conversation-messages">
+            <span className="chat-date">Ready to talk</span>
+            <p className="cost-disclaimer">
+              This is {focus.name}
+              {focus.module ? ` from the ${focus.module} workspace` : ""}. Their email and phone
+              are above — pick a channel and write the first message.
+            </p>
+          </div>
+          <div className="template-chips" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}>
+            <Button size="sm" variant="outline" onClick={startConversation}>
+              <Mail size={13} /> Open {focus.channel} thread
+            </Button>
+            {focus.email && (
+              <a
+                href={`mailto:${focus.email}`}
+                className="message-compose-link"
+                title={`Write to ${focus.email}`}
+              >
+                <Mail size={13} /> {focus.email}
+              </a>
+            )}
+            {focus.phone && (
+              <a href={`tel:${focus.phone}`} className="message-compose-link" title={`Call ${focus.phone}`}>
+                <Phone size={13} /> {focus.phone}
+              </a>
+            )}
+          </div>
+        </div>
+      )}
       {active && (
         <div className="conversation-main">
           <div className="conversation-header">
@@ -1816,6 +2128,38 @@ function SettingsPanel({ tab }: { tab: string }) {
   const [fieldType, setFieldType] = useState<"text" | "number" | "date" | "select">("text");
   const activeEmployees = settings.employees.filter((e) => e.active);
 
+  // The organisation's own email / WhatsApp accounts.
+  const { data: channelStatus, reload: reloadChannels } = useApiQuery(
+    () => fetchChannelStatus(),
+    [],
+    authStatus === "ready",
+  );
+  const [smtpForm, setSmtpForm] = useState({
+    host: "",
+    port: 587,
+    user: "",
+    pass: "",
+    from: "",
+  });
+  const [smtpTestTo, setSmtpTestTo] = useState("");
+  const [waForm, setWaForm] = useState({ phoneNumberId: "", token: "" });
+  const [waTestTo, setWaTestTo] = useState("");
+
+  // Prefill the email form from the saved account once it loads.
+  useEffect(() => {
+    if (!channelStatus?.email?.user) return;
+    setSmtpForm((prev) => ({
+      ...prev,
+      host: prev.host || channelStatus.email.host,
+      user: prev.user || channelStatus.email.user,
+      from: prev.from || channelStatus.email.from,
+    }));
+    setWaForm((prev) => ({
+      ...prev,
+      phoneNumberId: prev.phoneNumberId || channelStatus.whatsapp.phoneNumberId,
+    }));
+  }, [channelStatus]);
+
   // Live billing: plan, usage counters and issued invoices for the organisation.
   const { data: subscription, reload: reloadSubscription } = useApiQuery(
     () => fetchSubscription(),
@@ -2233,6 +2577,246 @@ function SettingsPanel({ tab }: { tab: string }) {
           <Button onClick={() => toast.success("Tax settings saved")}>
             <Check /> Save preferences
           </Button>
+        </div>
+      </div>
+    );
+
+  if (tab === "Email & WhatsApp")
+    return (
+      <div className="settings-workspace">
+        <h2>Email &amp; WhatsApp</h2>
+        <p>
+          Connect YOUR OWN accounts so enquiries, quotations and invoices really reach the
+          customer. Gmail needs an app password (Google Account → Security → 2-Step
+          Verification → App passwords).
+        </p>
+        {channelStatus?.email.configured ? (
+          <div className="branch-list" style={{ marginBottom: 16 }}>
+            <div className="security-row">
+              <div>
+                <h3>Email is live</h3>
+                <p>
+                  {channelStatus.email.user} via {channelStatus.email.host} ·{" "}
+                  {channelStatus.email.source === "env"
+                    ? "server default"
+                    : "your workspace settings"}
+                </p>
+              </div>
+              <Status value="Connected" />
+            </div>
+          </div>
+        ) : (
+          <div className="branch-list" style={{ marginBottom: 16 }}>
+            <div className="security-row">
+              <div>
+                <h3>Email is not connected</h3>
+                <p>
+                  Messages are still written to the outbox and queued — nothing is lost, but
+                  nothing is delivered until you connect an account.
+                </p>
+              </div>
+              <Status value="Not connected" />
+            </div>
+          </div>
+        )}
+        <div className="form-grid">
+          <label>
+            SMTP host
+            <input
+              placeholder="smtp.gmail.com"
+              value={smtpForm.host}
+              onChange={(e) => setSmtpForm({ ...smtpForm, host: e.target.value })}
+            />
+          </label>
+          <label>
+            Port
+            <input
+              type="number"
+              value={smtpForm.port}
+              onChange={(e) => setSmtpForm({ ...smtpForm, port: Number(e.target.value) || 587 })}
+            />
+          </label>
+          <label>
+            Username
+            <input
+              placeholder="you@yourcompany.com"
+              value={smtpForm.user}
+              onChange={(e) => setSmtpForm({ ...smtpForm, user: e.target.value })}
+            />
+          </label>
+          <label>
+            App password
+            <input
+              type="password"
+              placeholder="leave blank to keep the saved one"
+              value={smtpForm.pass}
+              onChange={(e) => setSmtpForm({ ...smtpForm, pass: e.target.value })}
+            />
+          </label>
+          <label>
+            From address
+            <input
+              placeholder="bookings@yourcompany.com"
+              value={smtpForm.from}
+              onChange={(e) => setSmtpForm({ ...smtpForm, from: e.target.value })}
+            />
+          </label>
+          <label>
+            Send a test to
+            <input
+              type="email"
+              placeholder="you@yourcompany.com"
+              value={smtpTestTo}
+              onChange={(e) => setSmtpTestTo(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="dialog-actions">
+          <Button
+            onClick={async () => {
+              try {
+                await saveEmailChannel({
+                  host: smtpForm.host,
+                  port: smtpForm.port,
+                  secure: smtpForm.port === 465,
+                  user: smtpForm.user,
+                  ...(smtpForm.pass ? { pass: smtpForm.pass } : {}),
+                  ...(smtpForm.from ? { from: smtpForm.from } : {}),
+                });
+                setSmtpForm({ ...smtpForm, pass: "" });
+                reloadChannels();
+                toast.success("Email channel saved");
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not save the email channel"));
+              }
+            }}
+          >
+            <Check /> Save email account
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!smtpTestTo}
+            onClick={async () => {
+              try {
+                const result = await sendEmailTest(smtpTestTo);
+                toast.success(
+                  result.status === "sent"
+                    ? "Test email sent"
+                    : result.status === "failed"
+                      ? "Test email failed — check the host, port and app password"
+                      : "Test email queued — save the account first",
+                );
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not send the test email"));
+              }
+            }}
+          >
+            Send test email
+          </Button>
+          {channelStatus?.email.source === "settings" && (
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                try {
+                  await removeEmailChannel();
+                  reloadChannels();
+                  toast.success("Email channel removed — back to the server default");
+                } catch (err) {
+                  toast.error(errorMessage(err));
+                }
+              }}
+            >
+              Disconnect
+            </Button>
+          )}
+        </div>
+
+        <h3 style={{ marginTop: 28 }}>WhatsApp Business</h3>
+        <p>
+          Use Meta&apos;s WhatsApp Cloud API. Add your permanent access token and phone number
+          ID below — messages then leave the system for real.
+        </p>
+        <div className="form-grid">
+          <label>
+            Phone number ID
+            <input
+              placeholder="123456789012345"
+              value={waForm.phoneNumberId}
+              onChange={(e) => setWaForm({ ...waForm, phoneNumberId: e.target.value })}
+            />
+          </label>
+          <label>
+            Access token
+            <input
+              type="password"
+              placeholder="leave blank to keep the saved one"
+              value={waForm.token}
+              onChange={(e) => setWaForm({ ...waForm, token: e.target.value })}
+            />
+          </label>
+          <label>
+            Send a test to
+            <input
+              placeholder="+91 98765 43210"
+              value={waTestTo}
+              onChange={(e) => setWaTestTo(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="dialog-actions">
+          <Button
+            onClick={async () => {
+              try {
+                await saveWhatsAppChannel({
+                  phoneNumberId: waForm.phoneNumberId,
+                  ...(waForm.token ? { token: waForm.token } : {}),
+                });
+                setWaForm({ ...waForm, token: "" });
+                reloadChannels();
+                toast.success("WhatsApp channel saved");
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not save the WhatsApp channel"));
+              }
+            }}
+          >
+            <Check /> Save WhatsApp account
+          </Button>
+          <Button
+            variant="outline"
+            disabled={!waTestTo}
+            onClick={async () => {
+              try {
+                const result = await sendWhatsAppTest(waTestTo);
+                toast.success(
+                  result.status === "sent"
+                    ? "Test WhatsApp message sent"
+                    : result.status === "failed"
+                      ? "Test message failed — check the token and number ID"
+                      : "Test message queued — save the account first",
+                );
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not send the test message"));
+              }
+            }}
+          >
+            Send test message
+          </Button>
+          {channelStatus?.whatsapp.source === "settings" && (
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                try {
+                  await removeWhatsAppChannel();
+                  reloadChannels();
+                  toast.success("WhatsApp channel removed");
+                } catch (err) {
+                  toast.error(errorMessage(err));
+                }
+              }}
+            >
+              Disconnect
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -2989,5 +3573,466 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
         />
       )}
     </>
+  );
+}
+
+/* ====================================================================== *
+ * Call logs � every call, with the outcome, logged in one place.
+ * ====================================================================== */
+
+function CallLogsPanel() {
+  const { status, user } = useCRM();
+  const { data: calls, reload } = useApiQuery(() => fetchCallLogs(), [], status === "ready");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [direction, setDirection] = useState<"Inbound" | "Outbound">("Outbound");
+  const [outcome, setOutcome] = useState("Connected");
+  const [minutes, setMinutes] = useState("5");
+  const [notes, setNotes] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const rows = calls ?? [];
+
+  const log = async () => {
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    try {
+      await createCallLog({
+        contactName: name.trim(),
+        ...(phone.trim() ? { contactPhone: phone.trim() } : {}),
+        direction,
+        outcome,
+        durationMinutes: Number(minutes) || 0,
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ...(user?.name ? { owner: user.name } : {}),
+      });
+      setName("");
+      setPhone("");
+      setMinutes("5");
+      setNotes("");
+      reload();
+      toast.success("Call logged");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not log the call"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-workspace">
+      <h2>Call logs</h2>
+      <p>Every call your team makes, with the outcome. Log one after the call, not later.</p>
+      <div className="form-grid">
+        <label>
+          Who did you speak to
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Customer name"
+          />
+        </label>
+        <label>
+          Number
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+91 98765 43210"
+          />
+        </label>
+        <label>
+          Direction
+          <select
+            value={direction}
+            onChange={(e) => setDirection(e.target.value as "Inbound" | "Outbound")}
+          >
+            <option>Outbound</option>
+            <option>Inbound</option>
+          </select>
+        </label>
+        <label>
+          Outcome
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+            <option>Connected</option>
+            <option>No answer</option>
+            <option>Busy</option>
+            <option>Callback requested</option>
+            <option>Not interested</option>
+            <option>Converted</option>
+          </select>
+        </label>
+        <label>
+          Talk time (minutes)
+          <input
+            type="number"
+            min="0"
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+          />
+        </label>
+        <label>
+          Notes
+          <input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="What was discussed"
+          />
+        </label>
+      </div>
+      <div className="dialog-actions">
+        <Button onClick={log} disabled={busy || !name.trim()}>
+          <Check /> Log call
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="glass-card mt-4 p-8 text-center text-sm text-muted">
+          No calls logged yet. Every call you log shows up here with its outcome.
+        </p>
+      ) : (
+        <div className="glass-card mt-4 overflow-x-auto p-5">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-muted">
+              <tr>
+                <th className="pb-3">When</th>
+                <th className="pb-3">Contact</th>
+                <th className="pb-3">Direction</th>
+                <th className="pb-3">Outcome</th>
+                <th className="pb-3">Time</th>
+                <th className="pb-3">Agent</th>
+                <th className="pb-3">Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((call) => (
+                <tr key={call.id} className="border-t border-line">
+                  <td className="py-2.5 text-xs text-muted">
+                    {new Date(call.calledAt).toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </td>
+                  <td className="py-2.5">
+                    <div className="font-semibold">{call.contactName}</div>
+                    {call.contactPhone && (
+                      <div className="text-xs text-muted">{call.contactPhone}</div>
+                    )}
+                  </td>
+                  <td className="py-2.5">{call.direction}</td>
+                  <td className="py-2.5">
+                    <span
+                      className={cn(
+                        "rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                        call.outcome === "Converted"
+                          ? "bg-pine text-on-pine"
+                          : call.outcome === "No answer" || call.outcome === "Busy"
+                            ? "bg-well"
+                            : "bg-glass-2",
+                      )}
+                    >
+                      {call.outcome}
+                    </span>
+                  </td>
+                  <td className="py-2.5 tabular-nums">{call.durationMinutes} min</td>
+                  <td className="py-2.5 text-xs text-muted">{call.owner || "�"}</td>
+                  <td className="py-2.5 text-xs text-muted">{call.notes || "�"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ====================================================================== *
+ * Message templates � the replies your team sends every day.
+ * ====================================================================== */
+
+function TemplatesPanel() {
+  const { status } = useCRM();
+  const { data: templates, reload } = useApiQuery(
+    () => fetchMessageTemplates(),
+    [],
+    status === "ready",
+  );
+  const [name, setName] = useState("");
+  const [body, setBody] = useState("");
+  const [channel, setChannel] = useState("Email");
+  const [busy, setBusy] = useState(false);
+
+  const rows = templates ?? [];
+
+  const create = async () => {
+    if (!name.trim() || !body.trim() || busy) return;
+    setBusy(true);
+    try {
+      await createMessageTemplate({ channel, name: name.trim(), body: body.trim() });
+      setName("");
+      setBody("");
+      reload();
+      toast.success("Template saved");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not save the template"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-workspace">
+      <h2>Message templates</h2>
+      <p>
+        The replies you send every day. They show up as one-tap chips inside any
+        conversation.
+      </p>
+      <div className="form-grid">
+        <label>
+          Channel
+          <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+            <option>Email</option>
+            <option>WhatsApp</option>
+            <option>Shared inbox</option>
+          </select>
+        </label>
+        <label>
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Itinerary proposal"
+          />
+        </label>
+      </div>
+      <label className="block">
+        Message
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={4}
+          placeholder="Hi {name}, here is the itinerary we discussed�"
+        />
+      </label>
+      <div className="dialog-actions">
+        <Button onClick={create} disabled={busy || !name.trim() || !body.trim()}>
+          <Check /> Save template
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="glass-card mt-4 p-8 text-center text-sm text-muted">
+          No templates yet � save the reply you type most often.
+        </p>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {rows.map((tpl) => (
+            <article key={tpl.id} className="glass-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold">{tpl.name}</h3>
+                  <p className="text-[11px] text-muted">{tpl.channel}</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Delete template ${tpl.name}`}
+                  className="text-muted hover:text-foreground"
+                  onClick={async () => {
+                    try {
+                      await deleteMessageTemplate(tpl.id);
+                      reload();
+                      toast.success("Template deleted");
+                    } catch (err) {
+                      toast.error(errorMessage(err));
+                    }
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted">
+                {tpl.body}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ====================================================================== *
+ * Consent � what each customer agreed to be contacted on.
+ * ====================================================================== */
+
+function ConsentPanel() {
+  const { status, getRows } = useCRM();
+  const { data: consents, reload } = useApiQuery(() => fetchConsents(), [], status === "ready");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const rows = consents ?? [];
+  const customers = getRows("customers");
+
+  const save = async (contactEmail: string, contactName: string, values: {
+    email: boolean;
+    whatsapp: boolean;
+    calls: boolean;
+  }) => {
+    setBusy(true);
+    try {
+      await saveConsent({
+        contactEmail,
+        contactName,
+        email: values.email,
+        whatsapp: values.whatsapp,
+        calls: values.calls,
+        source: "Workspace",
+      });
+      reload();
+      toast.success("Consent saved");
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not save consent"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = (row: ConsentDto, key: "email" | "whatsapp" | "calls") => {
+    void save(row.contactEmail, row.contactName, {
+      email: key === "email" ? !row.email : row.email,
+      whatsapp: key === "whatsapp" ? !row.whatsapp : row.whatsapp,
+      calls: key === "calls" ? !row.calls : row.calls,
+    });
+  };
+
+  return (
+    <div className="settings-workspace">
+      <h2>Consent</h2>
+      <p>
+        What each customer agreed to. Only message a contact on the channels they
+        ticked � that is what keeps you compliant.
+      </p>
+      <div className="form-grid">
+        <label>
+          Customer email
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="customer@email.com"
+          />
+        </label>
+        <label>
+          Customer name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+      </div>
+      <div className="dialog-actions">
+        <Button
+          disabled={busy || !email.trim()}
+          onClick={() => {
+            setEmail("");
+            void save(email.trim(), name.trim(), { email: true, whatsapp: false, calls: false });
+          }}
+        >
+          <Check /> Record consent
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="glass-card mt-4 p-8 text-center text-sm text-muted">
+          No consent recorded yet. Add the first customer above.
+        </p>
+      ) : (
+        <div className="glass-card mt-4 overflow-x-auto p-5">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs text-muted">
+              <tr>
+                <th className="pb-3">Customer</th>
+                <th className="pb-3">Email</th>
+                <th className="pb-3">WhatsApp</th>
+                <th className="pb-3">Calls</th>
+                <th className="pb-3">Recorded</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-t border-line">
+                  <td className="py-2.5">
+                    <div className="font-semibold">{row.contactName || row.contactEmail}</div>
+                    <div className="text-xs text-muted">{row.contactEmail}</div>
+                  </td>
+                  {(["email", "whatsapp", "calls"] as const).map((key) => (
+                    <td key={key} className="py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={row[key]}
+                        disabled={busy}
+                        aria-label={`${key} consent for ${row.contactEmail}`}
+                        onChange={() => toggle(row, key)}
+                      />
+                    </td>
+                  ))}
+                  <td className="py-2.5 text-xs text-muted">
+                    {new Date(row.capturedAt).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {customers.length > 0 && (
+        <>
+          <h3 className="mt-8">Your customers</h3>
+          <p>Tick a channel to record consent for a customer you already have.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {customers.slice(0, 12).map((customer) => {
+              const existing = rows.find((r) => r.contactEmail === customer.email);
+              return (
+                <div key={customer.id} className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-glass-2 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold">{customer.name}</div>
+                    <div className="truncate text-[11px] text-muted">
+                      {customer.email || "no email on file"}
+                    </div>
+                  </div>
+                  {customer.email ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        void save(customer.email, customer.name, {
+                          email: !(existing?.email ?? false),
+                          whatsapp: existing?.whatsapp ?? false,
+                          calls: existing?.calls ?? false,
+                        })
+                      }
+                    >
+                      {existing?.email ? "On" : "Add"}
+                    </Button>
+                  ) : (
+                    <span className="text-[11px] text-muted">no email</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

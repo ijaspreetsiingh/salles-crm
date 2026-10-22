@@ -20,6 +20,8 @@ import platformRoutes from "../modules/platform.routes";
 import financeRoutes, { webhookRouter as razorpayWebhook } from "../modules/finance.routes";
 import publicRoutes from "../modules/public.routes";
 import flightsRoutes from "../modules/flights.routes";
+import channelsRoutes from "../modules/channels.routes";
+import commsRecordsRoutes from "../modules/comms-records.routes";
 import searchRoutes from "../modules/search.routes";
 import uploadRoutes from "../modules/uploads.routes";
 import apiKeyRoutes from "../modules/apiKeys.routes";
@@ -53,8 +55,10 @@ export function buildRoutes(): Router {
   // Engagement
   router.use("/assistant", assistantRoutes);
   router.use("/conversations", conversationRoutes);
+router.use("/comms", commsRecordsRoutes);
   router.use("/workflows", workflowRoutes);
   router.use("/integrations", integrationRoutes);
+router.use("/channels", channelsRoutes);
 
   // Commerce & files
   router.use("/billing", billingRoutes);

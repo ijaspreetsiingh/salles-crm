@@ -14,6 +14,8 @@ const DEFAULT_FX: Record<string, number> = {
 
 type Settings = {
   taxRegime?: string;
+  /** The frontend saves taxRate; defaultTaxRate is the older key. */
+  taxRate?: number;
   defaultTaxRate?: number;
   invoicePrefix?: string;
   fxRates?: Record<string, number>;
@@ -43,7 +45,12 @@ export async function generateInvoicePdf(input: {
   if (!record) throw new NotFoundError("Invoice record");
 
   const settings = parseJson<Settings>(organization.settings, {});
-  const taxRate = typeof settings.defaultTaxRate === "number" ? settings.defaultTaxRate : 18;
+  const taxRate =
+    typeof settings.taxRate === "number"
+      ? settings.taxRate
+      : typeof settings.defaultTaxRate === "number"
+        ? settings.defaultTaxRate
+        : 18;
   const currency = record.currency || organization.currency || "INR";
   const fxRates = { ...DEFAULT_FX, ...(settings.fxRates ?? {}) };
   const fxRate = currency === "INR" ? 1 : fxRates[currency] ?? 0;

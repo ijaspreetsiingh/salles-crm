@@ -1,32 +1,42 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { prisma } from "../lib/prisma";
-import { env } from "../config/env";
 import { stringifyJson } from "../lib/utils";
+import { resolveEmailAccount } from "./channels";
 
 /**
  * Real email delivery with a safe fallback.
  *
- * When SMTP is configured, mail goes out through nodemailer. When it is not,
- * every message is still written to the outbox table as "queued", so the UI
- * always tells the truth about what happened to an email.
+ * When SMTP is configured (the organisation's own app-password account, or the
+ * server env), mail goes out through nodemailer. When it is not, every message
+ * is still written to the outbox table as "queued", so the UI always tells the
+ * truth about what happened to an email.
  */
-export function smtpConfigured(): boolean {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASSWORD);
+export async function smtpConfigured(organizationId?: string): Promise<boolean> {
+  return Boolean(await resolveEmailAccount(organizationId));
 }
 
-let transporter: Transporter | null = null;
+/** Cache transporters per SMTP account so Gmail etc. stay alive between sends. */
+const transporters = new Map<string, Transporter>();
 
-function getTransporter(): Transporter | null {
-  if (!smtpConfigured()) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_SECURE,
-      auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+function getTransporter(account: {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+}): Transporter {
+  const key = `${account.host}:${account.port}:${account.user}`;
+  let transport = transporters.get(key);
+  if (!transport) {
+    transport = nodemailer.createTransport({
+      host: account.host,
+      port: account.port,
+      secure: account.secure,
+      auth: { user: account.user, pass: account.pass },
     });
+    transporters.set(key, transport);
   }
-  return transporter;
+  return transport;
 }
 
 export type OutboxEmail = {
@@ -57,14 +67,14 @@ export async function sendEmail(input: OutboxEmail): Promise<{ status: string; i
     },
   });
 
-  const transport = getTransporter();
-  if (!transport) {
+  const account = await resolveEmailAccount(input.organizationId);
+  if (!account) {
     return { status: "queued", id: row.id };
   }
 
   try {
-    const info = await transport.sendMail({
-      from: env.SMTP_FROM || env.SMTP_USER,
+    const info = await getTransporter(account).sendMail({
+      from: account.from || account.user,
       to: input.to,
       subject: input.subject,
       text: input.body,

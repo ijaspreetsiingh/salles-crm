@@ -94,16 +94,25 @@ export async function resolveOwnerBranch(
   };
 }
 
-/** Generates the next human-friendly reference, e.g. LD-2409. */
+/**
+ * Generates the next human-friendly reference, e.g. LD-2409.
+ *
+ * The highest existing number wins (not simply the newest record), so two
+ * records created in the same second can never hand out the same reference.
+ */
 export async function nextReference(organizationId: string, module: ModuleDef): Promise<string> {
-  const latest = await prisma.record.findFirst({
+  const rows = await prisma.record.findMany({
     where: { organizationId, moduleId: module.id },
-    orderBy: { createdAt: "desc" },
     select: { reference: true },
   });
-  const match = latest?.reference?.match(/(\d+)$/);
-  const next = match ? Number(match[1]) + 1 : 2401;
-  return `${module.prefix}-${next}`;
+  let highest = 2400;
+  for (const row of rows) {
+    const match = row.reference?.match(/(\d+)$/);
+    if (!match) continue;
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > highest) highest = value;
+  }
+  return `${module.prefix}-${highest + 1}`;
 }
 
 /** Serialises a record for export / create / update payloads. */

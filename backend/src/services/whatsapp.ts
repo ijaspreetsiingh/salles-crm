@@ -1,13 +1,15 @@
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
+import { resolveWhatsAppAccount } from "./channels";
 
 /**
  * WhatsApp Business Cloud API (Meta Graph) with the same honesty model as
- * email: when credentials exist the message is delivered for real, otherwise
- * it is recorded as "queued" so the UI never lies about a send.
+ * email: when credentials exist (the organisation's own token, or server env)
+ * the message is delivered for real, otherwise it is recorded as "queued" so
+ * the UI never lies about a send.
  */
-export function whatsappConfigured(): boolean {
-  return Boolean(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID);
+export async function whatsappConfigured(organizationId?: string): Promise<boolean> {
+  return Boolean(await resolveWhatsAppAccount(organizationId));
 }
 
 export async function sendWhatsApp(input: {
@@ -32,18 +34,19 @@ export async function sendWhatsApp(input: {
     },
   });
 
-  if (!whatsappConfigured()) return { status: "queued", id: row.id };
+  const account = await resolveWhatsAppAccount(input.organizationId);
+  if (!account) return { status: "queued", id: row.id };
 
   try {
     // Meta stores numbers without "+".
     const msisdn = input.to.replace(/[^\d]/g, "");
     const response = await fetch(
-      `https://graph.facebook.com/v20.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/v20.0/${account.phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${env.WHATSAPP_TOKEN}`,
+          Authorization: `Bearer ${account.token}`,
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",

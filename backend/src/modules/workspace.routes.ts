@@ -44,7 +44,11 @@ const recordBodySchema = z.object({
     .refine((v) => v === undefined || v === "" || /^[A-Z]{3}$/.test(v), "Invalid currency code")
     .optional(),
   status: z.string().max(60).optional(),
-  email: z.string().max(160).refine((v) => v === "" || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v), "Invalid email").optional(),
+  email: z
+    .string()
+    .max(160)
+    .refine((v) => v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Invalid email")
+    .optional(),
   phone: z.string().max(40).optional(),
   source: z.string().max(60).optional(),
   notes: z.string().max(4000).optional(),
@@ -261,32 +265,50 @@ router.post(
       body.branch,
     );
 
-    const record = await prisma.record.create({
-      data: {
-        organizationId,
-        moduleId: module.id,
-        tab: body.tab ?? module.tabs[0] ?? null,
-        reference: body.reference ?? (await nextReference(organizationId, module)),
-        name: body.name,
-        detail: body.detail ?? "",
-        destination: body.destination ?? "",
-        ownerId,
-        ownerName,
-        branchId,
-        branchName,
-        date: body.date ?? new Date().toISOString().slice(0, 10),
-        amount: body.amount ?? 0,
-        currency: body.currency ?? "",
-        status: statusOf(module.id, body.status),
-        email: body.email ?? "",
-        phone: body.phone ?? "",
-        source: body.source ?? "Website",
-        notes: body.notes ?? "",
-        extra: normalizeExtra(body.extra),
-        meta: stringifyJson(body.meta ?? {}),
-        createdById: req.auth!.userId,
-      },
-    });
+    // Two records created in the same second can race for the same reference —
+    // retry with the next free one instead of failing the save.
+    let record = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const reference =
+        body.reference ?? (await nextReference(organizationId, module)) + (attempt ? `-${attempt + 1}` : "");
+      try {
+        record = await prisma.record.create({
+          data: {
+            organizationId,
+            moduleId: module.id,
+            tab: body.tab ?? module.tabs[0] ?? null,
+            reference,
+            name: body.name,
+            detail: body.detail ?? "",
+            destination: body.destination ?? "",
+            ownerId,
+            ownerName,
+            branchId,
+            branchName,
+            date: body.date ?? new Date().toISOString().slice(0, 10),
+            amount: body.amount ?? 0,
+            currency: body.currency ?? "",
+            status: statusOf(module.id, body.status),
+            email: body.email ?? "",
+            phone: body.phone ?? "",
+            source: body.source ?? "Website",
+            notes: body.notes ?? "",
+            extra: normalizeExtra(body.extra),
+            meta: stringifyJson(body.meta ?? {}),
+            createdById: req.auth!.userId,
+          },
+        });
+        break;
+      } catch (error) {
+        const isConflict =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          (error as { code?: string }).code === "P2002";
+        if (!isConflict) throw error;
+      }
+    }
+    if (!record) throw new BadRequestError("Could not allocate a reference for this record");
 
     await Promise.all([
       recordAudit({

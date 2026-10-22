@@ -73,12 +73,16 @@ type Store = {
   logout: () => Promise<void>;
   reload: () => Promise<void>;
   getRows: (id: string, tab?: string) => RecordRow[];
+  /** Creates a record (optimistic, fire-and-forget). */
   save: (module: string, row: RecordRow) => void;
+  /** Creates a record and resolves with the saved row (server reference). */
+  createRecord: (module: string, row: RecordRow) => Promise<RecordRow | null>;
   update: (module: string, row: RecordRow) => void;
   remove: (module: string, rowId: string) => void;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (task: Task) => void;
   toggleTask: (id: string, done: boolean) => void;
+  removeTask: (id: string) => void;
   addField: (module: string, field: CustomField) => void;
   removeField: (module: string, fieldId: string) => void;
   updateSettings: (patch: Partial<Settings>) => void;
@@ -524,6 +528,31 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     [status, pushAudit, refreshAudit],
   );
 
+  /** Same as save, but resolves with the created row (with its real reference). */
+  const createRecord = useCallback(
+    (module: string, row: RecordRow): Promise<RecordRow | null> => {
+      if (status !== "ready") {
+        setRecords((prev) => ({ ...prev, [module]: [row, ...(prev[module] ?? seedRows(module))] }));
+        pushAudit("Created", module, row.id, row.name);
+        return Promise.resolve(row);
+      }
+      return (async () => {
+        try {
+          const dto = await api.createRecord(module, api.toRecordBody(row));
+          const mapped = api.toRecordRow(dto);
+          recordIds.current.set(recordKey(module, mapped.id), dto.id);
+          setRecords((prev) => ({ ...prev, [module]: [mapped, ...(prev[module] ?? [])] }));
+          void refreshAudit();
+          return mapped;
+        } catch (error) {
+          toast.error(errorMessage(error, `Could not save the ${module} record`));
+          return null;
+        }
+      })();
+    },
+    [status, pushAudit, refreshAudit],
+  );
+
   const update = useCallback(
     (module: string, row: RecordRow) => {
       if (status !== "ready") {
@@ -609,6 +638,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
           date: task.date,
           priority: task.priority,
           done: task.done,
+          ...(task.relatedModule ? { relatedModule: task.relatedModule } : {}),
+          ...(task.relatedRecordId ? { relatedRecordId: task.relatedRecordId } : {}),
         })
         .then((dto) => setTasks((prev) => [...prev, api.toTask(dto)]))
         .catch((error) => toast.error(errorMessage(error, "Could not create the task")));
@@ -641,6 +672,17 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       void api
         .updateTask(id, { done })
         .catch((error) => toast.error(errorMessage(error, "Could not update the task")));
+    },
+    [status],
+  );
+
+  const removeTask = useCallback(
+    (id: string) => {
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+      if (status !== "ready") return;
+      void api.deleteTask(id).catch(() =>
+        toast.error("Could not delete the task"),
+      );
     },
     [status],
   );
@@ -714,11 +756,13 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         reload,
         getRows,
         save,
+        createRecord,
         update,
         remove,
         addTask,
         updateTask,
         toggleTask,
+        removeTask,
         addField,
         removeField,
         updateSettings,

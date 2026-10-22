@@ -83,6 +83,8 @@ export type TaskDto = {
   date: string;
   priority: string;
   done: boolean;
+  relatedModule?: string | null;
+  relatedRecordId?: string | null;
 };
 
 export type CustomFieldDto = {
@@ -194,7 +196,7 @@ export function toRecordBody(row: RecordRow) {
 }
 
 export function toTask(dto: TaskDto): Task {
-  return {
+  const task: Task = {
     id: dto.id,
     title: dto.title,
     type: dto.type,
@@ -203,6 +205,9 @@ export function toTask(dto: TaskDto): Task {
     priority: dto.priority,
     done: Boolean(dto.done),
   };
+  if (dto.relatedModule) task.relatedModule = dto.relatedModule;
+  if (dto.relatedRecordId) task.relatedRecordId = dto.relatedRecordId;
+  return task;
 }
 
 const fieldType = (type: string): CustomField["type"] =>
@@ -276,6 +281,9 @@ export const createTask = (body: unknown) =>
 
 export const updateTask = (id: string, body: unknown) =>
   apiRequest<TaskDto>(`/tasks/${id}`, { method: "PATCH", body });
+
+export const deleteTask = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/tasks/${id}`, { method: "DELETE" });
 
 /* ------------------------------------------------------------------ *
  * Custom fields

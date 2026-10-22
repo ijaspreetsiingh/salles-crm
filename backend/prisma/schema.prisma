@@ -44,6 +44,8 @@ model Organization {
   notifications  Notification[]
   conversations  Conversation[]
   templates      MessageTemplate[]
+  callLogs       CallLog[]
+  consents       ConsentRecord[]
   workflows      Workflow[]
   integrations   IntegrationConnection[]
   webhooks       Webhook[]
@@ -347,6 +349,49 @@ model MessageTemplate {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, channel])
+}
+
+/// A logged phone call - who was called, on which number, for how long and
+/// what came out of it. Real sales teams live in this list.
+model CallLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactName    String
+  contactPhone   String   @default("")
+  direction      String   @default("Outbound") // Inbound | Outbound
+  outcome        String   @default("Connected")
+  durationMinutes Int     @default(0)
+  notes          String   @default("")
+  recordId       String?
+  ownerName      String   @default("")
+  calledById     String?
+  calledAt       DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, calledAt])
+  @@index([organizationId, outcome])
+}
+
+/// What a customer agreed to be contacted on - email, WhatsApp, calls.
+/// Kept per email address so the consent trail survives record edits.
+model ConsentRecord {
+  id             String   @id @default(cuid())
+  organizationId String
+  contactEmail   String
+  contactPhone   String   @default("")
+  contactName    String   @default("")
+  email          Boolean  @default(false)
+  whatsapp       Boolean  @default(false)
+  calls          Boolean  @default(false)
+  source         String   @default("Direct")
+  capturedAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, contactEmail])
+  @@index([organizationId, updatedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
