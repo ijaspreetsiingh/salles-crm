@@ -24,6 +24,21 @@ payments, flights, AI, backups and the platform super admin.
 No key makes the app break — every integration degrades to a clearly-labelled
 queued/mock mode so the CRM stays honest about what actually went out.
 
+### Per-company email & WhatsApp (no server keys needed)
+
+Each company can connect **its own** accounts from
+**Settings → Email & WhatsApp** — no admin action, no server restart:
+
+- **Email:** SMTP host, port, username, app password (for Gmail: Google
+  Account → Security → 2‑Step Verification → App passwords), From address.
+  A test send proves it before you go live. Stored on the organisation, so it
+  only applies to that company's workspace.
+- **WhatsApp:** Meta WhatsApp Cloud API phone number ID + permanent access
+  token, with a test message to a real number.
+
+These workspace settings override the server env for that company, and the
+env stays as the fallback for everyone else.
+
 ## 2. Database
 
 ### Quick start (SQLite — dev/small offices)
@@ -93,6 +108,31 @@ entry appears in the finance outbox trail.
   become Leads + an email alert to the workspace admin.
 - **Invoices:** downloadable GST-invoice PDF per record (Quick actions →
   Invoice PDF), payment links, email-the-invoice, delivery status in outbox.
+- **Quotations & proposals:** the Price quotes page opens a full cover page
+  (company masthead, priced package breakdown, GST, validity date) and
+  produces a real PDF via **Download PDF**, sent by **Email quotation**.
+  A proposal is the same document with "TRAVEL PROPOSAL" and soft terms —
+  create one from any enquiry via *Create proposal* in the side panel.
+- **Side panel (no popups):** every record opens in a right-hand panel with
+  contact actions, follow-ups (with a real due date), the journey rail and
+  every detail. *Create quotation* / *Create proposal* open a second screen
+  inside that same panel; *Convert to booking* creates the booking in one
+  click. The row `···` menu does the same actions plus stage changes,
+  assignment and delete.
+- **Customer Information cover:** clicking a customer opens a full page with
+  interaction history (each card opens the panel), this customer's follow-ups
+  on the calendar, the stage funnel with the enquiries behind each stage, and
+  the complete detail list.
+- **Email & WhatsApp:** clicking Email or WhatsApp on any record hands off to
+  Communications with that contact open — email and phone side by side, and
+  you can start the thread from there.
+- **Call logs, templates, consent:** Communications → Call logs records every
+  call with direction, outcome and talk time; Templates saves the replies you
+  send every day; Consent records which channels each customer agreed to.
+- **Your own email account:** Settings → Email & WhatsApp stores the
+  company's SMTP login (Gmail app password, Zoho, Outlook…) and WhatsApp
+  Cloud credentials per workspace, with test sends. Workspace settings win
+  over the server env, so every company can run its own inbox.
 - **Messages:** outbound email/WhatsApp on a conversation is delivered for
   real when credentials exist; otherwise queued with a clear status.
 - **Members:** inviting a teammate queues/sends the invite email.
@@ -100,6 +140,8 @@ entry appears in the finance outbox trail.
 - **Multi-currency:** per-record currency (INR/USD/EUR/GBP/AED/SGD) set while
   editing the amount; FX rates editable in Settings → Tax settings; invoices
   show the applied rate.
+- **Layouts:** List, Board and Cards on every module; the Cards layout
+  matches the customer card design.
 
 ## 6. Super admin (platform portal)
 
