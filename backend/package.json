@@ -18,6 +18,9 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "db:reset": "prisma db push --force-reset",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:pg": "node scripts/db-provider.mjs postgres && echo 'Now set DATABASE_URL to a postgres:// URL and run: npm run prisma:push'",
+    "db:sqlite": "node scripts/db-provider.mjs sqlite && echo 'Now set DATABASE_URL to file:./data/traveldesk.db and run: npm run prisma:push'",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"

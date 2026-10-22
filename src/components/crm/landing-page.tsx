@@ -126,7 +126,7 @@ export function LandingPage() {
             {
               icon: <Wallet size={18} />,
               title: "Money you can actually trust",
-              body: "GST-aware invoices, payments tracked, revenue visible city-wise, every single day.",
+              body: "GST invoices as PDF, Razorpay payment links, cash tracked — revenue visible city-wise every single day.",
             },
             {
               icon: <Users size={18} />,

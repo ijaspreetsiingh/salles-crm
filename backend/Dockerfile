@@ -5,11 +5,14 @@ WORKDIR /app
 # Prisma needs openssl on alpine.
 RUN apk add --no-cache openssl
 
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json* ./scripts ./scripts
 RUN npm install
 
 COPY prisma ./prisma
-RUN npx prisma generate
+# DATABASE_PROVIDER chooses the Prisma engine baked into this build
+# (sqlite by default; set to postgres for managed Postgres deployments).
+ARG DATABASE_PROVIDER=sqlite
+RUN node scripts/db-provider.mjs ${DATABASE_PROVIDER} && npx prisma generate
 
 COPY tsconfig.json ./
 COPY src ./src
@@ -20,6 +23,7 @@ RUN npm prune --omit=dev
 
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
+ARG DATABASE_PROVIDER=sqlite
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
@@ -31,6 +35,7 @@ RUN apk add --no-cache openssl wget
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/scripts ./scripts
 COPY package.json ./
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh

@@ -5,6 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Set DATABASE_PROVIDER=postgres to bake the Postgres Prisma engine in.
+      args:
+        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
     image: traveldesk/backend:latest
     container_name: traveldesk-api
     restart: unless-stopped
@@ -13,22 +16,39 @@ services:
     environment:
       NODE_ENV: production
       PORT: "4000"
-      APP_URL: http://localhost:4000
-      CORS_ORIGINS: http://localhost:5173,http://localhost:8080,http://localhost:4000
-      # SQLite file lives on a named volume so data survives rebuilds.
-      DATABASE_URL: file:/app/data/traveldesk.db
+      APP_URL: ${APP_URL:-http://localhost:4000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080,http://localhost:4000}
+      # SQLite in a volume by default; point DATABASE_URL at postgres:// (see
+      # the postgres service below) and rebuild with DATABASE_PROVIDER=postgres
+      # for managed production deployments.
+      DATABASE_URL: ${DATABASE_URL:-file:/app/data/traveldesk.db}
       UPLOAD_DIR: /app/data/uploads
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-please-change-me-000000000000}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-please-change-me-000000000000}
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL_DAYS: "30"
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS:-superadmin@traveldesk.io}
       SEED_ON_START: "true"
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-superadmin@traveldesk.io}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD:-Superadmin@123}
       SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-owner@horizontravel.in}
       SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:-Traveldesk@123}
       LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID:-}
+      AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET:-}
     volumes:
       - traveldesk-data:/app/data
     healthcheck:
@@ -38,5 +58,28 @@ services:
       retries: 5
       start_period: 20s
 
+  # Production Postgres. Bring it up with:
+  #   DATABASE_PROVIDER=postgres DATABASE_URL=postgres://traveldesk:<pass>@postgres:5432/traveldesk docker compose up
+  postgres:
+    image: postgres:16-alpine
+    container_name: traveldesk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-traveldesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-traveldesk-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-traveldesk}
+    volumes:
+      - traveldesk-pgdata:/var/lib/postgresql/data
+    # Postgres only needs to be reachable by the api container and pg_dump
+    # backups; it does not have to publish a port unless you want one.
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-traveldesk}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
 volumes:
   traveldesk-data:
+  traveldesk-pgdata:
