@@ -757,6 +757,12 @@ export type ChannelStatusDto = {
     phoneNumberId: string;
     hasToken: boolean;
   };
+  razorpay: {
+    configured: boolean;
+    source: "settings" | "env" | "none";
+    detail: string;
+    hasKey: boolean;
+  };
 };
 
 export const fetchChannelStatus = () => apiRequest<ChannelStatusDto>("/channels");
@@ -778,6 +784,15 @@ export const saveWhatsAppChannel = (body: { phoneNumberId: string; token?: strin
 
 export const removeWhatsAppChannel = () =>
   apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "DELETE" });
+
+export const saveRazorpayChannel = (body: {
+  keyId: string;
+  keySecret: string;
+  webhookSecret?: string | undefined;
+}) => apiRequest<{ saved: boolean }>("/channels/razorpay", { method: "PUT", body });
+
+export const removeRazorpayChannel = () =>
+  apiRequest<{ saved: boolean }>("/channels/razorpay", { method: "DELETE" });
 
 export const sendEmailTest = (to: string) =>
   apiRequest<{ status: string; id: string }>("/channels/email/test", {

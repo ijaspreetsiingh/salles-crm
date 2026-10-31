@@ -10,7 +10,9 @@ import {
   maskSecret,
   resolveEmailAccount,
   resolveWhatsAppAccount,
+  resolveRazorpayAccount,
   describeWhatsAppAccount,
+  describeRazorpayAccount,
 } from "../services/channels";
 import { sendEmail } from "../services/email";
 import { sendWhatsApp } from "../services/whatsapp";
@@ -52,6 +54,7 @@ router.get(
     const organizationId = req.auth!.organizationId;
     const email = await resolveEmailAccount(organizationId);
     const whatsapp = await resolveWhatsAppAccount(organizationId);
+    const razorpay = await resolveRazorpayAccount(organizationId);
     const emailSource =
       email && env.SMTP_HOST && email.user === env.SMTP_USER ? "env" : email ? "settings" : "none";
     return ok(res, {
@@ -67,6 +70,10 @@ router.get(
         ...(describeWhatsAppAccount(whatsapp, organizationId)),
         phoneNumberId: whatsapp?.phoneNumberId ?? "",
         hasToken: Boolean(whatsapp?.token),
+      },
+      razorpay: {
+        ...(describeRazorpayAccount(razorpay)),
+        hasKey: Boolean(razorpay?.keyId),
       },
     });
   }),
@@ -200,6 +207,67 @@ router.delete(
       action: "Updated",
       moduleId: "settings",
       label: "WhatsApp channel removed",
+      req,
+    });
+    return ok(res, { saved: true });
+  }),
+);
+
+const razorpaySchema = z.object({
+  keyId: z.string().min(8).max(100),
+  keySecret: z.string().min(8).max(200),
+  webhookSecret: z.string().min(8).max(200).optional(),
+});
+
+/** Saves the organisation's Razorpay payment credentials. */
+router.put(
+  "/razorpay",
+  requireRole("company_admin"),
+  validate(razorpaySchema),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const body = req.body as z.infer<typeof razorpaySchema>;
+    await writeOrgSettings(organizationId, (settings) => {
+      const channels = (settings.channels ?? {}) as Record<string, unknown>;
+      return {
+        ...settings,
+        channels: {
+          ...channels,
+          razorpay: {
+            keyId: body.keyId,
+            keySecret: body.keySecret,
+            webhookSecret: body.webhookSecret ?? "",
+          },
+        },
+      };
+    });
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: `Razorpay credentials updated (${body.keyId})`,
+      req,
+    });
+    return ok(res, { saved: true });
+  }),
+);
+
+/** Removes the organisation's Razorpay credentials. */
+router.delete(
+  "/razorpay",
+  requireRole("company_admin"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    await writeOrgSettings(organizationId, (settings) => {
+      const channels = { ...((settings.channels ?? {}) as Record<string, unknown>) };
+      delete channels.razorpay;
+      return { ...settings, channels };
+    });
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: "Razorpay credentials removed",
       req,
     });
     return ok(res, { saved: true });

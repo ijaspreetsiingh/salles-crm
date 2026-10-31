@@ -23,9 +23,16 @@ export type ChannelWhatsApp = {
   phoneNumberId: string;
 };
 
+export type ChannelRazorpay = {
+  keyId: string;
+  keySecret: string;
+  webhookSecret: string;
+};
+
 type ChannelSettings = {
   email: Partial<ChannelEmail>;
   whatsapp: Partial<ChannelWhatsApp>;
+  razorpay: Partial<ChannelRazorpay>;
 };
 
 export type LoadedChannels = Partial<ChannelSettings>;
@@ -100,6 +107,41 @@ export function describeEmailAccount(account: ChannelEmail | null): ChannelStatu
     configured: true,
     source: fromEnv ? "settings" : "env",
     detail: `${account.host}:${account.port} · ${account.user}`,
+  };
+}
+
+/** The Razorpay account to collect payments with: organisation settings override env. */
+export async function resolveRazorpayAccount(
+  organizationId?: string,
+): Promise<ChannelRazorpay | null> {
+  const channels = await loadChannelSettings(organizationId);
+  const orgRz = channels.razorpay;
+  if (orgRz?.keyId && orgRz?.keySecret) {
+    return {
+      keyId: orgRz.keyId,
+      keySecret: orgRz.keySecret,
+      webhookSecret: orgRz.webhookSecret ?? "",
+    };
+  }
+  if (env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET) {
+    return {
+      keyId: env.RAZORPAY_KEY_ID,
+      keySecret: env.RAZORPAY_KEY_SECRET,
+      webhookSecret: env.RAZORPAY_WEBHOOK_SECRET ?? "",
+    };
+  }
+  return null;
+}
+
+export function describeRazorpayAccount(
+  account: ChannelRazorpay | null,
+): { configured: boolean; source: "settings" | "env" | "none"; detail: string } {
+  if (!account) return { configured: false, source: "none", detail: "" };
+  const fromEnv = account.keyId === env.RAZORPAY_KEY_ID;
+  return {
+    configured: true,
+    source: fromEnv ? "env" : "settings",
+    detail: `Key ID: ${account.keyId}`,
   };
 }
 

@@ -115,10 +115,12 @@ import {
   fetchDomain,
   revokeApiKey,
   removeEmailChannel,
+  removeRazorpayChannel,
   removeWhatsAppChannel,
   runReport,
   runWorkflow,
   saveEmailChannel,
+  saveRazorpayChannel,
   saveWhatsAppChannel,
   saveConsent,
   type ConsentDto,
@@ -2283,6 +2285,7 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
   const [smtpTestTo, setSmtpTestTo] = useState("");
   const [waForm, setWaForm] = useState({ phoneNumberId: "", token: "" });
   const [waTestTo, setWaTestTo] = useState("");
+  const [rzForm, setRzForm] = useState({ keyId: "", keySecret: "", webhookSecret: "" });
 
   // Prefill the email form from the saved account once it loads.
   useEffect(() => {
@@ -2975,6 +2978,76 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
                   await removeWhatsAppChannel();
                   reloadChannels();
                   toast.success("WhatsApp channel removed");
+                } catch (err) {
+                  toast.error(errorMessage(err));
+                }
+              }}
+            >
+              Disconnect
+            </Button>
+          )}
+        </div>
+
+        <h3 style={{ marginTop: 28 }}>Razorpay Payments</h3>
+        <p>
+          Collect payments from customers online. Create Razorpay payment links from invoices and
+          let customers pay by card, UPI, net banking or wallet.
+        </p>
+        <div className="form-grid">
+          <label>
+            Key ID
+            <input
+              placeholder="rzp_live_1234567890"
+              value={rzForm.keyId}
+              onChange={(e) => setRzForm({ ...rzForm, keyId: e.target.value })}
+            />
+          </label>
+          <label>
+            Key Secret
+            <input
+              type="password"
+              placeholder="leave blank to keep the saved one"
+              value={rzForm.keySecret}
+              onChange={(e) => setRzForm({ ...rzForm, keySecret: e.target.value })}
+            />
+          </label>
+          <label>
+            Webhook Secret
+            <input
+              type="password"
+              placeholder="optional — for Razorpay webhook verification"
+              value={rzForm.webhookSecret}
+              onChange={(e) => setRzForm({ ...rzForm, webhookSecret: e.target.value })}
+            />
+          </label>
+        </div>
+        <div className="dialog-actions">
+          <Button
+            onClick={async () => {
+              try {
+                await saveRazorpayChannel({
+                  keyId: rzForm.keyId,
+                  keySecret: rzForm.keySecret,
+                  ...(rzForm.webhookSecret ? { webhookSecret: rzForm.webhookSecret } : {}),
+                });
+                setRzForm({ keyId: "", keySecret: "", webhookSecret: "" });
+                reloadChannels();
+                toast.success("Razorpay credentials saved");
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not save Razorpay credentials"));
+              }
+            }}
+          >
+            <Check /> Save Razorpay account
+          </Button>
+          {channelStatus?.razorpay.source === "settings" && (
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                try {
+                  await removeRazorpayChannel();
+                  reloadChannels();
+                  toast.success("Razorpay credentials removed");
                 } catch (err) {
                   toast.error(errorMessage(err));
                 }
