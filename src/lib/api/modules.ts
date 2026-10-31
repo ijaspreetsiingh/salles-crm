@@ -350,6 +350,49 @@ export const fetchWorkflowRunsFor = (id: string) =>
   apiRequest<Array<WorkflowRunDto & { workflowId: string }>>(`/workflows/${id}/runs`);
 
 /* ------------------------------------------------------------------ *
+ * Custom Fields
+ * ------------------------------------------------------------------ */
+
+export type CustomFieldDto = {
+  id: string;
+  organizationId: string;
+  moduleId: string;
+  key: string;
+  label: string;
+  type: string;
+  options: string[];
+  required: boolean;
+  position: number;
+  createdAt: string;
+};
+
+export type CustomFieldInput = {
+  moduleId: string;
+  label: string;
+  key?: string;
+  type?: "text" | "number" | "date" | "select" | "boolean" | "email" | "phone";
+  options?: string[];
+  required?: boolean;
+  position?: number;
+};
+
+export const fetchCustomFields = (moduleId?: string) =>
+  apiRequest<CustomFieldDto[]>("/custom-fields", {
+    query: moduleId ? { moduleId } : {},
+  });
+
+export const createCustomField = (body: CustomFieldInput) =>
+  apiRequest<CustomFieldDto>("/custom-fields", { method: "POST", body });
+
+export const updateCustomField = (
+  id: string,
+  body: Partial<CustomFieldInput>,
+) => apiRequest<CustomFieldDto>(`/custom-fields/${id}`, { method: "PATCH", body });
+
+export const deleteCustomField = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/custom-fields/${id}`, { method: "DELETE" });
+
+/* ------------------------------------------------------------------ *
  * Integrations + webhooks
  * ------------------------------------------------------------------ */
 
@@ -478,6 +521,27 @@ export const fetchUsage = () =>
 export const fetchInvoices = () => apiRequest<InvoiceListDto>("/billing/invoices");
 
 /* ------------------------------------------------------------------ *
+ * White-label domain
+ * ------------------------------------------------------------------ */
+
+export type DomainDto = {
+  id: string;
+  name: string;
+  slug: string;
+  customDomain: string | null;
+};
+
+export const fetchDomain = () => apiRequest<DomainDto>("/domains/domain");
+
+export const updateDomain = (body: { customDomain: string | null }) =>
+  apiRequest<DomainDto>("/domains/domain", { method: "PUT", body });
+
+export const resolveDomain = (domain: string) =>
+  apiRequest<{ id: string; name: string; slug: string; customDomain: string; plan: string; planStatus: string }>(
+    `/domains/resolve/${encodeURIComponent(domain)}`
+  );
+
+/* ------------------------------------------------------------------ *
  * Uploads
  * ------------------------------------------------------------------ */
 
@@ -580,7 +644,11 @@ export const downloadInvoicePdf = async (reference: string) => {
 
 export const createPaymentLink = (
   reference: string,
-  contact: { customerEmail?: string | undefined; customerPhone?: string | undefined; customerName?: string | undefined } = {},
+  contact: {
+    customerEmail?: string | undefined;
+    customerPhone?: string | undefined;
+    customerName?: string | undefined;
+  } = {},
 ) =>
   apiRequest<PaymentLinkDto>(`/finance/invoices/${encodeURIComponent(reference)}/payment-link`, {
     method: "POST",
@@ -588,10 +656,13 @@ export const createPaymentLink = (
   });
 
 export const sendInvoiceEmail = (reference: string, to: string, note?: string) =>
-  apiRequest<{ status: string; id: string }>(`/finance/invoices/${encodeURIComponent(reference)}/send`, {
-    method: "POST",
-    body: { to, note },
-  });
+  apiRequest<{ status: string; id: string }>(
+    `/finance/invoices/${encodeURIComponent(reference)}/send`,
+    {
+      method: "POST",
+      body: { to, note },
+    },
+  );
 
 export const fetchOutbox = (take = 100) =>
   apiRequest<OutboxEntryDto[]>("/finance/outbox", { query: { take } });
@@ -655,14 +726,16 @@ export const saveConsent = (body: {
   source?: string | undefined;
 }) => apiRequest<ConsentDto>("/comms/consents", { method: "PUT", body });
 
-export const createMessageTemplate = (body: {
-  channel: string;
-  name: string;
-  body: string;
-}) => apiRequest<{ id: string; channel: string; name: string; body: string }>("/conversations/templates", { method: "POST", body });
+export const createMessageTemplate = (body: { channel: string; name: string; body: string }) =>
+  apiRequest<{ id: string; channel: string; name: string; body: string }>(
+    "/conversations/templates",
+    { method: "POST", body },
+  );
 
 export const deleteMessageTemplate = (id: string) =>
-  apiRequest<{ deleted: boolean }>(`/conversations/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
+  apiRequest<{ deleted: boolean }>(`/conversations/templates/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
 
 /* ------------------------------------------------------------------ *
  * Channels — the organisation's own email / WhatsApp accounts
@@ -686,8 +759,7 @@ export type ChannelStatusDto = {
   };
 };
 
-export const fetchChannelStatus = () =>
-  apiRequest<ChannelStatusDto>("/channels");
+export const fetchChannelStatus = () => apiRequest<ChannelStatusDto>("/channels");
 
 export const saveEmailChannel = (body: {
   host: string;
@@ -701,10 +773,8 @@ export const saveEmailChannel = (body: {
 export const removeEmailChannel = () =>
   apiRequest<{ saved: boolean }>("/channels/email", { method: "DELETE" });
 
-export const saveWhatsAppChannel = (body: {
-  phoneNumberId: string;
-  token?: string | undefined;
-}) => apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "PUT", body });
+export const saveWhatsAppChannel = (body: { phoneNumberId: string; token?: string | undefined }) =>
+  apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "PUT", body });
 
 export const removeWhatsAppChannel = () =>
   apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "DELETE" });
@@ -743,10 +813,13 @@ export const downloadQuotationPdf = async (reference: string) => {
 };
 
 export const sendQuotationEmail = (reference: string, to: string, note?: string) =>
-  apiRequest<{ status: string; id: string }>(`/finance/quotations/${encodeURIComponent(reference)}/send`, {
-    method: "POST",
-    body: { to, note },
-  });
+  apiRequest<{ status: string; id: string }>(
+    `/finance/quotations/${encodeURIComponent(reference)}/send`,
+    {
+      method: "POST",
+      body: { to, note },
+    },
+  );
 
 /* ------------------------------------------------------------------ *
  * Flights — real Amadeus search when keys are configured
@@ -776,10 +849,11 @@ export const searchFlights = (query: { from: string; to: string; date: string; a
  * ------------------------------------------------------------------ */
 
 export const submitPublicLead = (slug: string, body: Record<string, unknown>) =>
-  apiRequest<{ ok: boolean; reference: string; message: string }>(
-    `/public/lead-form/${slug}`,
-    { method: "POST", body, auth: false },
-  );
+  apiRequest<{ ok: boolean; reference: string; message: string }>(`/public/lead-form/${slug}`, {
+    method: "POST",
+    body,
+    auth: false,
+  });
 
 export const fetchPublicLeadForm = (slug: string) =>
   apiRequest<{
@@ -845,14 +919,54 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
  * Workspace extras
  * ------------------------------------------------------------------ */
 
+/**
+ * One change applied to many records.
+ *
+ * The rows are named by their reference ("LD-2409") — the code the person
+ * ticked — not by a database id, so what is sent is exactly what was chosen.
+ */
 export const bulkRecords = (
   moduleId: string,
-  body: { action: "delete" | "status" | "assign"; ids: string[]; value?: string },
+  body: {
+    action: "delete" | "status" | "assign";
+    references: string[];
+    value?: string;
+  },
 ) =>
-  apiRequest<{ affected: number }>(`/workspace/${moduleId}/records/bulk`, { method: "POST", body });
+  apiRequest<{ affected: number }>(`/workspace/${moduleId}/records/bulk`, {
+    method: "POST",
+    body,
+  });
 
 export const exportRecordsCsv = (moduleId: string, filters: Filters = {}) =>
   apiDownload(`/workspace/${moduleId}/export.csv`, filters);
+
+/* ------------------------------------------------------------------ *
+ * The daily email digest
+ * ------------------------------------------------------------------ */
+
+export type DigestSettingsDto = {
+  enabled: boolean;
+  hour: number;
+  scope: "mine" | "team";
+  recipients: string[];
+  lastSentDate: string;
+};
+
+export const fetchDigestSettings = () =>
+  apiRequest<{ settings: DigestSettingsDto; timezone: string }>("/organizations/current/digest");
+
+export const saveDigestSettings = (body: Partial<DigestSettingsDto>) =>
+  apiRequest<{ settings: DigestSettingsDto }>("/organizations/current/digest", {
+    method: "PATCH",
+    body,
+  });
+
+/** Sends today's list to the signed-in person right now and says how it went. */
+export const sendDigestNow = () =>
+  apiRequest<{ status: string; total: number; to: string }>("/organizations/current/digest/send", {
+    method: "POST",
+  });
 
 export type PlatformOrgDto = {
   id: string;
@@ -865,9 +979,14 @@ export type PlatformOrgDto = {
   status: string;
 };
 
-export type PlatformPlanDto = PlanDto & { priceYearly: number; limits: Record<string, number>; position: number };
+export type PlatformPlanDto = PlanDto & {
+  priceYearly: number;
+  limits: Record<string, number>;
+  position: number;
+};
 
-export const fetchPlatformOrganizations = () => apiRequest<PlatformOrgDto[]>("/platform/organizations");
+export const fetchPlatformOrganizations = () =>
+  apiRequest<PlatformOrgDto[]>("/platform/organizations");
 export const fetchPlatformPlans = () => apiRequest<PlatformPlanDto[]>("/platform/plans");
 export const createPlatformPlan = (body: {
   key: string;

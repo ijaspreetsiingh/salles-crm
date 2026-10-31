@@ -12,14 +12,10 @@ import {
 import { requireAuth } from "../middlewares/auth";
 import { validate } from "../middlewares/validate";
 import { authLimiter } from "../middlewares/rateLimit";
-import {
-  BadRequestError,
-  ConflictError,
-  UnauthorizedError,
-} from "../lib/errors";
+import { BadRequestError, ConflictError, UnauthorizedError } from "../lib/errors";
 import { env, isProd } from "../config/env";
 import { randomToken, sha256, stringifyJson, uniqueSlug } from "../lib/utils";
-import { ROLE_DEFS, normalizePermissions } from "../domain/rbac";
+import { ROLE_DEFS, isBranchScoped, normalizePermissions } from "../domain/rbac";
 import { recordAudit } from "../services/audit";
 
 const router = Router();
@@ -41,7 +37,11 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({ refreshToken: z.string().optional() });
 
-async function issueSession(userId: string, organizationId: string, meta: { ip?: string; userAgent?: string }) {
+async function issueSession(
+  userId: string,
+  organizationId: string,
+  meta: { ip?: string; userAgent?: string },
+) {
   const [user, membership] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
     prisma.membership.findUniqueOrThrow({
@@ -91,7 +91,11 @@ async function issueSession(userId: string, organizationId: string, meta: { ip?:
   };
 }
 
-function setAuthCookies(res: import("express").Response, accessToken: string, refreshToken: string) {
+function setAuthCookies(
+  res: import("express").Response,
+  accessToken: string,
+  refreshToken: string,
+) {
   const secure = isProd;
   res.cookie("access_token", accessToken, {
     httpOnly: true,
@@ -114,7 +118,9 @@ router.post(
   authLimiter,
   validate(registerSchema),
   asyncHandler(async (req, res) => {
-    const { organizationName, name, email, password, phone } = req.body as z.infer<typeof registerSchema>;
+    const { organizationName, name, email, password, phone } = req.body as z.infer<
+      typeof registerSchema
+    >;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictError("An account with this email already exists");
@@ -215,7 +221,9 @@ router.post(
     });
     setAuthCookies(res, session.accessToken, session.refreshToken);
 
-    const organization = await prisma.organization.findUnique({ where: { id: membership.organizationId } });
+    const organization = await prisma.organization.findUnique({
+      where: { id: membership.organizationId },
+    });
 
     await recordAudit({
       organizationId: membership.organizationId,
@@ -300,7 +308,9 @@ router.get(
       prisma.user.findUniqueOrThrow({ where: { id: auth.userId } }),
       prisma.organization.findUniqueOrThrow({ where: { id: auth.organizationId } }),
       prisma.membership.findUniqueOrThrow({
-        where: { userId_organizationId: { userId: auth.userId, organizationId: auth.organizationId } },
+        where: {
+          userId_organizationId: { userId: auth.userId, organizationId: auth.organizationId },
+        },
       }),
     ]);
 
@@ -318,6 +328,9 @@ router.get(
       membership: {
         roleKey: membership.roleKey,
         branchId: membership.branchId,
+        // The shell needs this to decide whether an office switcher would be
+        // honest: a branch-scoped role only ever sees its own office.
+        branchScoped: isBranchScoped(membership.roleKey),
       },
       permissions: normalizePermissions(auth.permissions),
     });
@@ -341,17 +354,28 @@ router.patch(
       where: { id: auth.userId },
       data: req.body,
     });
-    return ok(res, { id: user.id, name: user.name, email: user.email, phone: user.phone, avatarUrl: user.avatarUrl });
+    return ok(res, {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      avatarUrl: user.avatarUrl,
+    });
   }),
 );
 
 router.post(
   "/change-password",
   requireAuth,
-  validate(z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(128) })),
+  validate(
+    z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(128) }),
+  ),
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
-    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+    const { currentPassword, newPassword } = req.body as {
+      currentPassword: string;
+      newPassword: string;
+    };
 
     const user = await prisma.user.findUniqueOrThrow({ where: { id: auth.userId } });
     if (!(await verifyPassword(currentPassword, user.passwordHash))) {

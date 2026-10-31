@@ -11,11 +11,13 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as CustomerPortalRouteImport } from './routes/customer-portal'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as LandingRouteImport } from './routes/landing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as TeamRouteImport } from './routes/team'
 import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
 import { Route as WorkspaceModuleRouteImport } from './routes/workspace.$module'
 
@@ -27,6 +29,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CustomerPortalRoute = CustomerPortalRouteImport.update({
+  id: '/customer-portal',
+  path: '/customer-portal',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsRoute = InsightsRouteImport.update({
@@ -54,6 +61,11 @@ const TasksRoute = TasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamRoute = TeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LeadSlugRoute = LeadSlugRouteImport.update({
   id: '/lead/$slug',
   path: '/lead/$slug',
@@ -68,22 +80,26 @@ const WorkspaceModuleRoute = WorkspaceModuleRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/customer-portal': typeof CustomerPortalRoute
   '/insights': typeof InsightsRoute
   '/landing': typeof LandingRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/customer-portal': typeof CustomerPortalRoute
   '/insights': typeof InsightsRoute
   '/landing': typeof LandingRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
@@ -91,11 +107,13 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/customer-portal': typeof CustomerPortalRoute
   '/insights': typeof InsightsRoute
   '/landing': typeof LandingRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/tasks': typeof TasksRoute
+  '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
@@ -104,33 +122,39 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/customer-portal'
     | '/insights'
     | '/landing'
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/team'
     | '/lead/$slug'
     | '/workspace/$module'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
+    | '/customer-portal'
     | '/insights'
     | '/landing'
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/team'
     | '/lead/$slug'
     | '/workspace/$module'
   id:
     | '__root__'
     | '/'
     | '/admin'
+    | '/customer-portal'
     | '/insights'
     | '/landing'
     | '/login'
     | '/signup'
     | '/tasks'
+    | '/team'
     | '/lead/$slug'
     | '/workspace/$module'
   fileRoutesById: FileRoutesById
@@ -138,11 +162,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  CustomerPortalRoute: typeof CustomerPortalRoute
   InsightsRoute: typeof InsightsRoute
   LandingRoute: typeof LandingRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   TasksRoute: typeof TasksRoute
+  TeamRoute: typeof TeamRoute
   LeadSlugRoute: typeof LeadSlugRoute
   WorkspaceModuleRoute: typeof WorkspaceModuleRoute
 }
@@ -161,6 +187,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/customer-portal': {
+      id: '/customer-portal'
+      path: '/customer-portal'
+      fullPath: '/customer-portal'
+      preLoaderRoute: typeof CustomerPortalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights': {
@@ -198,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/team': {
+      id: '/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof TeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/lead/$slug': {
       id: '/lead/$slug'
       path: '/lead/$slug'
@@ -218,11 +258,13 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  CustomerPortalRoute: CustomerPortalRoute,
   InsightsRoute: InsightsRoute,
   LandingRoute: LandingRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   TasksRoute: TasksRoute,
+  TeamRoute: TeamRoute,
   LeadSlugRoute: LeadSlugRoute,
   WorkspaceModuleRoute: WorkspaceModuleRoute,
 }

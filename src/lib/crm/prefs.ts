@@ -18,6 +18,8 @@ export type Prefs = {
   favouriteModules: string[];
   recentModules: string[];
   tourCompleted: boolean;
+  /** Modules currently visible in the sidebar. Core modules are always included. */
+  sidebarModules: string[];
 };
 
 const DEFAULTS: Prefs = {
@@ -29,6 +31,7 @@ const DEFAULTS: Prefs = {
   favouriteModules: ["leads", "bookings", "finance"],
   recentModules: [],
   tourCompleted: false,
+  sidebarModules: ["leads", "customers", "quotations", "bookings", "finance", "tasks", "team"],
 };
 
 let cache: Prefs | null = null;

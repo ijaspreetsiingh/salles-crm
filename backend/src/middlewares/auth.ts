@@ -14,7 +14,12 @@ const readToken = (req: Request): string | null => {
   return cookie ?? null;
 };
 
-async function permissionsFor(organizationId: string, roleKey: string) {
+/**
+ * The permission set of a role — the company's own edited role if it exists,
+ * otherwise the built-in default. Exported because the daily digest has to
+ * scope one person's email exactly the way that person's session is scoped.
+ */
+export async function permissionsForRole(organizationId: string, roleKey: string) {
   const role = await prisma.role.findUnique({
     where: { organizationId_key: { organizationId, key: roleKey } },
   });
@@ -39,7 +44,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
         where: { prefix, revokedAt: null },
         include: { organization: true },
       });
-      if (!apiKey || apiKey.keyHash !== sha256(token)) throw new UnauthorizedError("Invalid API key");
+      if (!apiKey || apiKey.keyHash !== sha256(token))
+        throw new UnauthorizedError("Invalid API key");
 
       await prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } });
 
@@ -70,7 +76,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       throw new UnauthorizedError("You no longer have access to this organisation");
     }
 
-    const permissions = await permissionsFor(payload.org, membership.roleKey);
+    const permissions = await permissionsForRole(payload.org, membership.roleKey);
 
     req.auth = {
       userId: user.id,

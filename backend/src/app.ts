@@ -8,6 +8,7 @@ import { logger } from "./lib/logger";
 import { requestContext } from "./middlewares/requestContext";
 import { apiLimiter } from "./middlewares/rateLimit";
 import { errorHandler, notFoundHandler } from "./middlewares/error";
+import { securityHeaders } from "./middlewares/security";
 import { buildRoutes } from "./routes";
 
 /** Builds the Express application (kept separate from listen() for tests). */
@@ -35,6 +36,7 @@ export function createApp(): Express {
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+  app.use(securityHeaders);
   app.use(requestContext);
   app.use(
     pinoHttp({

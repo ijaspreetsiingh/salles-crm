@@ -4,6 +4,7 @@ import {
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
+  Bell,
   Check,
   CheckCheck,
   ChevronDown,
@@ -45,14 +46,17 @@ import {
 import { RecordSheet } from "./record-sheet";
 import { RecordCards } from "./record-cards";
 import { RowMenu } from "./row-menu";
+import { NotificationBell, type Notification } from "./notification-bell";
 import { Btn, FilterMenu, Kbd, Segmented } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Ledger } from "./archetypes/ledger";
 import { Pipeline } from "./archetypes/pipeline";
+import { Work } from "./archetypes/work";
 import { FirstRunWizard } from "./firstrun";
 import { HelpPanel } from "./help";
 import { guideFor } from "@/lib/crm/guide";
 import { plain, plainModule } from "@/lib/crm/language";
+import { t, detectLanguage, type Language, LANGUAGES } from "@/lib/crm/i18n";
 import {
   exportRows,
   findModule,
@@ -108,6 +112,7 @@ import {
   fetchSubscription,
   fetchWebhooks,
   fetchWorkflows,
+  fetchDomain,
   revokeApiKey,
   removeEmailChannel,
   removeWhatsAppChannel,
@@ -126,6 +131,7 @@ import {
   updateProfile,
   updateRole,
   updateSubscription,
+  updateDomain,
   updateWorkflow,
   type AssistantMessageDto,
   type ConversationDto,
@@ -136,6 +142,9 @@ import {
   type RoleDto,
   type WorkflowDto,
   type FlightSearchResult,
+  fetchNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from "@/lib/api/modules";
 import { toast } from "sonner";
 import {
@@ -240,14 +249,21 @@ export function Workspace({ module }: { module: Module }) {
     module: Module;
     data: Partial<RecordRow>;
   } | null>(null);
-  const [view, setView] = useState<"list" | "board" | "cards" | "grid">(
-    guide.archetype === "catalogue" ? "grid" : "list",
+  const [view, setView] = useState<"work" | "list" | "board" | "cards" | "grid">(
+    guide.archetype === "catalogue" ? "grid" : "work",
   );
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
   const [showTips, setShowTips] = useState(true);
   const [wizard, setWizard] = useState(false);
   const [help, setHelp] = useState(false);
   const offered = useRef(false);
+
+  /** Real-time notifications via SSE. */
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [userLanguage, setUserLanguage] = useState<Language>("en");
+  const [showNotifications, setShowNotifications] = useState(false);
+  const sseRef = useRef<EventSource | null>(null);
 
   const rows = getRows(module.id, tab);
   const tabDef = getTabDef(schema, tab);
@@ -262,6 +278,91 @@ export function Workspace({ module }: { module: Module }) {
       setWizard(true);
     }
   }, [rows.length, query, statusFilter.length, owner]);
+
+  /** Load language preference and connect SSE for real-time notifications. */
+  useEffect(() => {
+    const stored = localStorage.getItem("travo.language");
+    if (stored && (stored === "en" || stored === "hi" || stored === "es" || stored === "fr" || stored === "ar")) {
+      setUserLanguage(stored as Language);
+    } else {
+      setUserLanguage(detectLanguage());
+    }
+
+    // Connect to SSE notification stream
+    const eventSource = new EventSource("/api/v1/notifications/stream");
+    sseRef.current = eventSource;
+
+    eventSource.onmessage = (event) => {
+      try {
+        const raw = JSON.parse(event.data) as Notification;
+        const notification: Notification = {
+          ...raw,
+          level: (["info", "warning", "danger", "success"] as const).includes(raw.level as any)
+            ? raw.level
+            : "info",
+        };
+        setNotifications((prev) => [notification, ...prev.slice(0, 49)]);
+        setUnreadCount((prev) => prev + 1);
+      } catch {
+        // ignore malformed events
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+      sseRef.current = null;
+    };
+
+    // Fetch existing notifications
+    fetch("/api/v1/notifications")
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data?.items) {
+          const items: Notification[] = data.items.map((n: any) => ({
+            ...n,
+            level: (["info", "warning", "danger", "success"] as const).includes(n.level as any)
+              ? n.level
+              : "info",
+          }));
+          setNotifications(items);
+          setUnreadCount(data.unread ?? 0);
+        }
+      })
+      .catch(() => {
+        // notifications are optional
+      });
+
+    return () => {
+      eventSource.close();
+      sseRef.current = null;
+    };
+  }, []);
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleOpenNotification = (n: Notification) => {
+    if (n.moduleId) {
+      void navigate({ to: `/workspace/$module`, params: { module: n.moduleId } });
+    }
+  };
 
   // A view narrows by status; a search never changes the headline numbers.
   const scoped = useMemo(() => {
@@ -378,7 +479,7 @@ export function Workspace({ module }: { module: Module }) {
     if (module.id === "integrations") return <Integrations tab={tab} />;
     if (module.id === "quotations" && tab === "Itinerary builder") return <Itinerary />;
     if (module.id === "automation" && tab === "Workflows") return <Automations />;
-    if (module.id === "settings") return <SettingsPanel tab={tab} />;
+    if (module.id === "settings") return <SettingsPanel tab={tab} userLanguage={userLanguage} setUserLanguage={setUserLanguage} />;
     if (module.id === "flights" && tab === "Flight search")
       return <FlightSearch onOpen={setRow} rows={rows} />;
     if (module.id === "distribution" && tab === "Website pages") return <WebsitePanel />;
@@ -450,6 +551,19 @@ export function Workspace({ module }: { module: Module }) {
                     }}
                   >
                     Export
+                  </Btn>
+                  <Btn
+                    size="md"
+                    tone={unreadCount > 0 ? "danger" : "secondary"}
+                    icon={<Bell className="size-5" />}
+                    onClick={() => setShowNotifications(true)}
+                    aria-label="Notifications"
+                    title={`Notifications (${unreadCount})`}
+                  >
+                    {unreadCount > 0 ? `Notifications (${unreadCount})` : "Notifications"}
+                    {unreadCount > 0 ? (
+                      <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-destructive border border-background" />
+                    ) : null}
                   </Btn>
                   <Btn size="md" tone="primary" icon={<Plus />} onClick={() => openCreate()}>
                     {guide.primary}
@@ -527,6 +641,9 @@ export function Workspace({ module }: { module: Module }) {
                     label="Layout"
                   />
                 )}
+                <button type="button" onClick={() => setView("list")}>
+                  Table
+                </button>
               </>
             )}
             <div className="switchboard__spacer" />
@@ -591,6 +708,17 @@ export function Workspace({ module }: { module: Module }) {
                   onOpen={(r) => setRow(r)}
                   onMove={(record, stage) => update(module.id, { ...record, status: stage })}
                   onCreate={(stage) => openCreate(stage)}
+                  emptyTitle={guide.empty.title}
+                  emptyDescription={guide.empty.description}
+                  emptySteps={guide.empty.steps}
+                />
+              ) : view === "work" ? (
+                <Work
+                  rows={filtered}
+                  currency={currency}
+                  onOpen={(r) => (module.id === "quotations" ? setQuoteCover(r) : setRow(r))}
+                  onCreate={() => openCreate()}
+                  createLabel={guide.primary}
                   emptyTitle={guide.empty.title}
                   emptyDescription={guide.empty.description}
                   emptySteps={guide.empty.steps}
@@ -789,6 +917,14 @@ export function Workspace({ module }: { module: Module }) {
         open={help}
         onClose={() => setHelp(false)}
         onStart={() => setWizard(true)}
+      />
+      <NotificationBell
+        notifications={notifications}
+        unreadCount={unreadCount}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        lang={userLanguage}
+        onOpenNotification={handleOpenNotification}
       />
     </>
   );
@@ -2097,7 +2233,7 @@ const allModules = findModule("leads")
     ]
   : [];
 
-function SettingsPanel({ tab }: { tab: string }) {
+function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; userLanguage: Language; setUserLanguage: (v: Language) => void }) {
   const {
     settings,
     updateSettings,
@@ -2126,6 +2262,9 @@ function SettingsPanel({ tab }: { tab: string }) {
   const [fieldModule, setFieldModule] = useState("leads");
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldType, setFieldType] = useState<"text" | "number" | "date" | "select">("text");
+  const [domainDraft, setDomainDraft] = useState("");
+  const [currentDomain, setCurrentDomain] = useState<string | null>(null);
+  const [savingDomain, setSavingDomain] = useState(false);
   const activeEmployees = settings.employees.filter((e) => e.active);
 
   // The organisation's own email / WhatsApp accounts.
@@ -2166,6 +2305,11 @@ function SettingsPanel({ tab }: { tab: string }) {
     [],
     authStatus === "ready",
   );
+  const { data: domain, reload: reloadDomain } = useApiQuery(
+    () => fetchDomain(),
+    [],
+    authStatus === "ready",
+  );
   const { data: plans } = useApiQuery(() => fetchPlans(), [], authStatus === "ready");
   const { data: invoices } = useApiQuery(() => fetchInvoices(), [], authStatus === "ready");
   const { data: matrix, reload: reloadRoles } = useApiQuery(
@@ -2173,6 +2317,10 @@ function SettingsPanel({ tab }: { tab: string }) {
     [],
     authStatus === "ready",
   );
+  useEffect(() => {
+    setCurrentDomain(domain?.customDomain ?? null);
+  }, [domain]);
+
   const { data: apiKeys, reload: reloadKeys } = useApiQuery(
     () => fetchApiKeys(),
     [],
@@ -2320,6 +2468,24 @@ function SettingsPanel({ tab }: { tab: string }) {
               <Check /> Update password
             </Button>
           </div>
+        <h3>Language</h3>
+        <label className="setting-row">
+          Display language
+          <select
+            value={userLanguage}
+            onChange={(e) => {
+              const next = e.target.value as Language;
+              setUserLanguage(next);
+              localStorage.setItem("travo.language", next);
+            }}
+          >
+            {Object.entries(LANGUAGES).map(([key, info]) => (
+              <option key={key} value={key}>
+                {info.native} ({info.label})
+              </option>
+            ))}
+          </select>
+        </label>
         </form>
       </div>
     );
@@ -2817,6 +2983,78 @@ function SettingsPanel({ tab }: { tab: string }) {
               Disconnect
             </Button>
           )}
+        </div>
+      </div>
+    );
+
+  if (tab === "White-label domain")
+    return (
+      <div className="settings-workspace">
+        <h2>White-label domain</h2>
+        <p>
+          Let your customers reach you at your own domain — crm.youragency.com — instead of
+          traveldesk.io. You&rsquo;ll need to point a CNAME record at your Traveldesk URL.
+        </p>
+        <div className="form-grid">
+          <label>
+            Custom domain
+            <input
+              placeholder="crm.youragency.com"
+              value={domainDraft}
+              onChange={(e) => setDomainDraft(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="dialog-actions">
+          <Button
+            disabled={savingDomain || !domainDraft}
+            onClick={async () => {
+              try {
+                await updateDomain({ customDomain: domainDraft });
+                reloadDomain();
+                setDomainDraft("");
+                toast.success("Custom domain updated");
+              } catch (err) {
+                toast.error(errorMessage(err, "Could not update domain"));
+              } finally {
+                setSavingDomain(false);
+              }
+            }}
+          >
+            <Check /> Set domain
+          </Button>
+          <Button
+            variant="outline"
+            disabled={savingDomain || !currentDomain}
+            onClick={async () => {
+              try {
+                await updateDomain({ customDomain: null });
+                reloadDomain();
+                toast.success("Custom domain removed");
+              } catch (err) {
+                toast.error(errorMessage(err));
+              } finally {
+                setSavingDomain(false);
+              }
+            }}
+          >
+            Remove domain
+          </Button>
+        </div>
+        <div className="glass-card mt-6 p-5 rounded-xl">
+          <h3>Current domain</h3>
+          <p>
+            {currentDomain ? (
+              <>
+                <span className="font-mono">{currentDomain}</span>
+                <p className="text-sm text-muted mt-2">
+                  Point a CNAME record at your Traveldesk URL, then SSL is handled automatically.
+                </p>
+              </>
+            ) : (
+              <span className="text-muted">No custom domain set — using traveldesk.io</span>
+            )}
+          </p>
         </div>
       </div>
     );

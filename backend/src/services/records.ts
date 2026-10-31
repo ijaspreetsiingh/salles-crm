@@ -63,7 +63,12 @@ export async function resolveOwnerBranch(
   organizationId: string,
   ownerName?: string | null,
   branchName?: string | null,
-): Promise<{ ownerId: string | null; ownerName: string; branchId: string | null; branchName: string }> {
+): Promise<{
+  ownerId: string | null;
+  ownerName: string;
+  branchId: string | null;
+  branchName: string;
+}> {
   let ownerId: string | null = null;
   let branchId: string | null = null;
 
@@ -137,15 +142,15 @@ export function applyBranchScope(
     // An explicit branch filter selects that branch exactly, so a name like
     // "Mumbai" never accidentally matches "Mumbai East".
     where.branchName = requestedBranch;
+    // A query string must never widen a role's scope: asking for another
+    // branch narrows to the caller's own branch, which matches nothing rather
+    // than showing a sibling branch's records.
+    if (isBranchScoped(auth.roleKey) && auth.branchId) where.branchId = auth.branchId;
     return where;
   }
   if (!isBranchScoped(auth.roleKey)) return where;
   if (!auth.branchId) return where;
-  where.OR = [
-    ...(where.OR ?? []),
-    { branchId: auth.branchId },
-    { branchId: null },
-  ];
+  where.OR = [...(where.OR ?? []), { branchId: auth.branchId }, { branchId: null }];
   return where;
 }
 
@@ -195,6 +200,11 @@ export function buildRecordWhere(
       { notes: { contains: freeText } },
       { ownerName: { contains: freeText } },
       { detail: { contains: freeText } },
+      // Custom field values live in the `extra` JSON column, and so does the
+      // list of references a merged-away duplicate used to answer to. Searching
+      // the raw column means typing an old reference ("LD-2401") still finds
+      // the record that absorbed it, and a custom field is searchable at all.
+      { extra: { contains: freeText } },
     ];
   }
 

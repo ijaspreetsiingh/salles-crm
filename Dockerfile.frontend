@@ -1,0 +1,39 @@
+# ─── Traveldesk Frontend (TanStack Start + Nitro) ───
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm install --ignore-scripts
+
+# Copy source code and config
+COPY src ./src
+COPY vite.config.ts ./
+COPY tsconfig.json ./
+COPY index.html ./
+
+# Build frontend (TanStack Start + Nitro)
+RUN npm run build
+
+# ─── Runtime ───
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+RUN apk add --no-cache openssl wget
+
+# Copy built output from builder
+COPY --from=builder /app/.output ./.output
+
+# Copy package.json for runtime reference
+COPY package.json ./
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:3000/ || exit 1
+
+# Start the Nitro server
+CMD ["node", ".output/server/index.mjs"]

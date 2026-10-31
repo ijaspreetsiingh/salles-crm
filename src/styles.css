@@ -40,6 +40,8 @@
   --on-tomato: #fbf8f2;
   --ink: #17191a;
   --on-ink: #fbf8f2;
+  --brand: var(--pine);
+  --on-brand: var(--on-pine);
   --dock: #17191a;
   --on-dock: #fbf8f2;
   --pill: #17191a;
@@ -109,6 +111,8 @@
   --on-ink: #17191a;
   --pine: #5fa392;
   --on-pine: #111412;
+  --brand: var(--pine);
+  --on-brand: var(--on-pine);
   --tomato: #d8532d;
   --on-tomato: #111412;
   --dock: #f1eee8;
@@ -3010,6 +3014,37 @@
   padding: 2px 9px;
   background: var(--well);
 }
+.workflow-visual {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.workflow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.workflow-node .node-body {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--glass-2);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 140px;
+  text-align: center;
+}
+.workflow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: var(--pine);
+  font-size: 14px;
+  font-weight: 700;
+}
 .automation-bottom {
   display: flex;
   align-items: center;
@@ -3723,6 +3758,74 @@ th[aria-sort="none"] button {
     padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }
+/* ============ Mobile bottom dock ============ */
+.mobile-dock {
+  display: none;
+  position: fixed;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content;
+  max-width: 100%;
+  background: var(--dock);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  padding: 6px;
+  gap: 4px;
+  box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.4);
+  z-index: 60;
+}
+.dark .mobile-dock {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.dock__btn {
+  opacity: 0.6;
+  border-radius: 50%;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  position: relative;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    opacity 0.2s var(--ease),
+    background 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+.dock__btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.15);
+  transform: scale(1.1);
+}
+.dock__btn:active {
+  transform: scale(0.9);
+}
+.dock__btn[aria-current="page"] {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+}
+.dock__btn[aria-current="page"]::after {
+  content: "";
+  background: #ffffff;
+  border-radius: 50%;
+  width: 4px;
+  height: 4px;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  margin-top: -2px;
+}
+.dock__tip {
+  display: none;
+}
+@media (max-width: 760px) {
+  .mobile-dock {
+    display: flex;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -3964,6 +4067,34 @@ th.align-right .th-sort {
   margin: 0 0 14px;
   background: var(--solid);
 }
+.form-section-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px 20px 20px;
+  margin: 0 0 18px;
+  background: var(--solid);
+  box-shadow: var(--shadow);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+.form-section-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 24px 48px -28px rgba(70, 50, 30, 0.3);
+}
+.form-section-card .form-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-2);
+}
+.form-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pine);
+}
 .form-section > legend {
   padding: 0 6px;
   font-size: 11.5px;
@@ -3972,11 +4103,19 @@ th.align-right .th-sort {
   text-transform: uppercase;
   color: var(--muted);
 }
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 5px;
+  display: block;
+}
 .field-hint {
   font-size: 11px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--muted);
+  margin-top: 4px;
 }
 .field-hint-inline {
   margin-left: 6px;
@@ -3992,6 +4131,30 @@ th.align-right .th-sort {
 .req {
   color: var(--tomato);
   margin-left: 3px;
+}
+.create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.next-step-card {
+  border: 1px solid var(--rim);
+  border-radius: 18px;
+  padding: 20px 22px;
+  background: var(--glass-2);
+  margin-top: 16px;
+  box-shadow: var(--shadow);
+}
+.next-step-card h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.next-step-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* ============================================================================
@@ -4144,16 +4307,16 @@ th.align-right .th-sort {
   background: var(--well);
 }
 .sidebar__item.is-active {
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--brand);
+  color: var(--on-brand);
   font-weight: 600;
 }
 .sidebar__item.is-active .sidebar__count {
-  background: color-mix(in srgb, var(--on-ink) 20%, transparent);
-  color: var(--on-ink);
+  background: color-mix(in srgb, var(--on-brand) 20%, transparent);
+  color: var(--on-brand);
 }
 .sidebar__item.is-active .sidebar__icon {
-  color: var(--on-ink);
+  color: var(--on-brand);
 }
 .sidebar__icon {
   display: grid;
@@ -6125,7 +6288,7 @@ th.align-right .th-sort {
 }
 
 /* ============================================================================
-   Standalone platform admin portal (/admin) — separate from the CRM shell
+   Standalone platform admin portal (/admin) ï¿½ separate from the CRM shell
    ============================================================================ */
 .portal {
   display: grid;
@@ -6516,7 +6679,7 @@ th.align-right .th-sort {
 }
 .website-panel__actions { display: flex; gap: 8px; }
 
-/* Hosted lead form — public-facing page shared by every company on Traveldesk */
+/* Hosted lead form ï¿½ public-facing page shared by every company on Traveldesk */
 .lead-form-page {
   min-height: 100vh;
   display: flex;

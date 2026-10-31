@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpRight,
@@ -40,7 +40,14 @@ import { JourneyRail } from "./journey";
 import { StatusHint } from "./help";
 import { errorMessage, apiBlob } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/hooks";
-import { deleteAttachment, fetchAttachments, uploadAttachment, downloadInvoicePdf, createPaymentLink, sendInvoiceEmail } from "@/lib/api/modules";
+import {
+  deleteAttachment,
+  fetchAttachments,
+  uploadAttachment,
+  downloadInvoicePdf,
+  createPaymentLink,
+  sendInvoiceEmail,
+} from "@/lib/api/modules";
 import { toast } from "sonner";
 
 export function Status({ value }: { value: string }) {
@@ -552,7 +559,9 @@ export function RecordDialog({
 
     if (
       create &&
-      getRows(module.id).some((existing) => existing.name.trim().toLowerCase() === next.name.trim().toLowerCase())
+      getRows(module.id).some(
+        (existing) => existing.name.trim().toLowerCase() === next.name.trim().toLowerCase(),
+      )
     ) {
       toast.warning(`A ${module.noun} named "${next.name.trim()}" already exists. Saving anyway.`);
     }
@@ -560,6 +569,31 @@ export function RecordDialog({
     if (create) save(module.id, next);
     else update(module.id, next);
     toast.success(`${module.noun} ${create ? "created" : "updated"}`);
+
+    // Travo-style next step: guide user to the natural next action in the journey
+    const nextStep: Record<string, { target: string; label: string; icon: ReactNode }> = {
+      leads: {
+        target: "quotations",
+        label: "Create quotation for this enquiry",
+        icon: <FileText size={14} />,
+      },
+      quotations: {
+        target: "bookings",
+        label: "Convert to booking",
+        icon: <PlaneTakeoff size={14} />,
+      },
+      bookings: { target: "finance", label: "Create invoice", icon: <Receipt size={14} /> },
+    };
+    const ns = nextStep[module.id];
+
+    if (create && ns) {
+      setWorkflowTarget({
+        module: modules.find((m) => m.id === ns.target) ?? module,
+        data: workflowDataFor(ns.target, module.id, next),
+      });
+      return;
+    }
+
     onClose();
   };
 
@@ -603,7 +637,11 @@ export function RecordDialog({
             min={0}
             step="any"
           />
-          <select name="f:currency" defaultValue={row?.currency || settings.currency} className="currency-select">
+          <select
+            name="f:currency"
+            defaultValue={row?.currency || settings.currency}
+            className="currency-select"
+          >
             {["INR", "USD", "EUR", "GBP", "AED", "SGD"].map((code) => (
               <option key={code}>{code}</option>
             ))}
@@ -652,15 +690,25 @@ export function RecordDialog({
           await navigator.clipboard?.writeText(link.checkoutUrl).catch(() => undefined);
           toast.success("Razorpay payment link copied — share it with the customer");
         } else {
-          toast.info("Payment link recorded. Add RAZORPAY_KEY_ID/SECRET on the server to charge real money.");
+          toast.info(
+            "Payment link recorded. Add RAZORPAY_KEY_ID/SECRET on the server to charge real money.",
+          );
         }
       } else {
         if (!row.email) {
           toast.error("Add the customer's email first");
           return;
         }
-        const result = await sendInvoiceEmail(row.id, row.email, "We look forward to confirming your trip.");
-        toast.success(result.status === "sent" ? "Invoice emailed" : "Invoice email queued — set up SMTP to send live");
+        const result = await sendInvoiceEmail(
+          row.id,
+          row.email,
+          "We look forward to confirming your trip.",
+        );
+        toast.success(
+          result.status === "sent"
+            ? "Invoice emailed"
+            : "Invoice email queued — set up SMTP to send live",
+        );
       }
     } catch (err) {
       toast.error(errorMessage(err));
@@ -698,27 +746,29 @@ export function RecordDialog({
           </DialogDescription>
         </DialogHeader>
         {editing ? (
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="create-form">
             {schema.sections.map((section) => {
               const sectionFields = schema.fields.filter((f) => f.group === section);
               const extraFields = section === "Notes" ? customFields : [];
               if (sectionFields.length === 0 && extraFields.length === 0) return null;
               return (
-                <fieldset className="form-section" key={section}>
-                  <legend>{section}</legend>
+                <section key={section} className="form-section-card">
+                  <div className="form-section-head">
+                    <span className="form-section-label">{section}</span>
+                  </div>
                   <div className="form-grid">
                     {sectionFields.map((field) => (
                       <label key={field.key} className={field.wide ? "full-width" : undefined}>
-                        {field.label}
+                        <span className="field-label">{field.label}</span>
                         {field.required && <span className="req">*</span>}
                         {renderInput(field)}
-                        {field.hint && <small className="field-hint">{field.hint}</small>}
+                        {field.hint && <p className="field-hint">{field.hint}</p>}
                       </label>
                     ))}
                     {extraFields.map((f) => (
                       <label key={f.id}>
-                        {f.label}
-                        <span className="field-hint-inline">custom</span>
+                        <span className="field-label">{f.label}</span>
+                        <span className="field-hint-inline">custom field</span>
                         <input
                           name={`cf:${f.id}`}
                           type={
@@ -729,14 +779,14 @@ export function RecordDialog({
                       </label>
                     ))}
                   </div>
-                </fieldset>
+                </section>
               );
             })}
             <div className="dialog-actions">
               <Button variant="outline" type="button" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button variant="default" type="submit">
                 <Check /> Save {module.noun}
               </Button>
             </div>

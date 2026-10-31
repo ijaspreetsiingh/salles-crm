@@ -11,7 +11,15 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   APP_URL: z.string().default("http://localhost:4000"),
-  PLATFORM_ADMIN_EMAILS: z.string().default("").transform((v) => v.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)),
+  PLATFORM_ADMIN_EMAILS: z
+    .string()
+    .default("")
+    .transform((v) =>
+      v
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    ),
 
   CORS_ORIGINS: z
     .string()
@@ -28,11 +36,17 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z
     .string()
     .min(16, "JWT_ACCESS_SECRET must be at least 16 chars")
-    .refine((v) => process.env.NODE_ENV !== "production" || v.length >= 32, "JWT_ACCESS_SECRET must be at least 32 chars in production"),
+    .refine(
+      (v) => process.env.NODE_ENV !== "production" || v.length >= 32,
+      "JWT_ACCESS_SECRET must be at least 32 chars in production",
+    ),
   JWT_REFRESH_SECRET: z
     .string()
     .min(16, "JWT_REFRESH_SECRET must be at least 16 chars")
-    .refine((v) => process.env.NODE_ENV !== "production" || v.length >= 32, "JWT_REFRESH_SECRET must be at least 32 chars in production"),
+    .refine(
+      (v) => process.env.NODE_ENV !== "production" || v.length >= 32,
+      "JWT_REFRESH_SECRET must be at least 32 chars in production",
+    ),
   ACCESS_TOKEN_TTL: z.string().default("15m"),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
@@ -56,6 +70,14 @@ const envSchema = z.object({
   LLM_API_KEY: z.string().optional().default(""),
   LLM_MODEL: z.string().default("gpt-4o-mini"),
   LLM_BASE_URL: z.string().default("https://api.openai.com/v1"),
+
+  /**
+   * The daily email digest. The scheduler wakes up every few minutes and sends
+   * to whichever organisation's local clock has passed its chosen hour; the
+   * organisation-level switch in Settings decides whether anyone gets mail.
+   */
+  DIGEST_ENABLED: bool(true),
+  DIGEST_CHECK_MINUTES: z.coerce.number().int().positive().default(15),
 
   /** SMTP — real email delivery. Empty = emails stay queued in the outbox. */
   SMTP_HOST: z.string().optional().default(""),

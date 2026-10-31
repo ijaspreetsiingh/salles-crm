@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { broadcastNotification } from "../modules/notifications.routes";
 
 type NotificationInput = {
   organizationId: string;
@@ -12,7 +13,7 @@ type NotificationInput = {
 };
 
 export async function createNotification(input: NotificationInput) {
-  return prisma.notification.create({
+  const created = await prisma.notification.create({
     data: {
       organizationId: input.organizationId,
       title: input.title,
@@ -23,6 +24,19 @@ export async function createNotification(input: NotificationInput) {
       userId: input.userId ?? null,
     },
   });
+
+  // Push to all open SSE streams for this organisation so the frontend sees it live.
+  broadcastNotification(input.organizationId, {
+    id: created.id,
+    title: created.title,
+    body: created.body,
+    moduleId: created.moduleId ?? undefined,
+    recordId: created.recordId ?? undefined,
+    level: created.level,
+    createdAt: created.createdAt.toISOString(),
+  });
+
+  return created;
 }
 
 /**

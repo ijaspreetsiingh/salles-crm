@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 import healthRoutes from "../modules/health.routes";
 import authRoutes from "../modules/auth.routes";
 import organizationRoutes from "../modules/organization.routes";
@@ -8,6 +8,7 @@ import customFieldRoutes from "../modules/customFields.routes";
 import workspaceRoutes from "../modules/workspace.routes";
 import taskRoutes from "../modules/tasks.routes";
 import auditRoutes from "../modules/audit.routes";
+import domainRoutes from "../modules/domains.routes";
 import notificationRoutes from "../modules/notifications.routes";
 import dashboardRoutes from "../modules/dashboard.routes";
 import reportRoutes from "../modules/reports.routes";
@@ -49,6 +50,7 @@ export function buildRoutes(): Router {
   router.use("/dashboard", dashboardRoutes);
   router.use("/reports", reportRoutes);
   router.use("/audit", auditRoutes);
+  router.use("/domains", domainRoutes);
   router.use("/notifications", notificationRoutes);
   router.use("/search", searchRoutes);
 
@@ -75,3 +77,4 @@ router.use("/channels", channelsRoutes);
 
   return router;
 }
+

@@ -5,12 +5,14 @@ import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { hashPassword } from "../lib/password";
-import { ROLE_MAP } from "../domain/rbac";
+import { isBranchScoped, ROLE_MAP } from "../domain/rbac";
 import { recordAudit } from "../services/audit";
 import { parseJson } from "../lib/utils";
 import { sendEmail } from "../services/email";
+import { applyBranchScope } from "../services/records";
+import { MODULES } from "../domain/modules";
 
 const router = Router();
 router.use(requireAuth);
@@ -54,20 +56,150 @@ const updateSchema = z.object({
   roleKey: z.string().min(2).optional(),
   branchId: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  /**
+   * Membership id of the teammate who takes this person's unfinished work.
+   * Omit it and the records go back to the unclaimed queue.
+   */
+  reassignTo: z.string().min(1).optional(),
 });
 
-/** Team directory with role and branch (settings → employees). */
+type Handover = { records: number; tasks: number; to: string | null };
+
+/**
+ * Moves a departing teammate's open work to someone who is still here.
+ *
+ * Revoking access on its own leaves two quiet failures behind: records owned
+ * by a person who cannot sign in (invisible in the owner filter), and open
+ * tasks addressed to them. Both are handled here, every time access is taken
+ * away, so nothing is stranded.
+ */
+async function handoverWork(args: {
+  organizationId: string;
+  fromUserId: string;
+  fromName: string;
+  /** The person doing the removal — takes the tasks when no successor is named. */
+  fallbackName: string;
+  reassignTo?: string | undefined;
+}): Promise<Handover> {
+  let toUserId: string | null = null;
+  let toName = args.fallbackName;
+
+  if (args.reassignTo) {
+    const target = await prisma.membership.findFirst({
+      where: { id: args.reassignTo, organizationId: args.organizationId, active: true },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    if (!target) throw new BadRequestError("Choose someone who is still on the team");
+    if (target.userId === args.fromUserId) {
+      throw new BadRequestError("Choose someone else to take this work");
+    }
+    toUserId = target.userId;
+    toName = target.user.name;
+  }
+
+  // Records become the successor's, or unclaimed when nobody was named — the
+  // unclaimed queue on everyone's home page is exactly where they belong.
+  const [records, tasks] = await Promise.all([
+    prisma.record.updateMany({
+      where: {
+        organizationId: args.organizationId,
+        ownerId: args.fromUserId,
+        deletedAt: null,
+      },
+      data: toUserId ? { ownerId: toUserId, ownerName: toName } : { ownerId: null, ownerName: "" },
+    }),
+    prisma.task.updateMany({
+      where: { organizationId: args.organizationId, ownerName: args.fromName, done: false },
+      data: { ownerName: toName },
+    }),
+  ]);
+
+  return { records: records.count, tasks: tasks.count, to: toUserId ? toName : null };
+}
+
+/**
+ * Team directory with role, branch and current workload.
+ *
+ * A company with five people can read a plain list. A company with fifty
+ * needs to know who is carrying too much and who has nothing yet, so each
+ * row carries honest counts read from the same records the modules show.
+ * Branch-scoped roles only see their own branch, like every other list.
+ */
 router.get(
   "/",
   asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const branchId = isBranchScoped(req.auth!.roleKey) ? req.auth!.branchId : null;
+
     const memberships = await prisma.membership.findMany({
-      where: { organizationId: req.auth!.organizationId },
+      where: {
+        organizationId,
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+      },
       include: {
-        user: { select: { id: true, name: true, email: true, phone: true, active: true, lastLoginAt: true, avatarUrl: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            active: true,
+            lastLoginAt: true,
+            avatarUrl: true,
+          },
+        },
         branch: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: "asc" },
     });
+
+    const [taskCounts, enquiryCounts, tripCounts] = await Promise.all([
+      prisma.task.groupBy({
+        by: ["ownerName"],
+        where: {
+          organizationId,
+          done: false,
+          ...(branchId ? { ownerName: { in: memberships.map((m) => m.user.name) } } : {}),
+        },
+        _count: { _all: true },
+      }),
+      prisma.record.groupBy({
+        by: ["ownerName"],
+        where: applyBranchScope(
+          {
+            organizationId,
+            moduleId: "leads",
+            deletedAt: null,
+            status: { in: ["New", "Contacted", "Qualified", "Quoted"] },
+          },
+          req.auth!,
+        ),
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+      prisma.record.groupBy({
+        by: ["ownerName"],
+        where: applyBranchScope(
+          {
+            organizationId,
+            moduleId: "bookings",
+            deletedAt: null,
+            status: { notIn: ["Cancelled"] },
+          },
+          req.auth!,
+        ),
+        _count: { _all: true },
+      }),
+    ]);
+
+    const taskBy = new Map(taskCounts.map((row) => [row.ownerName, row._count._all]));
+    const enquiryBy = new Map(
+      enquiryCounts.map((row) => [
+        row.ownerName,
+        { count: row._count._all, value: row._sum.amount ?? 0 },
+      ]),
+    );
+    const tripBy = new Map(tripCounts.map((row) => [row.ownerName, row._count._all]));
 
     const data = memberships.map((m) => ({
       id: m.id,
@@ -81,7 +213,11 @@ router.get(
       branch: m.branch?.name ?? null,
       branchId: m.branchId,
       active: m.active && m.user.active,
-      lastLoginAt: m.user.lastLoginAt,
+      lastLoginAt: m.user.lastLoginAt?.toISOString() ?? null,
+      openTasks: taskBy.get(m.user.name) ?? 0,
+      openEnquiries: enquiryBy.get(m.user.name)?.count ?? 0,
+      activeTrips: tripBy.get(m.user.name) ?? 0,
+      pipelineValue: enquiryBy.get(m.user.name)?.value ?? 0,
     }));
 
     return ok(res, data);
@@ -94,7 +230,9 @@ router.post(
   requireRole("company_admin"),
   validate(inviteSchema),
   asyncHandler(async (req, res) => {
-    const { name, email, phone, roleKey, branchId, password } = req.body as z.infer<typeof inviteSchema>;
+    const { name, email, phone, roleKey, branchId, password } = req.body as z.infer<
+      typeof inviteSchema
+    >;
     const organizationId = req.auth!.organizationId;
 
     await assertSeatsAvailable(organizationId);
@@ -115,7 +253,9 @@ router.post(
           name,
           phone,
           // Temporary password — the invitee is expected to reset it.
-          passwordHash: await hashPassword(password ?? `Welcome@${Math.random().toString(36).slice(2, 8)}`),
+          passwordHash: await hashPassword(
+            password ?? `Welcome@${Math.random().toString(36).slice(2, 8)}`,
+          ),
         },
       }));
 
@@ -136,7 +276,10 @@ router.post(
         "",
         `${req.auth!.name} added you to the ${organization.name} travel workspace on Traveldesk.`,
         "",
-        "Sign in with the temporary password your admin shared and change it right away:",
+        ...(existing
+          ? ["Sign in with your existing Traveldesk password."]
+          : ["Sign in with the temporary password your admin shared, then change it right away:"]),
+        "",
         `${process.env.APP_URL ?? "http://localhost:8080"}`,
         "",
         `${organization.name}`,
@@ -154,7 +297,16 @@ router.post(
       req,
     });
 
-    return created(res, { id: membership.id, userId: user.id, email: user.email, roleKey, branchId: branchId ?? null });
+    // `newUser` tells the admin whether the temporary password they set is
+    // actually needed: an existing Traveldesk account keeps its own password.
+    return created(res, {
+      id: membership.id,
+      userId: user.id,
+      email: user.email,
+      roleKey,
+      branchId: branchId ?? null,
+      newUser: !existing,
+    });
   }),
 );
 
@@ -166,6 +318,7 @@ router.patch(
   asyncHandler(async (req, res) => {
     const membership = await prisma.membership.findFirst({
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
+      include: { user: { select: { id: true, name: true } } },
     });
     if (!membership) throw new NotFoundError("Team member");
 
@@ -191,26 +344,41 @@ router.patch(
       },
     });
 
+    // Losing access means their unfinished work needs a home, right now.
+    const handover =
+      body.active === false && membership.active
+        ? await handoverWork({
+            organizationId: req.auth!.organizationId,
+            fromUserId: membership.userId,
+            fromName: membership.user.name,
+            fallbackName: req.auth!.name,
+            ...(body.reassignTo ? { reassignTo: body.reassignTo } : {}),
+          })
+        : null;
+
     await recordAudit({
       organizationId: req.auth!.organizationId,
       action: "Updated",
       moduleId: "settings",
-      label: "Team member updated",
+      label: handover
+        ? `${membership.user.name} lost access — ${handover.records} records and ${handover.tasks} tasks handed to ${handover.to ?? "the unclaimed queue"}`
+        : "Team member updated",
       meta: { membershipId: membership.id, changes: Object.keys(body) },
       req,
     });
 
-    return ok(res, updated);
+    return ok(res, { ...updated, handover });
   }),
 );
 
-/** Removes a teammate from the organisation. */
+/** Removes a teammate from the organisation, handing their work on. */
 router.delete(
   "/:id",
   requireRole("company_admin"),
   asyncHandler(async (req, res) => {
     const membership = await prisma.membership.findFirst({
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
+      include: { user: { select: { id: true, name: true } } },
     });
     if (!membership) throw new NotFoundError("Team member");
     if (membership.userId === req.auth!.userId) {
@@ -223,15 +391,153 @@ router.delete(
       data: { revokedAt: new Date() },
     });
 
+    // `reassignTo` may arrive in the body or the query string; both are fine.
+    const requested: unknown = req.body?.reassignTo ?? req.query.reassignTo;
+    const reassignTo =
+      typeof requested === "string" && requested.length > 0 ? requested : undefined;
+
+    const handover = await handoverWork({
+      organizationId: req.auth!.organizationId,
+      fromUserId: membership.userId,
+      fromName: membership.user.name,
+      fallbackName: req.auth!.name,
+      ...(reassignTo ? { reassignTo } : {}),
+    });
+
     await recordAudit({
       organizationId: req.auth!.organizationId,
       action: "Deleted",
       moduleId: "settings",
-      label: "Team member access revoked",
+      label: `${membership.user.name}'s access revoked — ${handover.records} records and ${handover.tasks} tasks handed to ${handover.to ?? "the unclaimed queue"}`,
       req,
     });
 
-    return ok(res, { removed: true });
+    return ok(res, { removed: true, handover });
+  }),
+);
+
+const shareSchema = z.object({
+  moduleId: z.string().min(2).default("leads"),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+/**
+ * Shares unclaimed work out to the team, oldest first.
+ *
+ * The alternative is a manager dragging records to names one at a time, which
+ * nobody does past the third. Whoever is carrying the least gets the next
+ * record, so the queue empties evenly and nobody is handed a pile in one go.
+ * Only records nobody owns are touched — an assignment made by a person is
+ * never overwritten.
+ */
+router.post(
+  "/workload/share",
+  requireRole("company_admin", "branch_manager"),
+  validate(shareSchema),
+  asyncHandler(async (req, res) => {
+    const { moduleId, limit } = req.body as z.infer<typeof shareSchema>;
+    const module = MODULES.find((m) => m.id === moduleId);
+    if (!module) throw new BadRequestError(`Unknown module "${moduleId}"`);
+    const organizationId = req.auth!.organizationId;
+
+    const unclaimed = await prisma.record.findMany({
+      where: applyBranchScope(
+        {
+          organizationId,
+          moduleId: module.id,
+          deletedAt: null,
+          OR: [{ ownerId: null }, { ownerName: "" }],
+        },
+        req.auth!,
+      ),
+      // The longest wait is the most urgent.
+      orderBy: { date: "asc" },
+      take: limit,
+    });
+    if (unclaimed.length === 0) return ok(res, { assigned: 0, byPerson: [] });
+
+    const branchId = isBranchScoped(req.auth!.roleKey) ? req.auth!.branchId : null;
+    const memberships = await prisma.membership.findMany({
+      where: {
+        organizationId,
+        active: true,
+        user: { active: true },
+        ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
+      },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    const people = memberships.map((m) => ({
+      userId: m.userId,
+      name: m.user.name,
+      branchId: m.branchId,
+      load: 0,
+    }));
+    if (people.length === 0) {
+      throw new BadRequestError("There is nobody active on the team to take this work");
+    }
+
+    // Current load: open tasks plus records already owned. Two grouped queries,
+    // not one per person.
+    const [taskCounts, recordCounts] = await Promise.all([
+      prisma.task.groupBy({
+        by: ["ownerName"],
+        where: { organizationId, done: false },
+        _count: { _all: true },
+      }),
+      prisma.record.groupBy({
+        by: ["ownerName"],
+        where: applyBranchScope(
+          { organizationId, deletedAt: null, ownerName: { not: "" } },
+          req.auth!,
+        ),
+        _count: { _all: true },
+      }),
+    ]);
+    const taskBy = new Map(taskCounts.map((row) => [row.ownerName, row._count._all]));
+    const recordBy = new Map(recordCounts.map((row) => [row.ownerName, row._count._all]));
+    for (const person of people) {
+      person.load = (taskBy.get(person.name) ?? 0) + (recordBy.get(person.name) ?? 0);
+    }
+
+    const assigned = new Map<string, { userId: string; name: string; ids: string[] }>();
+    for (const record of unclaimed) {
+      // Prefer people in the record's own branch; fall back to the whole team
+      // when that branch has nobody active.
+      const inBranch = record.branchId
+        ? people.filter((person) => person.branchId === record.branchId)
+        : [];
+      const candidates = inBranch.length > 0 ? inBranch : people;
+      let chosen = candidates[0]!;
+      for (const person of candidates) if (person.load < chosen.load) chosen = person;
+      chosen.load += 1;
+      const bucket = assigned.get(chosen.userId) ?? {
+        userId: chosen.userId,
+        name: chosen.name,
+        ids: [] as string[],
+      };
+      bucket.ids.push(record.id);
+      assigned.set(chosen.userId, bucket);
+    }
+
+    const byPerson: Array<{ name: string; count: number }> = [];
+    for (const bucket of assigned.values()) {
+      await prisma.record.updateMany({
+        where: { id: { in: bucket.ids } },
+        data: { ownerId: bucket.userId, ownerName: bucket.name, updatedById: req.auth!.userId },
+      });
+      byPerson.push({ name: bucket.name, count: bucket.ids.length });
+    }
+
+    await recordAudit({
+      organizationId,
+      action: "Assigned",
+      moduleId: module.id,
+      label: `${unclaimed.length} unclaimed ${module.noun}s shared across the team`,
+      meta: { byPerson },
+      req,
+    });
+
+    return ok(res, { assigned: unclaimed.length, byPerson });
   }),
 );
 

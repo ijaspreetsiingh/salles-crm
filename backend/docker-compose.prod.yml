@@ -1,0 +1,172 @@
+# ─── Traveldesk Production Docker Compose (nginx + SSL + API + Postgres) ───
+#
+# Usage:
+#   cp .env.example .env
+#   # Edit .env with your domain, SMTP, Razorpay, etc.
+#   docker compose up -d
+#
+# SSL / Let's Encrypt:
+#   docker compose run --rm certbot certonly --webroot -w /var/www/certbot \
+#     -d yourdomain.com -d api.yourdomain.com --email you@yourdomain.com --agree-tos
+#   docker compose restart nginx
+#
+
+services:
+  # ─── API ────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-postgres}
+    image: traveldesk/backend:latest
+    container_name: traveldesk-api
+    restart: unless-stopped
+    expose:
+      - "4000"
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      APP_URL: ${APP_URL:-https://api.yourdomain.com}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://yourdomain.com}
+      DATABASE_URL: ${DATABASE_URL:-postgres://traveldesk:traveldesk-change-me@postgres:5432/traveldesk}
+      UPLOAD_DIR: /app/data/uploads
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL_DAYS: "30"
+      PLATFORM_ADMIN_EMAILS: ${PLATFORM_ADMIN_EMAILS}
+      SEED_ON_START: "false"
+      SEED_SUPER_ADMIN_EMAIL: ${SEED_SUPER_ADMIN_EMAIL:-superadmin@yourdomain.com}
+      SEED_SUPER_ADMIN_PASSWORD: ${SEED_SUPER_ADMIN_PASSWORD}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      WHATSAPP_TOKEN: ${WHATSAPP_TOKEN}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET}
+      AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID}
+      AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET}
+      AMADEUS_HOST: ${AMADEUS_HOST:-https://api.amadeus.com}
+    volumes:
+      - traveldesk-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── Frontend (TanStack Start + Nitro) ──────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: Dockerfile.frontend
+    image: traveldesk/frontend:latest
+    container_name: traveldesk-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── PostgreSQL (Production) ────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: traveldesk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-traveldesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-traveldesk}
+    volumes:
+      - traveldesk-pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-traveldesk} -d ${POSTGRES_DB:-traveldesk}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── Nginx Reverse Proxy + SSL Termination ──────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: traveldesk-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certbot:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # ─── Certbot (Let's Encrypt) ────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: traveldesk-certbot
+    volumes:
+      - ./certbot:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    command: certonly --webroot -w /var/www/certbot \
+      -d ${SSL_DOMAIN:-yourdomain.com} \
+      -d api.${SSL_DOMAIN:-yourdomain.com} \
+      --email ${SSL_EMAIL:-you@yourdomain.com} \
+      --agree-tos --no-eff-email --keep-until-expiring
+
+  # ─── Backup Cron ────────────────────────────────────────────────────────
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_PROVIDER: postgres
+    container_name: traveldesk-backup
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgres://traveldesk:traveldesk-change-me@postgres:5432/traveldesk}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
+      BACKUPS_TO_KEEP: ${BACKUPS_TO_KEEP:-14}
+    volumes:
+      - traveldesk-data:/app/data:ro
+      - ./backups:/app/data/backups
+    entrypoint: ["sh", "-c", "npm run db:backup && crond -f"]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  traveldesk-data:
+  traveldesk-pgdata:

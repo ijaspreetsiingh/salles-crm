@@ -79,6 +79,12 @@ export type KpiDef = {
   value: (rows: RecordRow[], context: KpiContext) => string;
   /** Statuses this KPI counts — lets the UI drill into the matching filter. */
   statuses?: string[] | undefined;
+  /**
+   * How the number is built. The server counts and sums the whole filtered
+   * module, so a header never reports the size of one loaded page instead of
+   * the size of the work.
+   */
+  kind: "count" | "sum";
 };
 
 export type KpiContext = {
@@ -212,6 +218,7 @@ const kpiCount = (
   hint,
   tone,
   statuses,
+  kind: "count",
   value: (rows, ctx) => String(ctx.countBy(statuses)),
 });
 
@@ -225,6 +232,7 @@ const kpiSum = (
   hint,
   tone,
   statuses,
+  kind: "sum",
   value: (rows, ctx) => ctx.money(ctx.sumBy(statuses)),
 });
 

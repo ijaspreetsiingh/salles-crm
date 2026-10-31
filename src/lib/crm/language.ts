@@ -287,6 +287,95 @@ export const statusGuide = (status: string): { meaning: string; next: string } =
     next: "Move it on when the next step is done.",
   };
 
+/* ------------------------------------------------------------------ *
+ * Where a record sits in the day.
+ *
+ * A list of two hundred rows is unreadable however it is drawn. Every
+ * record falls into one of three honest groups: it is waiting for you,
+ * it is waiting for somebody else, or nothing is outstanding on it. The
+ * group comes from what the status means — never from a guessed date,
+ * because a trip date in the past does not mean the record is late.
+ * ------------------------------------------------------------------ */
+
+export type StatusBucket = "yours" | "waiting" | "done";
+
+const BUCKET_OF: Record<string, StatusBucket> = {
+  // Nobody has picked it up, or the next move is ours.
+  New: "yours",
+  Contacted: "yours",
+  Qualified: "yours",
+  Quoted: "yours",
+  Won: "yours",
+  Draft: "yours",
+  Open: "yours",
+  Escalated: "yours",
+  Overdue: "yours",
+  "Partially paid": "yours",
+  "Documents pending": "yours",
+  "KYC pending": "yours",
+  Approved: "yours",
+  Accepted: "yours",
+  Confirmed: "yours",
+  "In progress": "yours",
+  Delayed: "yours",
+  "Sold out": "yours",
+  Prospect: "yours",
+  Onboarding: "yours",
+  Planning: "yours",
+  "Open for sale": "yours",
+  Error: "yours",
+
+  // We have done our part; somebody else has to answer.
+  Sent: "waiting",
+  Pending: "waiting",
+  "On hold": "waiting",
+  "In review": "waiting",
+  Submitted: "waiting",
+  Requested: "waiting",
+  Held: "waiting",
+  Queued: "waiting",
+  Upcoming: "waiting",
+  Scheduled: "waiting",
+
+  // Nothing is outstanding.
+  Paid: "done",
+  Completed: "done",
+  Resolved: "done",
+  Closed: "done",
+  Cancelled: "done",
+  Lost: "done",
+  Rejected: "done",
+  Expired: "done",
+  Declined: "done",
+  Archived: "done",
+  Inactive: "done",
+  Dormant: "done",
+  Suspended: "done",
+  Active: "done",
+  Live: "done",
+  Paused: "done",
+  Ready: "done",
+  Published: "done",
+  Contracted: "done",
+  Repeat: "done",
+  VIP: "done",
+  Vouchered: "done",
+  Ticketed: "done",
+  Reissued: "done",
+  Connected: "done",
+  Assigned: "done",
+  Departed: "done",
+};
+
+/** A status the app has never heard of counts as open work, never as done. */
+export const statusBucket = (status: string): StatusBucket => BUCKET_OF[status] ?? "yours";
+
+export const WORK_GROUPS: Record<StatusBucket, { label: string; hint: string }> = {
+  yours: { label: "Needs you", hint: "The next move on these is yours." },
+  waiting: { label: "Waiting on someone else", hint: "You have done your part." },
+  done: { label: "Nothing to do", hint: "Paid, finished or closed." },
+};
+
 /** A one-line description of what a module is for, in human words. */
 export const MODULE_PURPOSE: Record<string, string> = {
   leads: "Every question that comes in about a trip.",

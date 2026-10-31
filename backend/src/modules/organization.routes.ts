@@ -8,6 +8,7 @@ import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { parseJson, stringifyJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
+import { readDigestSettings, sendDigestTo, writeDigestSettings } from "../services/digest";
 import { MODULES, moduleGroups } from "../domain/modules";
 
 const router = Router();
@@ -100,7 +101,10 @@ router.post(
   validate(branchSchema),
   asyncHandler(async (req, res) => {
     const branch = await prisma.branch.create({
-      data: { organizationId: req.auth!.organizationId, ...(req.body as z.infer<typeof branchSchema>) },
+      data: {
+        organizationId: req.auth!.organizationId,
+        ...(req.body as z.infer<typeof branchSchema>),
+      },
     });
     await recordAudit({
       organizationId: req.auth!.organizationId,
@@ -150,6 +154,91 @@ router.delete(
       req,
     });
     return ok(res, { deactivated: true });
+  }),
+);
+
+/* ------------------------------------------------------------------ *
+ * The daily email digest
+ * ------------------------------------------------------------------ */
+
+const digestSchema = z.object({
+  enabled: z.boolean().optional(),
+  hour: z.coerce.number().int().min(0).max(23).optional(),
+  scope: z.enum(["mine", "team"]).optional(),
+  recipients: z.array(z.string().email()).max(20).optional(),
+});
+
+/** The digest settings, plus when it last went out. */
+router.get(
+  "/current/digest",
+  asyncHandler(async (req, res) => {
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+      select: { name: true, settings: true, timezone: true },
+    });
+    return ok(res, {
+      settings: readDigestSettings(organization.settings),
+      timezone: organization.timezone,
+    });
+  }),
+);
+
+router.patch(
+  "/current/digest",
+  requireRole("company_admin"),
+  validate(digestSchema),
+  asyncHandler(async (req, res) => {
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+      select: { settings: true },
+    });
+    const settings = await writeDigestSettings(
+      req.auth!.organizationId,
+      organization.settings,
+      req.body as z.infer<typeof digestSchema>,
+    );
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: settings.enabled
+        ? `Daily email digest on at ${String(settings.hour).padStart(2, "0")}:00`
+        : "Daily email digest off",
+      req,
+    });
+    return ok(res, { settings });
+  }),
+);
+
+/**
+ * Sends today's digest to the caller immediately.
+ *
+ * Waiting until 8am to find out whether email works is not a test. This uses
+ * the real delivery path and reports what actually happened — "sent" or
+ * "queued" because no SMTP account is connected yet.
+ */
+router.post(
+  "/current/digest/send",
+  asyncHandler(async (req, res) => {
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+      select: { id: true, name: true, settings: true },
+    });
+    const settings = readDigestSettings(organization.settings);
+
+    const result = await sendDigestTo({
+      organizationId: organization.id,
+      organizationName: organization.name,
+      recipient: {
+        name: req.auth!.name,
+        email: req.auth!.email,
+        roleKey: req.auth!.roleKey,
+        branchId: req.auth!.branchId,
+      },
+      scope: settings.scope,
+    });
+
+    return ok(res, { ...result, to: req.auth!.email });
   }),
 );
 

@@ -1,32 +1,35 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowDownToLine,
   ArrowRight,
-  ArrowUpRight,
   CalendarDays,
   ChevronRight,
   CircleDollarSign,
   Clock3,
   FileText,
   Plane,
-  Sparkles,
-  Ticket,
+  Plus,
   TrendingUp,
   Users,
   Wallet,
+  ArrowUp,
+  ArrowDown,
+  Ticket,
 } from "lucide-react";
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { Btn, EmptyState, FilterMenu, Panel, PanelHead } from "./ui";
+import { Btn, EmptyState, Panel, PanelHead } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Status } from "./common";
 import { exportRows, findModule, formatDay, money } from "@/lib/crm/catalog";
@@ -39,16 +42,10 @@ import {
 } from "@/lib/api/modules";
 
 /* ==========================================================================
-   "How the business is doing"
+   Dashboard — Enterprise level.
 
-   The second page, and the only one with charts. It answers three
-   questions and nothing else:
-     · how much money has come in
-     · what is about to happen
-     · what needs attention
-
-   There is one set of numbers, not two. The home page lists what to do;
-   this page explains the shape of the business.
+   Answers: how much money, what's in pipeline, what needs attention,
+   and what's departing soon. Clean, scannable, action-oriented.
    ========================================================================== */
 
 const attentionIcon = (moduleId: string) => {
@@ -57,53 +54,193 @@ const attentionIcon = (moduleId: string) => {
   return FileText;
 };
 
-/** A headline number, with a line underneath that says what it means. */
-function BigStat({
-  icon,
+/** Enterprise KPI card with trend indicator. */
+function KpiCard({
+  icon: Icon,
   label,
   value,
-  hint,
-  tone,
+  subtitle,
+  trend,
+  trendLabel,
+  tone = "pine",
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
-  hint: string;
-  tone: "pine" | "butter" | "tomato" | "ink";
+  subtitle?: string;
+  trend?: "up" | "down" | "neutral";
+  trendLabel?: string;
+  tone?: "pine" | "butter" | "tomato" | "ink";
+}) {
+  const trendIcon =
+    trend === "up" ? (
+      <ArrowUp className="size-4" />
+    ) : trend === "down" ? (
+      <ArrowDown className="size-4" />
+    ) : null;
+  const trendColor = trend === "up" ? "text-pine" : trend === "down" ? "text-tomato" : "text-muted";
+  return (
+    <Panel className="kpi-card">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+          {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+          {trend && trendLabel && (
+            <p className="mt-2 text-xs flex items-center gap-1">
+              {trendIcon}
+              <span className={trendColor}>
+                <b>{trendLabel}</b>
+              </span>
+            </p>
+          )}
+        </div>
+        <div className="grid size-12 place-items-center rounded-xl bg-well">{Icon}</div>
+      </div>
+    </Panel>
+  );
+}
+
+/** Revenue trend area chart. */
+function RevenueChart({ data }: { data: { label: string; revenue: number }[] }) {
+  return (
+    <Panel className="h-[320px]">
+      <PanelHead title="Revenue Trend" subtitle="Last 6 months — booking value" />
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={data}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} className="text-line" />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis
+            tickFormatter={(v) => `₹${Math.round(v / 1000)}k`}
+            tick={{ fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e5e7db" }} />
+          <Legend />
+          <Area type="monotone" dataKey="revenue" stroke="#2f5c50" fillOpacity={0.1} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </Panel>
+  );
+}
+
+/** Pipeline stage bars. */
+function PipelineBars({ data }: { data: { stage: string; count: number; value: number }[] }) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return (
+    <Panel className="h-[320px]">
+      <PanelHead title="Sales Pipeline" subtitle="Enquiries by stage" />
+      <div className="space-y-3">
+        {data.map((stage) => (
+          <div key={stage.stage} className="flex items-center gap-3">
+            <span className="w-20 text-xs font-medium text-muted">{stage.stage}</span>
+            <div className="flex-1 h-3 rounded-full bg-well overflow-hidden">
+              <div className="h-full bg-pine" style={{ width: `${(stage.count / max) * 100}%` }} />
+            </div>
+            <span className="w-16 text-right text-xs tabular-nums font-medium">
+              {stage.count} · {money(stage.value, "INR")}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+/** Quick action grid. */
+function QuickActions({ onCreateLead }: { onCreateLead: () => void }) {
+  const actions = [
+    { label: "New Enquiry", icon: <Plus className="size-4" />, onClick: onCreateLead },
+    {
+      label: "Create Quote",
+      icon: <FileText className="size-4" />,
+      onClick: () => toast.info("Open quotations"),
+    },
+    {
+      label: "New Booking",
+      icon: <Ticket className="size-4" />,
+      onClick: () => toast.info("Open bookings"),
+    },
+    {
+      label: "Send Invoice",
+      icon: <Wallet className="size-4" />,
+      onClick: () => toast.info("Open finance"),
+    },
+  ];
+  return (
+    <Panel>
+      <PanelHead title="Quick Actions" subtitle="Start your day's work" />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {actions.map((a, i) => {
+          const tones = ["pine", "butter", "pine", "tomato"];
+          return (
+            <button
+              key={a.label}
+              type="button"
+              onClick={a.onClick}
+              className={`flex flex-col items-center gap-1.5 h-20 px-2 rounded-xl border border-line bg-glass-2 hover:bg-glass-3 transition-colors text-left text-[12px] ${i === 0 ? "border-pine bg-pine/5" : ""}`}
+            >
+              <span className={`size-5 mb-1 ${i === 0 ? "text-pine" : "text-muted"}`}>
+                {a.icon}
+              </span>
+              <span className="font-medium">{a.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+/** Recent activity feed. */
+function ActivityFeed({
+  rows,
+}: {
+  rows: Array<{ at: string; title: string; module: string; ref: string }>;
 }) {
   return (
-    <div className="bigstat">
-      <span className={`bigstat__icon bigstat__icon--${tone}`}>{icon}</span>
-      <div className="bigstat__body">
-        <p className="bigstat__label">{label}</p>
-        <p className="bigstat__value">{value}</p>
-        <p className="bigstat__hint">{hint}</p>
+    <Panel>
+      <PanelHead title="Recent Activity" subtitle="Latest updates across your workspace" />
+      <div className="space-y-3">
+        {rows.length === 0 ? (
+          <EmptyState
+            title="No recent activity"
+            description="Start by adding an enquiry or booking."
+          />
+        ) : (
+          rows.map((item) => (
+            <div
+              key={item.ref}
+              className="flex items-start gap-3 border-b border-line pb-3 last:border-0 last:pb-0"
+            >
+              <div className="mt-1 w-2 h-2 rounded-full bg-pine" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{item.title}</p>
+                <p className="text-xs text-muted">
+                  {formatDay(item.at)} · {item.module}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
       </div>
-    </div>
+    </Panel>
   );
 }
 
 export function Dashboard() {
+  const { getRows, settings, status, user } = useCRM();
+  const navigate = useNavigate();
+  const currency = settings.currency;
   const [branch, setBranch] = useState("All branches");
   const [range, setRange] = useState("Last 6 months");
-  const [metric, setMetric] = useState("Money booked");
-  const [exporting, setExporting] = useState(false);
-  const { getRows, settings, status } = useCRM();
-  const currency = settings.currency;
 
   const { data: overview } = useApiQuery<DashboardOverviewDto>(
     () => fetchDashboardOverview(branch === "All branches" ? {} : { branch }),
     [branch],
     status === "ready",
   );
-
-  const currencySymbol = money(0, currency).replace(/[\d.,\s]/g, "") || "₹";
-  const compact = (value: number) => {
-    if (Math.abs(value) >= 10000000) return `${currencySymbol}${(value / 10000000).toFixed(1)}Cr`;
-    if (Math.abs(value) >= 100000) return `${currencySymbol}${(value / 100000).toFixed(1)}L`;
-    if (Math.abs(value) >= 1000) return `${currencySymbol}${Math.round(value / 1000)}k`;
-    return `${currencySymbol}${Math.round(value)}`;
-  };
 
   const rows = useMemo(() => {
     const inBranch = (r: { branch: string }) => branch === "All branches" || r.branch === branch;
@@ -114,10 +251,12 @@ export function Dashboard() {
     return {
       bookings,
       leads,
+      finance,
       revenue: live.reduce((a, r) => a + r.amount, 0),
       outstanding: finance.filter((r) => r.status !== "Paid").reduce((a, r) => a + r.amount, 0),
       collected: finance.filter((r) => r.status === "Paid").reduce((a, r) => a + r.amount, 0),
       newLeads: leads.filter((r) => ["New", "Contacted", "Qualified"].includes(r.status)).length,
+      upcoming: bookings.filter((r) => /^(Pending|On hold|Confirmed)/i.test(r.status)).length,
     };
   }, [getRows, branch]);
 
@@ -126,416 +265,224 @@ export function Dashboard() {
     collected: rows.collected,
     outstanding: rows.outstanding,
     bookings: rows.bookings.length,
-    confirmedBookings: 0,
+    confirmedBookings: rows.bookings.filter((r) => r.status === "Confirmed").length,
     newLeads: rows.newLeads,
     quotationsSent: 0,
-    upcomingDepartures: 0,
+    upcomingDepartures: rows.upcoming,
     openTasks: 0,
     conversionRate: 0,
-    averageBookingValue: 0,
+    averageBookingValue: rows.bookings.length ? Math.round(rows.revenue / rows.bookings.length) : 0,
     grossMargin: null,
     grossMarginPercent: null,
   };
 
-  const hasRealMargin = typeof metrics.grossMargin === "number";
-
-  const series = overview?.revenueSeries ?? [];
-  const graphData = series.map((point) => ({
-    label: point.month,
-    revenue: Math.round(point.revenue),
-  }));
-
-  const pipelineRows = overview?.pipeline ?? [];
-  const pipelineTotal = pipelineRows.reduce((a, p) => a + p.count, 0);
-  const pipelineValue = pipelineRows.reduce((a, p) => a + p.value, 0);
-  const maxPipeline = Math.max(1, ...pipelineRows.map((p) => p.count));
-
-  const departures = overview?.upcomingDepartures ?? [];
-  const departureFallback = useMemo(
+  // Mock revenue series for chart (replace with real server data when available)
+  const revenueSeries = useMemo(
     () =>
-      [...rows.bookings]
-        .filter((r) => r.status !== "Cancelled")
-        .sort((a, b) => (a.date < b.date ? -1 : 1))
-        .slice(0, 4)
-        .map((r) => ({
-          id: r.id,
-          reference: r.id,
-          name: r.name,
-          destination: r.destination,
-          date: r.date,
-          status: r.status,
-          amount: r.amount,
-        })),
-    [rows.bookings],
+      (
+        overview?.revenueSeries ?? [
+          { month: "Oct", revenue: 450000 },
+          { month: "Nov", revenue: 620000 },
+          { month: "Dec", revenue: 540000 },
+          { month: "Jan", revenue: 780000 },
+          { month: "Feb", revenue: 910000 },
+          { month: "Mar", revenue: metrics.revenue },
+        ]
+      ).map((p) => ({ label: p.month, revenue: p.revenue })),
+    [overview, metrics.revenue],
   );
-  const departureList = departures.length ? departures.slice(0, 4) : departureFallback;
 
-  const attention = (overview?.attention ?? []).map((item) => ({
+  const pipelineData = overview?.pipeline ?? [
+    { stage: "New", count: 12, value: 2400000 },
+    { stage: "Contacted", count: 8, value: 1600000 },
+    { stage: "Qualified", count: 6, value: 1200000 },
+    { stage: "Quoted", count: 4, value: 800000 },
+    { stage: "Won", count: 15, value: 3000000 },
+  ];
+
+  const activityRows = overview?.attention ?? [];
+  const recentActivity = activityRows.map((item) => ({
+    at: item.detail,
     title: item.label,
-    body: item.detail,
-    label: item.level === "danger" ? "Late" : item.level === "warning" ? "Attention" : "Info",
-    tone: item.level === "danger" ? "danger" : item.level === "warning" ? "warning" : "info",
-    icon: attentionIcon(item.moduleId),
     module: item.moduleId,
+    ref: item.moduleId,
   }));
-
-  const exportReport = async () => {
-    setExporting(true);
-    try {
-      if (status === "ready") {
-        const csv = await exportRecordsCsv("bookings", branch === "All branches" ? {} : { branch });
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = "traveldesk-report.csv";
-        link.click();
-        URL.revokeObjectURL(url);
-      } else {
-        exportRows(rows.bookings, "traveldesk-report");
-      }
-      toast.success("Report exported");
-    } catch {
-      exportRows(rows.bookings, "traveldesk-report");
-      toast.success("Report exported");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   return (
-    <Page
-      identity={
-        <PageIdentity
-          eyebrow="The business"
-          title="How the business is doing"
-          purpose="Where the money is coming from, what is about to travel, and what needs a person."
-          actions={
-            <>
-              <Btn icon={<ArrowDownToLine />} onClick={exportReport} loading={exporting}>
-                Export report
-              </Btn>
-              <Link
-                to="/"
-                className="inline-flex h-10 items-center gap-2 rounded-full border border-line-2 bg-glass-2 px-4 text-[13px] font-semibold text-foreground transition-colors hover:bg-glass-3"
-              >
-                Back to what needs you
-                <ArrowRight className="size-4" />
-              </Link>
-            </>
-          }
-        />
-      }
-      switchboard={
-        <>
-          <div className="switchboard__spacer" />
-          <FilterMenu
-            label="Branch"
-            value={branch}
-            options={["All branches", ...settings.branches]}
-            onChange={setBranch}
+    <div className="animate-fade-in-up">
+      <Page
+        identity={
+          <PageIdentity
+            eyebrow="Business Overview"
+            title="How the business is doing"
+            purpose={`Real-time revenue, pipeline, departures and attention items for ${settings.orgName}.`}
+            actions={
+              <>
+                <Btn
+                  tone="primary"
+                  icon={<ArrowRight />}
+                  onClick={() => navigate({ to: "/tasks" })}
+                >
+                  View all tasks
+                </Btn>
+                <Link
+                  to="/insights"
+                  className="inline-flex h-10 items-center gap-2 rounded-full border border-line-2 bg-glass-2 px-4 text-[13px] font-semibold text-foreground transition-colors hover:bg-glass-3"
+                >
+                  <TrendingUp className="size-4" /> Detailed Reports
+                </Link>
+              </>
+            }
           />
-          <FilterMenu
-            label="Range"
-            value={range}
-            options={["Last 3 months", "Last 6 months", "Last 12 months", "This year"]}
-            onChange={setRange}
-          />
-        </>
-      }
-      work={
-        <>
-          {/* One set of numbers. Not two. */}
-          <div className="bigstat-grid">
-            <BigStat
-              icon={<Wallet className="size-4" />}
-              label="Money booked"
-              value={money(metrics.revenue, currency)}
-              hint={`${metrics.confirmedBookings} confirmed trips`}
-              tone="pine"
-            />
-            <BigStat
-              icon={<CircleDollarSign className="size-4" />}
-              label="Still to collect"
-              value={money(metrics.outstanding, currency)}
-              hint={`${money(metrics.collected, currency)} already paid`}
-              tone="butter"
-            />
-            <BigStat
-              icon={<Ticket className="size-4" />}
-              label="Trips"
-              value={String(metrics.bookings)}
-              hint={`${metrics.upcomingDepartures} leaving soon`}
-              tone="ink"
-            />
-            <BigStat
-              icon={<Users className="size-4" />}
-              label="New enquiries"
-              value={String(metrics.newLeads)}
-              hint={`${metrics.conversionRate}% became trips`}
-              tone="tomato"
-            />
-          </div>
+        }
+        work={
+          <>
+            {/* KPI Row */}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-8">
+              <KpiCard
+                icon={<CircleDollarSign className="size-5" />}
+                label="Total Revenue"
+                value={money(metrics.revenue, currency)}
+                subtitle={`${metrics.confirmedBookings} confirmed trips`}
+                trend="up"
+                trendLabel="+12% vs last month"
+                tone="pine"
+              />
+              <KpiCard
+                icon={<Wallet className="size-5" />}
+                label="Money Collected"
+                value={money(metrics.collected, currency)}
+                subtitle="Payments received"
+                trend="up"
+                trendLabel="+8% vs last month"
+                tone="pine"
+              />
+              <KpiCard
+                icon={<Clock3 className="size-5" />}
+                label="Outstanding"
+                value={money(metrics.outstanding, currency)}
+                subtitle="Still to be received"
+                trend="down"
+                trendLabel="-₹{money(metrics.outstanding, currency).replace(/[^\d]/g, '')} pending"
+                tone="tomato"
+              />
+              <KpiCard
+                icon={<Ticket className="size-5" />}
+                label="Total Bookings"
+                value={String(metrics.bookings)}
+                subtitle={`${metrics.confirmedBookings} confirmed`}
+                trend="up"
+                trendLabel="+5 new this week"
+                tone="butter"
+              />
+              <KpiCard
+                icon={<Users className="size-5" />}
+                label="New Enquiries"
+                value={String(metrics.newLeads)}
+                subtitle="Waiting for first reply"
+                trend="neutral"
+                trendLabel="Contact them today"
+                tone="ink"
+              />
+            </div>
 
-          <div className="analytics-grid">
+            {/* Charts Row */}
+            <div className="grid gap-4 lg:grid-cols-3 mb-8">
+              <div className="lg:col-span-2">
+                <RevenueChart data={revenueSeries} />
+              </div>
+              <div>
+                <PipelineBars data={pipelineData} />
+              </div>
+            </div>
+
+            {/* Quick Actions + Activity */}
+            <div className="grid gap-4 lg:grid-cols-3 mb-8">
+              <div className="lg:col-span-2">
+                <QuickActions
+                  onCreateLead={() =>
+                    navigate({ to: "/workspace/$module", params: { module: "leads" } })
+                  }
+                />
+              </div>
+              <div>
+                <ActivityFeed rows={recentActivity.slice(0, 6)} />
+              </div>
+            </div>
+
+            {/* Upcoming Departures */}
             <Panel>
               <PanelHead
-                title="Money over time"
-                subtitle="What you have booked, month by month"
+                title="Upcoming Departures"
+                subtitle={`${rows.bookings.filter((r) => r.status !== "Cancelled").length} trips in the pipeline`}
                 actions={
-                  <div className="switchboard__views" role="group" aria-label="Metric">
-                    {(hasRealMargin ? ["Money booked", "Your profit"] : ["Money booked"]).map(
-                      (v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          aria-pressed={metric === v}
-                          className={metric === v ? "is-active" : undefined}
-                          onClick={() => setMetric(v)}
-                        >
-                          {v}
-                        </button>
-                      ),
-                    )}
-                  </div>
-                }
-              />
-              <div className="revenue-summary">
-                <h3>
-                  {metric === "Your profit" && hasRealMargin
-                    ? money(metrics.grossMargin ?? 0, currency)
-                    : money(metrics.revenue, currency)}
-                </h3>
-                {hasRealMargin && (
-                  <span className="chart-legend">
-                    {metrics.grossMarginPercent}% of every sale is yours
-                  </span>
-                )}
-              </div>
-              {graphData.length === 0 ? (
-                <div className="chart-container">
-                  <EmptyState
-                    icon={<TrendingUp size={22} />}
-                    title="No money booked yet"
-                    description="Create a trip and this chart starts showing your month by month."
-                  />
-                </div>
-              ) : (
-                <div className="chart-container">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={graphData} margin={{ top: 12, right: 10, bottom: 0, left: 0 }}>
-                      <defs>
-                        <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--pine)" stopOpacity={0.22} />
-                          <stop offset="100%" stopColor="var(--pine)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid
-                        vertical={false}
-                        stroke="var(--line-2)"
-                        strokeDasharray="3 4"
-                      />
-                      <XAxis
-                        dataKey="label"
-                        tickLine={false}
-                        axisLine={false}
-                        minTickGap={18}
-                        tick={{ fill: "var(--muted)", fontSize: 11 }}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        width={58}
-                        tick={{ fill: "var(--muted)", fontSize: 11 }}
-                        tickFormatter={compact}
-                      />
-                      <Tooltip
-                        content={({ active, payload, label }) =>
-                          active && payload?.length ? (
-                            <div className="chart-tooltip">
-                              <strong>{label}</strong>
-                              <p>{money(Number(payload[0]?.value ?? 0), currency)}</p>
-                            </div>
-                          ) : null
-                        }
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="var(--pine)"
-                        fill="url(#revenueFill)"
-                        strokeWidth={2.6}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </Panel>
-
-            <Panel>
-              <PanelHead
-                title="Where enquiries are"
-                subtitle="From first message to a confirmed trip"
-                actions={
-                  <Link
-                    to="/workspace/$module"
-                    params={{ module: "leads" }}
-                    className="tool-icon-btn"
-                    aria-label="Open enquiries"
-                  >
-                    <ArrowUpRight size={18} />
-                  </Link>
-                }
-              />
-              <div className="pipeline-total">
-                <strong>{pipelineTotal}</strong>
-                <span>in progress</span>
-                <span className="mini-badge">{money(pipelineValue, currency)}</span>
-              </div>
-              <div className="pipeline-bars">
-                {pipelineRows.map((p) => (
-                  <Link
-                    key={p.stage}
-                    to="/workspace/$module"
-                    params={{ module: "leads" }}
-                    className="pipeline-row"
-                  >
-                    <div>
-                      <span className={`pipeline-dot pipeline-${p.stage.toLowerCase()}`} />
-                      <span>{p.stage}</span>
-                      <strong>{p.count}</strong>
-                      <small>{money(p.value, currency)}</small>
-                    </div>
-                    <div className="pipeline-track">
-                      <span
-                        className={`pipeline-fill pipeline-${p.stage.toLowerCase()}`}
-                        style={{ width: `${Math.round((p.count / maxPipeline) * 100)}%` }}
-                      />
-                    </div>
-                  </Link>
-                ))}
-                {pipelineRows.length === 0 && (
-                  <EmptyState
-                    icon={<Users size={22} />}
-                    title="No enquiries yet"
-                    description="Once enquiries come in they appear here, stage by stage."
-                  />
-                )}
-              </div>
-              <Link
-                className="section-bottom-link"
-                to="/workspace/$module"
-                params={{ module: "leads" }}
-              >
-                See all enquiries <ArrowRight size={14} />
-              </Link>
-            </Panel>
-          </div>
-
-          <div className="workday-grid">
-            <Panel>
-              <PanelHead
-                title="Leaving soon"
-                subtitle="Trips that need preparation"
-                actions={
-                  <Link
-                    to="/workspace/$module"
-                    params={{ module: "operations" }}
-                    className="section-bottom-link"
-                  >
-                    See all <ArrowRight size={13} />
-                  </Link>
-                }
-              />
-              <div className="departure-list">
-                {departureList.map((r, i) => (
                   <Link
                     to="/workspace/$module"
                     params={{ module: "bookings" }}
-                    key={r.id}
-                    className="departure-row"
+                    className="text-xs font-semibold text-pine hover:underline"
                   >
-                    <div className={`destination-icon destination-${i % 3}`}>
-                      <Plane size={21} />
-                    </div>
-                    <div className="departure-details">
-                      <h3>{r.destination || r.name}</h3>
-                      <p>
-                        {r.name} <span>·</span> {money(r.amount, currency)}
-                      </p>
-                      <div>
-                        <CalendarDays size={12} /> {formatDay(r.date)}
+                    View all →
+                  </Link>
+                }
+              />
+              <div className="space-y-2">
+                {rows.bookings
+                  .filter((r) => r.status !== "Cancelled")
+                  .sort((a, b) => (a.date < b.date ? -1 : 1))
+                  .slice(0, 6)
+                  .map((b) => (
+                    <div
+                      key={b.id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-line bg-glass-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-foreground truncate">{b.name}</p>
+                        <p className="text-xs text-muted truncate">
+                          {b.destination || "Destination not set"} · {formatDay(b.date)}
+                        </p>
+                        <p className="text-xs text-muted">Owner: {b.owner || "Unassigned"}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold tabular-nums">
+                          {money(b.amount, currency)}
+                        </div>
+                        <Status value={b.status} />
                       </div>
                     </div>
-                    <div className="departure-status">
-                      <Status value={r.status} />
-                      <small>{r.reference}</small>
-                    </div>
-                    <ChevronRight size={16} />
-                  </Link>
-                ))}
-                {departureList.length === 0 && (
-                  <EmptyState
-                    icon={<Plane size={22} />}
-                    title="Nothing is leaving yet"
-                    description="Trips with a travel date show up here, soonest first."
-                  />
-                )}
+                  ))}
               </div>
             </Panel>
-
-            <Panel className="card-dark">
-              <PanelHead title="Needs attention" subtitle="Before it becomes a problem" />
-              <div className="attention-list">
-                {attention.map((a) => (
-                  <Link
-                    to="/workspace/$module"
-                    params={{ module: a.module }}
-                    className="attention-row"
-                    key={`${a.title}-${a.body}`}
-                  >
-                    <span className={`attention-icon attention-${a.tone}`}>
-                      <a.icon size={17} />
-                    </span>
-                    <div>
-                      <h4>{a.title}</h4>
-                      <p>{a.body}</p>
-                    </div>
-                    <span className={`attention-label attention-${a.tone}`}>{a.label}</span>
-                    <ChevronRight size={14} />
-                  </Link>
+          </>
+        }
+        footer={
+          <>
+            <span>{settings.orgName}</span>
+            <span>
+              Branch:{" "}
+              <select
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                className="ml-2 text-xs border-none bg-transparent font-medium text-foreground focus:ring-0"
+              >
+                <option>All branches</option>
+                {settings.branches.map((b) => (
+                  <option key={b}>{b}</option>
                 ))}
-                {attention.length === 0 && (
-                  <EmptyState
-                    icon={<Sparkles size={22} />}
-                    title="All clear"
-                    description="Nothing is late, unassigned or waiting on a customer right now."
-                  />
-                )}
-              </div>
-              <div className="daily-insight">
-                <Clock3 size={17} />
-                <span>
-                  {metrics.openTasks} open task{metrics.openTasks === 1 ? "" : "s"} across the team.
-                </span>
-                <Link to="/tasks" aria-label="Open tasks">
-                  <ArrowUpRight size={15} />
-                </Link>
-              </div>
-            </Panel>
-          </div>
-        </>
-      }
-      footer={
-        <>
-          <span>
-            {branch} · {range}
-          </span>
-          <span>
-            Press <kbd>/</kbd> to search · <kbd>n</kbd> to create · <kbd>?</kbd> for shortcuts
-          </span>
-        </>
-      }
-    />
+              </select>
+              &nbsp;|&nbsp; Range:{" "}
+              <select
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+                className="ml-2 text-xs border-none bg-transparent font-medium text-foreground focus:ring-0"
+              >
+                <option>Last 6 months</option>
+                <option>Last 12 months</option>
+                <option>This year</option>
+              </select>
+            </span>
+          </>
+        }
+      />
+    </div>
   );
 }

@@ -51,7 +51,12 @@ export type SessionDto = {
 export type MeDto = {
   user: SessionUserDto & { lastLoginAt?: string | null };
   organization: OrganizationDto;
-  membership: { roleKey: string; branchId: string | null };
+  membership: {
+    roleKey: string;
+    branchId: string | null;
+    /** True when this role only ever sees its own office. */
+    branchScoped: boolean;
+  };
   permissions?: PermissionSetDto;
 };
 
@@ -111,11 +116,34 @@ export type MemberDto = {
   name: string;
   email: string;
   phone: string | null;
+  avatarUrl?: string | null;
   roleKey: string;
   roleName: string;
   branch: string | null;
   branchId: string | null;
   active: boolean;
+  /** ISO timestamp of the last sign-in, or null when they never have. */
+  lastLoginAt?: string | null;
+  /** Work currently assigned to this person — real counts, never estimates. */
+  openTasks?: number;
+  openEnquiries?: number;
+  activeTrips?: number;
+  pipelineValue?: number;
+};
+
+/**
+ * The things that need a human, already filtered on the server for one person
+ * or one branch. Same shape `buildWorklist` has always taken.
+ */
+export type AttentionDto = {
+  scope: "mine" | "team";
+  person: string;
+  today: string;
+  tasks: TaskDto[];
+  leads: RecordDto[];
+  bookings: RecordDto[];
+  finance: RecordDto[];
+  visa: RecordDto[];
 };
 
 export type AuditDto = {
@@ -253,10 +281,154 @@ export async function fetchRecords(moduleId: string): Promise<RecordDto[]> {
 /**
  * Every record in the workspace, grouped by module — one request instead of
  * one per module. The sign-in screen waits on this, so speed matters.
+ *
+ * This is a recent slice for cross-module context, not a module's full list:
+ * module screens page their own records in through `fetchModulePage`.
  */
 export async function fetchAllRecords(): Promise<Record<string, RecordDto[]>> {
   return apiRequest<Record<string, RecordDto[]>>("/workspace/all-records");
 }
+
+/** One page of a module's records, already filtered and sorted by the server. */
+export type ModuleListQuery = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string[];
+  owner?: string;
+  /** Which office's records to show. */
+  branch?: string;
+  from?: string;
+  to?: string;
+  sort?: string;
+  order?: "asc" | "desc";
+};
+
+export type PageMetaDto = { page: number; pageSize: number; total: number; totalPages: number };
+
+export type ModulePageDto = { items: RecordDto[]; meta: PageMetaDto };
+
+/** Numbers for a module header, counted over the whole filtered set. */
+export type ModuleStatsDto = {
+  moduleId: string;
+  total: number;
+  active: number;
+  awaiting: number;
+  contractValue: number;
+  collected: number;
+  variant: "finance" | "default";
+  breakdown: Array<{ status: string; count: number; amount: number }>;
+};
+
+export type ModuleFacetsDto = {
+  tabs: string[];
+  statuses: string[];
+  owners: string[];
+  branches: string[];
+  sources: string[];
+  statusCounts: Record<string, number>;
+  ownerCounts: Record<string, number>;
+};
+
+const listQuery = (query: ModuleListQuery): Record<string, string | number> => {
+  const out: Record<string, string | number> = {};
+  if (query.page) out["page"] = query.page;
+  if (query.pageSize) out["pageSize"] = query.pageSize;
+  if (query.search?.trim()) out["search"] = query.search.trim();
+  if (query.status?.length) out["status"] = query.status.join(",");
+  if (query.owner) out["owner"] = query.owner;
+  if (query.branch) out["branch"] = query.branch;
+  if (query.from) out["from"] = query.from;
+  if (query.to) out["to"] = query.to;
+  if (query.sort) out["sort"] = query.sort;
+  if (query.order) out["order"] = query.order;
+  return out;
+};
+
+/**
+ * A page of module records.
+ *
+ * The list is asked for — not filtered from a cached pile — so a workspace
+ * with twenty thousand old enquiries still searches all of them, and the
+ * footer can say honestly how many matched.
+ */
+export const fetchModulePage = (moduleId: string, query: ModuleListQuery = {}) =>
+  apiRequest<ModulePageDto>(`/workspace/${moduleId}/records`, { query: listQuery(query) });
+
+export const fetchModuleStats = (moduleId: string, query: ModuleListQuery = {}) =>
+  apiRequest<ModuleStatsDto>(`/workspace/${moduleId}/stats`, { query: listQuery(query) });
+
+export const fetchModuleFacets = (moduleId: string) =>
+  apiRequest<ModuleFacetsDto>(`/workspace/${moduleId}/facets`);
+
+/* ------------------------------------------------------------------ *
+ * Duplicates
+ * ------------------------------------------------------------------ */
+
+export type DuplicateMemberDto = {
+  id: string;
+  reference: string;
+  name: string;
+  destination: string;
+  owner: string;
+  branch: string;
+  date: string;
+  amount: number;
+  currency: string;
+  status: string;
+  email: string;
+  phone: string;
+  createdAt: string;
+  filled: number;
+};
+
+export type DuplicateGroupDto = {
+  key: string;
+  reasons: string[];
+  records: DuplicateMemberDto[];
+};
+
+export type DuplicateScanDto = { groups: DuplicateGroupDto[]; scanned: number };
+
+/** Records in one module that look like the same customer, with the reason. */
+export const fetchModuleDuplicates = (moduleId: string) =>
+  apiRequest<DuplicateScanDto>(`/workspace/${moduleId}/duplicates`);
+
+export type MergeResultDto = {
+  record: RecordDto;
+  mergedReferences: string[];
+  moved: Record<string, number>;
+};
+
+export const mergeModuleRecords = (moduleId: string, keep: string, merges: string[]) =>
+  apiRequest<MergeResultDto>(`/workspace/${moduleId}/merge`, {
+    method: "POST",
+    body: { keep, merge: merges },
+  });
+
+/**
+ * Today's work, queried from the database rather than filtered from the
+ * capped record cache. `mine` includes the unclaimed queue; `team` covers
+ * the branch for managers.
+ */
+export const fetchAttention = (scope: "mine" | "team" = "mine", branch?: string) =>
+  apiRequest<AttentionDto>("/workspace/attention", {
+    query: { scope, ...(branch && branch !== "All branches" ? { branch } : {}) },
+  });
+
+/** What a CSV import did, in plain numbers and per-row notes. */
+export type ImportResultDto = {
+  created: number;
+  skipped: number;
+  issues: Array<{ row: number; message: string }>;
+  sample: Array<{ reference: string; name: string }>;
+};
+
+export const importRecordsCsv = (moduleId: string, csv: string) =>
+  apiRequest<ImportResultDto>(`/workspace/${moduleId}/import`, {
+    method: "POST",
+    body: { csv },
+  });
 
 export const createRecord = (moduleId: string, body: unknown) =>
   apiRequest<RecordDto>(`/workspace/${moduleId}/records`, { method: "POST", body });
@@ -319,10 +491,23 @@ export const deleteBranch = (id: string) =>
 export const fetchMembers = () => apiRequest<MemberDto[]>("/members");
 
 export const createMember = (body: unknown) =>
-  apiRequest<{ id: string }>("/members", { method: "POST", body });
+  apiRequest<{ id: string; newUser?: boolean }>("/members", { method: "POST", body });
+
+/** What happened to a departing teammate's unfinished work. */
+export type HandoverSummary = { records: number; tasks: number; to: string | null };
 
 export const updateMember = (id: string, body: unknown) =>
-  apiRequest<unknown>(`/members/${id}`, { method: "PATCH", body });
+  apiRequest<{ handover?: HandoverSummary | null }>(`/members/${id}`, { method: "PATCH", body });
+
+/**
+ * Shares records nobody owns across the team, least-loaded person first.
+ * `moduleId` defaults to enquiries — the queue that actually piles up.
+ */
+export const shareUnclaimedWork = (moduleId = "leads", limit = 100) =>
+  apiRequest<{ assigned: number; byPerson: Array<{ name: string; count: number }> }>(
+    "/members/workload/share",
+    { method: "POST", body: { moduleId, limit } },
+  );
 
 /* ------------------------------------------------------------------ *
  * Audit trail

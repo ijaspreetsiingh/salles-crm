@@ -2,15 +2,21 @@ import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
-  Building2,
   Calendar,
+  Clock,
   Copy,
+  CreditCard,
+  FileText,
   Mail,
   MapPin,
   MoreHorizontal,
   Phone,
+  PlaneTakeoff,
   Star,
+  Ticket,
   User,
+  UserCheck,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,7 +28,6 @@ import { setCommsFocus } from "@/lib/crm/handoff";
 import { cn } from "@/lib/utils";
 import { customerHealth, customerSegment, customerSignals, healthColour } from "@/lib/crm/customer";
 
-/** The colour of the health ring. */
 const healthTone = healthColour;
 
 const agoLabel = (iso: string) => {
@@ -45,18 +50,9 @@ type Interaction = {
   status: string;
   ref: string;
   module: string;
-  /** The actual record behind the card, so clicking opens real details. */
   row: RecordRow;
 };
 
-/**
- * The Customer Information cover — a full page, not a popup.
- *
- * It replaces the whole workspace (no page header on top of it), and every
- * part of it does something real: interaction cards open the right-side
- * panel, follow-ups tick off on the calendar, and the stage funnel lists the
- * enquiries behind each stage.
- */
 export function CustomerProfile({
   row,
   currency,
@@ -66,7 +62,6 @@ export function CustomerProfile({
   row: RecordRow;
   currency: string;
   onBack: () => void;
-  /** Sends the user to Communications with this contact open. */
   onOpenCommunications?: (row: RecordRow) => void;
 }) {
   const [sheet, setSheet] = useState<{ row: RecordRow; module: Module } | null>(null);
@@ -80,7 +75,7 @@ export function CustomerProfile({
 
   const current = row;
 
-  // Health & segment for this one customer.
+  // Health & segment
   const meta = useMemo(() => {
     const signals = customerSignals(current, {
       bookings: getRows("bookings"),
@@ -89,14 +84,23 @@ export function CustomerProfile({
       tasks,
     });
     const health = customerHealth(signals);
-    return { health: health.score, healthDetail: health, segment: customerSegment(signals) };
+    return { health: health.score, segment: customerSegment(signals) };
   }, [current, getRows, tasks]);
 
   const health = meta.health;
-  const healthDetail = meta.healthDetail;
   const seg = meta.segment;
 
-  // Cross-module interactions for this customer
+  // Traveller-specific extra fields
+  const passport = String(current.extra?.["passport"] ?? current.extra?.["passportNumber"] ?? "");
+  const passportExpiry = String(
+    current.extra?.["passportExpiry"] ?? current.extra?.["passportExpiryDate"] ?? "",
+  );
+  const dob = current.extra?.["dob"] ?? current.extra?.["dateOfBirth"] ?? "";
+  const nationality = current.extra?.["nationality"] ?? "";
+  const loyalty = current.extra?.["loyalty"] ?? current.extra?.["loyaltyTier"] ?? "None";
+  const city = current.extra?.["city"] ?? "";
+
+  // Cross-module interactions
   const interactions: Interaction[] = (
     ["leads", "quotations", "bookings", "finance", "support"] as const
   ).flatMap((mid) =>
@@ -114,7 +118,23 @@ export function CustomerProfile({
   );
   interactions.sort((a, b) => (a.at < b.at ? 1 : -1));
 
-  // Open pipeline across leads + quotations
+  // Upcoming trips (bookings with future dates)
+  const upcomingBookings = getRows("bookings")
+    .filter(
+      (r) =>
+        r.name.trim().toLowerCase() === current.name.trim().toLowerCase() &&
+        /^(Pending|On hold|Confirmed)/i.test(r.status),
+    )
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  // Completed trips
+  const completedBookings = getRows("bookings").filter(
+    (r) =>
+      r.name.trim().toLowerCase() === current.name.trim().toLowerCase() &&
+      /^(Confirmed|Completed)/i.test(r.status),
+  );
+
+  // Open pipeline
   const openStatuses = [
     "New",
     "Contacted",
@@ -132,43 +152,30 @@ export function CustomerProfile({
       openStatuses.includes(r.status),
   );
   const openPipeline = pipelineRows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+
+  // Won/completed total
   const wonAll = interactions.filter((i) => /^(won|accepted|confirmed|paid)/i.test(i.status));
   const wonTotal = wonAll.reduce((a, i) => a + i.amount, 0);
 
-  // Stage funnel from this customer's leads
+  // Lead funnel
   const leadRows = getRows("leads").filter(
     (r) => r.name.trim().toLowerCase() === current.name.trim().toLowerCase(),
   );
   const funnelStages = ["New", "Contacted", "Qualified", "Quoted", "Won", "Lost"];
   const funnel = funnelStages.map((s) => ({
     stage: s,
-    total: leadRows
-      .filter((r) => r.status === s)
-      .reduce((a, r) => a + (Number(r.amount) || 0), 0),
+    total: leadRows.filter((r) => r.status === s).reduce((a, r) => a + (Number(r.amount) || 0), 0),
     count: leadRows.filter((r) => r.status === s).length,
   }));
   const funnelMax = Math.max(1, ...funnel.map((f) => f.total));
 
-  // Simple month calendar with task dots from this customer's tasks
-  const now = new Date();
-  const monthLabel = now.toLocaleString("en-US", { month: "long" });
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const firstDow = (new Date(now.getFullYear(), now.getMonth(), 1).getDay() + 6) % 7; // Mon-first
+  // Tasks
   const customerTasks = tasks.filter(
     (t) =>
       t.relatedRecordId === current.id ||
       t.title.toLowerCase().includes(current.name.toLowerCase()),
   );
   const openCustomerTasks = customerTasks.filter((t) => !t.done);
-  const taskDays = new Set(
-    customerTasks
-      .filter((t) => {
-        const d = new Date(t.date);
-        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      })
-      .map((t) => new Date(t.date).getDate()),
-  );
-  const today = now.getDate();
 
   const openComms = (channel: "Email" | "WhatsApp") => {
     if (onOpenCommunications) {
@@ -186,7 +193,6 @@ export function CustomerProfile({
     });
   };
 
-  /** The record side panel + its edit/convert forms. */
   const sheetNodes = (
     <>
       {sheet && !sheetEdit && (
@@ -233,61 +239,113 @@ export function CustomerProfile({
         >
           <ArrowLeft className="size-5" />
         </button>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-[34px] font-semibold leading-[1.05] tracking-tight sm:text-[40px]">
-            Customer
+            Traveller Profile
             <br />
-            Information
+            <span className="text-[18px] font-normal text-muted">{current.name}</span>
           </h1>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-x-10 gap-y-4">
           <div className="flex items-center gap-3.5">
             <span className="grid size-12 place-items-center rounded-full border border-rim bg-glass-2 shadow-xs">
-              <BarChart3 className="size-5 text-muted" />
+              <Wallet className="size-5 text-pine" />
             </span>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
                 {money(wonTotal, currency)}
-                <span className="rounded-full bg-butter px-2.5 py-0.5 text-[11px] font-bold text-on-butter">
-                  {wonAll.length ? `${wonAll.length} deals` : "None yet"}
-                </span>
+                {wonAll.length ? (
+                  <span className="rounded-full bg-butter px-2.5 py-0.5 text-[11px] font-bold text-on-butter">
+                    {wonAll.length} trips
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-well px-2.5 py-0.5 text-[11px] font-bold text-muted">
+                    No trips yet
+                  </span>
+                )}
               </div>
-              <div className="text-xs text-muted">Won, all time</div>
+              <div className="text-xs text-muted">Total spent with us</div>
             </div>
           </div>
           <div className="flex items-center gap-3.5">
             <span className="grid size-12 place-items-center rounded-full border border-rim bg-glass-2 shadow-xs">
-              <User className="size-5 text-pine" />
+              <PlaneTakeoff className="size-5 text-tomato" />
             </span>
-            <div>
-              <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-                {money(openPipeline, currency)}
-                <span className="rounded-full bg-pine px-2.5 py-0.5 text-[11px] font-bold text-on-pine">
-                  {pipelineRows.length} open
-                </span>
-              </div>
-              <div className="text-xs text-muted">Open pipeline</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3.5">
-            <span className="grid size-12 place-items-center rounded-full border border-rim bg-glass-2 shadow-xs">
-              <Calendar className="size-5 text-tomato" />
-            </span>
-            <div>
-              <div className="text-xl font-semibold tracking-tight">
-                {openCustomerTasks.length}
-              </div>
+            <div className="min-w-0">
+              <div className="text-xl font-semibold tracking-tight">{upcomingBookings.length}</div>
               <div className="text-xs text-muted">
-                Open follow-up{openCustomerTasks.length === 1 ? "" : "s"} for{" "}
-                {current.name.split(" ")[0]}
+                Upcoming trip{upcomingBookings.length === 1 ? "" : "s"}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3.5">
+            <span className="grid size-12 place-items-center rounded-full border border-rim bg-glass-2 shadow-xs">
+              <Clock className="size-5 text-muted" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xl font-semibold tracking-tight">{openCustomerTasks.length}</div>
+              <div className="text-xs text-muted">
+                Open follow-up{openCustomerTasks.length === 1 ? "" : "s"}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
         <div className="space-y-4">
+          {/* Upcoming trips */}
+          <section className="glass-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-[15px] font-medium">Upcoming Trips</h2>
+              <span className="text-xs text-muted">{upcomingBookings.length} planned</span>
+            </div>
+            {upcomingBookings.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted">
+                No upcoming trips — create a booking from Quotes or add a new enquiry.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {upcomingBookings.slice(0, 5).map((b) => (
+                  <article
+                    key={b.id}
+                    onClick={() => {
+                      const mod = findModule("bookings");
+                      if (mod) setSheet({ row: b, module: mod });
+                    }}
+                    className="cursor-pointer rounded-3xl p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md border border-line bg-glass-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          {b.destination || "Trip"}
+                          <span className="rounded-full bg-pine px-2 py-0.5 text-[10px] font-bold text-on-pine">
+                            {b.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-muted">
+                          {b.extra?.["departure"] ? <Calendar className="size-3" /> : null}
+                          {b.extra?.["departure"] && formatDay(String(b.extra["departure"]))}
+                          {b.extra?.["pax"] && <span className="mx-1">·</span>}
+                          {b.extra?.["pax"] && (
+                            <span>
+                              {Number(b.extra["pax"])} traveller
+                              {Number(b.extra["pax"]) === 1 ? "" : "s"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-sm">{money(b.amount, currency)}</div>
+                        <div className="text-[10px] text-muted">{b.id}</div>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
           {/* Interaction history */}
           <section className="glass-card p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -346,7 +404,6 @@ export function CustomerProfile({
                     </h3>
                     <p className="mt-1 truncate text-[11px] text-muted">
                       {it.row.destination || it.row.detail || "—"}
-                      {it.module === "bookings" && it.row.detail ? ` · ${it.row.detail}` : ""}
                     </p>
                     <div className={cn("mt-3 text-lg font-bold", i === 0 && "opacity-90")}>
                       {money(it.amount, currency)}
@@ -360,168 +417,102 @@ export function CustomerProfile({
             )}
           </section>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {/* Tasks schedule: this customer's follow-ups, alive and clickable */}
-            <section className="glass-card p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-[15px] font-medium">Tasks Schedule</h2>
-                <span className="text-xs text-muted">
-                  {monthLabel} {now.getFullYear()}
-                </span>
-              </div>
-              <div className="grid grid-cols-7 gap-1 text-center text-[11px] text-muted">
-                {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
-                  <span key={d} className="py-1 font-semibold">
-                    {d}
-                  </span>
-                ))}
-                {Array.from({ length: firstDow }).map((_, i) => (
-                  <span key={`x${i}`} />
-                ))}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1;
-                  const hasTask = taskDays.has(day);
-                  const isToday = day === today;
-                  return (
-                    <span
-                      key={day}
-                      className={cn(
-                        "relative grid aspect-square place-items-center rounded-xl text-xs",
-                        isToday
-                          ? "bg-pine font-bold text-on-pine"
-                          : hasTask
-                            ? "border border-line bg-glass-2 font-medium"
-                            : "text-muted",
-                      )}
-                    >
-                      {day}
-                      {hasTask && !isToday && (
-                        <i className="absolute bottom-1 size-1 rounded-full bg-tomato" aria-hidden />
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-              {/* This customer's open tasks as a real checklist */}
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold">
-                    Follow-ups ({openCustomerTasks.length} open)
-                  </span>
-                </div>
-                {openCustomerTasks.length === 0 ? (
-                  <p className="rounded-2xl bg-well px-3 py-2 text-xs text-muted">
-                    No open follow-ups. Add one from the side panel — it lands here on the
-                    calendar too.
-                  </p>
-                ) : (
-                  openCustomerTasks.slice(0, 5).map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-2 rounded-2xl border border-line bg-glass-2 px-3 py-2"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={t.done}
-                        onChange={(e) => toggleTask(t.id, e.target.checked)}
-                        aria-label={`Mark ${t.title} done`}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-semibold">{t.title}</div>
-                        <div className="text-[11px] text-muted">
-                          {t.date
-                            ? new Date(t.date).toLocaleDateString("en-IN", {
-                                day: "numeric",
-                                month: "short",
-                              })
-                            : "—"}{" "}
-                          · {t.priority}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {/* Stage funnel */}
-            <section className="glass-card p-5">
-              <div className="mb-1 flex items-center justify-between">
-                <h2 className="text-[15px] font-medium">Stage Funnel</h2>
-              </div>
-              <div className="text-2xl font-extrabold tracking-tight">
-                {money(openPipeline, currency)}
-              </div>
-              <p className="mb-4 text-xs text-muted">Total in pipeline</p>
+          {/* Tasks schedule */}
+          <section className="glass-card p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[15px] font-medium">Follow-ups & Tasks</h2>
+              <span className="text-xs text-muted">{openCustomerTasks.length} open</span>
+            </div>
+            {openCustomerTasks.length === 0 ? (
+              <p className="rounded-2xl bg-well px-3 py-2 text-xs text-muted">
+                No open follow-ups. Add one from the side panel.
+              </p>
+            ) : (
               <div className="space-y-2">
-                {funnel.map((f) => (
+                {openCustomerTasks.slice(0, 6).map((t) => (
                   <div
-                    key={f.stage}
-                    onClick={() => setFunnelStage((s) => (s === f.stage ? null : f.stage))}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter")
-                        setFunnelStage((s) => (s === f.stage ? null : f.stage));
-                    }}
-                    className={cn(
-                      "relative cursor-pointer overflow-hidden rounded-2xl border bg-glass-2 px-4 py-2.5 transition-colors",
-                      funnelStage === f.stage ? "border-pine" : "border-line hover:border-line-2",
-                    )}
+                    key={t.id}
+                    className="flex items-center gap-2 rounded-2xl border border-line bg-glass-2 px-3 py-2"
                   >
-                    <div
-                      className="absolute inset-y-0 left-0 bg-well transition-all"
-                      style={{ width: `${(f.total / funnelMax) * 100}%` }}
-                      aria-hidden
+                    <input
+                      type="checkbox"
+                      checked={t.done}
+                      onChange={(e) => toggleTask(t.id, e.target.checked)}
+                      aria-label={`Mark ${t.title} done`}
                     />
-                    <div className="relative flex items-center justify-between text-xs">
-                      <span className="font-semibold">
-                        <i
-                          className={cn(
-                            "mr-1.5 inline-block size-2 rounded-full",
-                            f.stage === "Won"
-                              ? "bg-pine"
-                              : f.stage === "Lost"
-                                ? "bg-tomato"
-                                : "bg-butter",
-                          )}
-                        />
-                        {f.stage}
-                        {f.count > 0 && <span className="ml-1 text-muted">· {f.count}</span>}
-                      </span>
-                      <span className="font-bold">{money(f.total, currency)}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-semibold">{t.title}</div>
+                      <div className="text-[11px] text-muted">
+                        {t.date
+                          ? new Date(t.date).toLocaleDateString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                            })
+                          : "—"}
+                        · {t.priority}
+                      </div>
                     </div>
                   </div>
                 ))}
-                {/* The actual inquiries in the selected stage — clickable. */}
-                {funnelStage &&
-                  leadRows
-                    .filter((r) => r.status === funnelStage)
-                    .map((lead) => (
-                      <div
-                        key={lead.id}
-                        onClick={() => {
-                          const mod = findModule("leads");
-                          if (mod) setSheet({ row: lead, module: mod });
-                        }}
-                        className="cursor-pointer rounded-2xl border border-line bg-well px-3 py-2 text-xs"
-                      >
-                        <div className="font-semibold">
-                          {lead.id} · {lead.destination || lead.detail || "—"}
-                        </div>
-                        <div className="text-muted">
-                          {money(lead.amount, currency)} · owner {lead.owner || "—"} — click to
-                          open
-                        </div>
-                      </div>
-                    ))}
               </div>
-            </section>
-          </div>
+            )}
+          </section>
+
+          {/* Stage funnel */}
+          <section className="glass-card p-5">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-[15px] font-medium">Enquiry Funnel</h2>
+            </div>
+            <div className="text-2xl font-extrabold tracking-tight">
+              {money(openPipeline, currency)}
+            </div>
+            <p className="mb-4 text-xs text-muted">Open pipeline value</p>
+            <div className="space-y-2">
+              {funnel.map((f) => (
+                <div
+                  key={f.stage}
+                  onClick={() => setFunnelStage((s) => (s === f.stage ? null : f.stage))}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") setFunnelStage((s) => (s === f.stage ? null : f.stage));
+                  }}
+                  className={cn(
+                    "relative cursor-pointer overflow-hidden rounded-2xl border bg-glass-2 px-4 py-2.5 transition-colors",
+                    funnelStage === f.stage ? "border-pine" : "border-line hover:border-line-2",
+                  )}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 bg-well transition-all"
+                    style={{ width: `${(f.total / funnelMax) * 100}%` }}
+                    aria-hidden
+                  />
+                  <div className="relative flex items-center justify-between text-xs">
+                    <span className="font-semibold">
+                      <i
+                        className={cn(
+                          "mr-1.5 inline-block size-2 rounded-full",
+                          f.stage === "Won"
+                            ? "bg-pine"
+                            : f.stage === "Lost"
+                              ? "bg-tomato"
+                              : "bg-butter",
+                        )}
+                      />
+                      {f.stage}
+                      {f.count > 0 && <span className="ml-1 text-muted">· {f.count}</span>}
+                    </span>
+                    <span className="font-bold">{money(f.total, currency)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
 
-        {/* Right column: profile + details */}
+        {/* Right column: traveller profile */}
         <div className="space-y-4">
+          {/* Profile hero */}
           <section className="glass-card flex flex-col items-center p-6 text-center">
             <div className="relative mb-4">
               <svg
@@ -549,9 +540,16 @@ export function CustomerProfile({
               </span>
             </div>
             <h2 className="text-xl font-bold tracking-tight">{current.name}</h2>
-            <p className="mt-0.5 text-sm text-muted">{current.detail || current.id}</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {city ? `${city} · ` : ""}
+              {current.detail || current.id}
+            </p>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
-              <span className="rounded-full bg-well px-3 py-1 text-xs font-semibold">{seg}</span>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold ${loyalty === "VIP" ? "bg-butter text-on-butter" : loyalty === "Gold" ? "bg-pine text-on-pine" : loyalty === "Silver" ? "bg-glass-2 text-foreground" : "bg-well text-muted"}`}
+              >
+                {loyalty} traveller
+              </span>
               {current.destination && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-well px-3 py-1 text-xs font-semibold">
                   <MapPin className="size-3" /> {current.destination}
@@ -561,14 +559,14 @@ export function CustomerProfile({
             <div className="mt-4 flex gap-2">
               <button
                 className="grid size-11 place-items-center rounded-full border border-line-2 bg-glass-2 transition-colors hover:bg-well"
-                title="Open in Communications (email)"
+                title="Email this traveller"
                 onClick={() => openComms("Email")}
               >
                 <Mail className="size-4" />
               </button>
               <button
                 className="grid size-11 place-items-center rounded-full border border-line-2 bg-glass-2 transition-colors hover:bg-well"
-                title="Open in Communications (WhatsApp)"
+                title="WhatsApp this traveller"
                 onClick={() => openComms("WhatsApp")}
               >
                 <Phone className="size-4" />
@@ -577,7 +575,7 @@ export function CustomerProfile({
                 variant="outline"
                 size="icon"
                 className="size-11 rounded-full"
-                title="Open side panel"
+                title="Edit traveller details"
                 onClick={() => {
                   const mod = findModule("customers");
                   if (mod) setSheet({ row: current, module: mod });
@@ -588,29 +586,84 @@ export function CustomerProfile({
             </div>
           </section>
 
+          {/* Traveller documents & details */}
           <section className="glass-card p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-[15px] font-medium">Detailed Information</h2>
+              <h2 className="text-[15px] font-medium">Traveller Documents</h2>
+              <span className="text-xs text-muted">Passport & identity</span>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-line bg-glass-2 p-3">
+                <FileText className="size-5 text-pine" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Passport number
+                  </div>
+                  <div className="font-medium">{passport || "Not provided"}</div>
+                </div>
+                {passport && (
+                  <button
+                    className="grid size-8 shrink-0 place-items-center rounded-full border border-line hover:bg-well"
+                    title="Copy passport number"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(passport);
+                      toast.success("Passport number copied");
+                    }}
+                  >
+                    <Copy className="size-3" />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-line bg-glass-2 p-3">
+                <Calendar className="size-5 text-tomato" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Passport expiry
+                  </div>
+                  <div className="font-medium">
+                    {passportExpiry ? formatDay(passportExpiry) : "Not provided"}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-line bg-glass-2 p-3">
+                <UserCheck className="size-5 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Nationality
+                  </div>
+                  <div className="font-medium">{nationality || "Not provided"}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-2xl border border-line bg-glass-2 p-3">
+                <CreditCard className="size-5 text-muted" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Date of birth
+                  </div>
+                  <div className="font-medium">{dob || "Not provided"}</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Contact details */}
+          <section className="glass-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-[15px] font-medium">Contact Details</h2>
               <Status value={current.status} />
             </div>
             <dl className="space-y-3 text-sm">
               {[
-                { icon: <User className="size-4" />, label: "Full name", value: current.name },
-                {
-                  icon: <Building2 className="size-4" />,
-                  label: "Company / detail",
-                  value: current.detail || "—",
-                },
                 {
                   icon: <Mail className="size-4" />,
                   label: "Email",
-                  value: current.email,
+                  value: current.email || "—",
                   copy: current.email,
                 },
                 {
                   icon: <Phone className="size-4" />,
-                  label: "Phone",
-                  value: current.phone,
+                  label: "Phone / WhatsApp",
+                  value: current.phone || "—",
                   copy: current.phone,
                 },
                 {
@@ -624,7 +677,7 @@ export function CustomerProfile({
                   value: agoLabel(current.date),
                 },
                 {
-                  icon: <Star className="size-4" />,
+                  icon: <Wallet className="size-4" />,
                   label: "Lifetime value",
                   value: money(current.amount, currency),
                 },

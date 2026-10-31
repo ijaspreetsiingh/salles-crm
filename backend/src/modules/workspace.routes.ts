@@ -6,11 +6,12 @@ import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { BadRequestError, NotFoundError } from "../lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { toCsv } from "../lib/csv";
 import { stringifyJson } from "../lib/utils";
 import { MODULES, moduleGroups } from "../domain/modules";
+import { hasPermission } from "../domain/rbac";
 import {
   applyBranchScope,
   buildRecordWhere,
@@ -21,6 +22,9 @@ import {
 } from "../services/records";
 import { recordAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
+import { importRecords } from "../services/import";
+import { buildAttention } from "../services/attention";
+import { findDuplicateGroups, mergeRecords } from "../services/duplicates";
 
 const router = Router();
 router.use(requireAuth);
@@ -57,11 +61,24 @@ const recordBodySchema = z.object({
   meta: z.record(z.unknown()).optional(),
 });
 
-const bulkSchema = z.object({
-  action: z.enum(["assign", "status", "delete"]),
-  ids: z.array(z.string().min(1)).min(1).max(500),
-  value: z.string().max(120).optional(),
-});
+/**
+ * Bulk edit payload.
+ *
+ * A row on screen is identified by its reference ("LD-2409"), not by the
+ * database id, so the toolbar can send back exactly what the person ticked.
+ * `ids` stays supported for the API and for scripts.
+ */
+const bulkSchema = z
+  .object({
+    action: z.enum(["assign", "status", "delete"]),
+    ids: z.array(z.string().min(1)).max(500).optional(),
+    references: z.array(z.string().min(1)).max(500).optional(),
+    value: z.string().max(120).optional(),
+  })
+  .refine((body) => (body.ids?.length ?? 0) + (body.references?.length ?? 0) > 0, {
+    message: "Select at least one record",
+    path: ["references"],
+  });
 
 const statusOf = (moduleId: string, value?: string) => {
   const module = MODULES.find((m) => m.id === moduleId)!;
@@ -80,12 +97,20 @@ router.get(
   asyncHandler(async (_req, res) => ok(res, { modules: MODULES, groups: moduleGroups() })),
 );
 
+/** How many records of one module the sign-in cache keeps. */
+const CONTEXT_PER_MODULE = 300;
+
 /**
- * Every record in the workspace, grouped by module, in a single call.
+ * A recent slice of every module, in a single call.
  *
- * The app needs all 24 modules on sign-in. Fetching them one by one made
- * twenty-four round trips on every load, which was slow and could trip the
- * rate limiter. One call keeps the first paint instant.
+ * The app needs all 24 modules on sign-in for cross-module context (customer
+ * history, related bookings, the record drawer). Fetching them one by one
+ * made twenty-four round trips on every load, so one call keeps first paint
+ * instant.
+ *
+ * This is deliberately a *slice*, not the whole company. Module screens load
+ * their own records page by page, so a busy module no longer starves the
+ * others out of a shared ceiling, and nothing here decides what a list shows.
  */
 router.get(
   "/all-records",
@@ -97,8 +122,6 @@ router.get(
     const records = await prisma.record.findMany({
       where: applyBranchScope({ organizationId, deletedAt: null }, req.auth!),
       orderBy: { createdAt: "desc" },
-      // Hard ceiling — dashboards must never load a company's entire history
-      // in one response. Old records stay reachable through module lists.
       take: 5000,
     });
 
@@ -106,9 +129,44 @@ router.get(
     for (const record of records) {
       if (allowedModules && !allowedModules.includes(record.moduleId)) continue;
       const bucket = (grouped[record.moduleId] ??= []);
+      if (bucket.length >= CONTEXT_PER_MODULE) continue;
       bucket.push(toRecordDto(record));
     }
     return ok(res, grouped);
+  }),
+);
+
+/**
+ * The work that needs a human today, already narrowed to one person.
+ *
+ * The old home page built its list from the capped all-records cache, so in a
+ * busy workspace it showed whatever happened to fit rather than what this
+ * person owns — and it never saw records beyond the cache. This queries the
+ * database directly, so the list stays true at any size.
+ *
+ * The same service feeds the daily email digest, so the inbox and the screen
+ * can never disagree about the day's work.
+ */
+router.get(
+  "/attention",
+  requirePermission("view"),
+  asyncHandler(async (req, res) => {
+    const scope = req.query.scope === "team" ? "team" : "mine";
+    const branch = typeof req.query.branch === "string" ? req.query.branch : undefined;
+    return ok(
+      res,
+      await buildAttention(
+        req.auth!.organizationId,
+        {
+          name: req.auth!.name,
+          roleKey: req.auth!.roleKey,
+          branchId: req.auth!.branchId,
+          modules: req.auth!.permissions.modules,
+        },
+        scope,
+        branch,
+      ),
+    );
   }),
 );
 
@@ -129,7 +187,15 @@ router.get(
     );
     const p = getPagination(req.query as Record<string, unknown>);
 
-    const sortable = new Set(["date", "amount", "name", "status", "createdAt", "updatedAt", "reference"]);
+    const sortable = new Set([
+      "date",
+      "amount",
+      "name",
+      "status",
+      "createdAt",
+      "updatedAt",
+      "reference",
+    ]);
     const sortField = sortable.has(String(req.query.sort)) ? String(req.query.sort) : "createdAt";
     const order: Prisma.SortOrder = req.query.order === "asc" ? "asc" : "desc";
     const orderBy = { [sortField]: order } as Prisma.RecordOrderByWithRelationInput;
@@ -148,7 +214,13 @@ router.get(
   }),
 );
 
-/** Distinct filter values (statuses, owners, branches, sources) for the toolbar. */
+/**
+ * Distinct filter values for the toolbar, with the counts behind them.
+ *
+ * The counts are the reason this endpoint exists: a list that loads one page
+ * at a time cannot count its own statuses, and a filter menu that says "12"
+ * when 4,000 records match is worse than one that says nothing.
+ */
 router.get(
   "/:module/facets",
   requirePermission("view"),
@@ -161,24 +233,44 @@ router.get(
       req.auth!,
     );
 
-    const [owners, branches, sources, statuses] = await Promise.all([
+    const [owners, branches, sources, statusGroups, ownerGroups] = await Promise.all([
       prisma.record.findMany({ where: base, distinct: ["ownerName"], select: { ownerName: true } }),
-      prisma.record.findMany({ where: base, distinct: ["branchName"], select: { branchName: true } }),
+      prisma.record.findMany({
+        where: base,
+        distinct: ["branchName"],
+        select: { branchName: true },
+      }),
       prisma.record.findMany({ where: base, distinct: ["source"], select: { source: true } }),
-      prisma.record.findMany({ where: base, distinct: ["status"], select: { status: true } }),
+      prisma.record.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
+      prisma.record.groupBy({ by: ["ownerName"], where: base, _count: { _all: true } }),
     ]);
+
+    const statusCounts: Record<string, number> = {};
+    for (const row of statusGroups) if (row.status) statusCounts[row.status] = row._count._all;
+    const ownerCounts: Record<string, number> = {};
+    for (const row of ownerGroups) {
+      if (row.ownerName) ownerCounts[row.ownerName] = row._count._all;
+      else ownerCounts[""] = row._count._all;
+    }
 
     return ok(res, {
       tabs: module.tabs,
-      statuses: statuses.map((s) => s.status).filter(Boolean),
+      statuses: Object.keys(statusCounts),
       owners: owners.map((o) => o.ownerName).filter(Boolean),
       branches: branches.map((b) => b.branchName).filter(Boolean),
       sources: sources.map((s) => s.source).filter(Boolean),
+      statusCounts,
+      ownerCounts,
     });
   }),
 );
 
-/** Aggregate stats shown in the module header. */
+/**
+ * Aggregated numbers for the header of a module.
+ *
+ * The same filters as the list apply, so "New enquiries: 14" counts the whole
+ * filtered set — not the one page the browser happens to hold.
+ */
 router.get(
   "/:module/stats",
   requirePermission("view"),
@@ -186,18 +278,44 @@ router.get(
     const module = MODULES.find((m) => m.id === req.params.module);
     if (!module) throw new NotFoundError("Module");
     const organizationId = req.auth!.organizationId;
-    const base = applyBranchScope(
-      { organizationId, moduleId: module.id, deletedAt: null },
+    const base = buildRecordWhere(
+      organizationId,
+      module,
+      req.query as Record<string, unknown>,
       req.auth!,
     );
 
     const [total, active, awaiting, value] = await Promise.all([
       prisma.record.count({ where: base }),
       prisma.record.count({
-        where: { ...base, status: { in: module.statuses.filter((s) => ["Confirmed", "Won", "Paid", "Accepted", "Active", "Approved", "Published"].includes(s)) } },
+        where: {
+          ...base,
+          status: {
+            in: module.statuses.filter((s) =>
+              ["Confirmed", "Won", "Paid", "Accepted", "Active", "Approved", "Published"].includes(
+                s,
+              ),
+            ),
+          },
+        },
       }),
       prisma.record.count({
-        where: { ...base, status: { in: ["Pending", "On hold", "In review", "Draft", "Contacted", "Open", "Documents pending", "Overdue", "Sent"] } },
+        where: {
+          ...base,
+          status: {
+            in: [
+              "Pending",
+              "On hold",
+              "In review",
+              "Draft",
+              "Contacted",
+              "Open",
+              "Documents pending",
+              "Overdue",
+              "Sent",
+            ],
+          },
+        },
       }),
       prisma.record.aggregate({ where: base, _sum: { amount: true } }),
     ]);
@@ -211,7 +329,10 @@ router.get(
 
     const isFinance = module.id === "finance";
     const collected = isFinance
-      ? await prisma.record.aggregate({ where: { ...base, status: "Paid" }, _sum: { amount: true } })
+      ? await prisma.record.aggregate({
+          where: { ...base, status: "Paid" },
+          _sum: { amount: true },
+        })
       : null;
 
     return ok(res, {
@@ -270,7 +391,8 @@ router.post(
     let record = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const reference =
-        body.reference ?? (await nextReference(organizationId, module)) + (attempt ? `-${attempt + 1}` : "");
+        body.reference ??
+        (await nextReference(organizationId, module)) + (attempt ? `-${attempt + 1}` : "");
       try {
         record = await prisma.record.create({
           data: {
@@ -444,7 +566,11 @@ router.post(
     if (!module) throw new NotFoundError("Module");
 
     const existing = await prisma.record.findFirst({
-      where: { id: req.params.id, organizationId: req.auth!.organizationId, deletedAt: { not: null } },
+      where: {
+        id: req.params.id,
+        organizationId: req.auth!.organizationId,
+        deletedAt: { not: null },
+      },
     });
     if (!existing) throw new NotFoundError("Deleted record");
 
@@ -475,34 +601,182 @@ router.post(
     const module = MODULES.find((m) => m.id === req.params.module);
     if (!module) throw new NotFoundError("Module");
 
-    const { action, ids, value } = req.body as z.infer<typeof bulkSchema>;
+    const { action, ids, references, value } = req.body as z.infer<typeof bulkSchema>;
     const organizationId = req.auth!.organizationId;
+    const selector: Prisma.RecordWhereInput = ids?.length
+      ? { id: { in: ids } }
+      : { reference: { in: references! } };
     const where = applyBranchScope(
-      { id: { in: ids }, organizationId, moduleId: module.id, deletedAt: null },
+      { ...selector, organizationId, moduleId: module.id, deletedAt: null },
       req.auth!,
     );
 
     if (action === "delete") {
       const result = await prisma.record.updateMany({ where, data: { deletedAt: new Date() } });
-      await recordAudit({ organizationId, action: "Deleted", moduleId: module.id, label: `${result.count} records deleted`, req });
+      await recordAudit({
+        organizationId,
+        action: "Deleted",
+        moduleId: module.id,
+        label: `${result.count} records deleted`,
+        req,
+      });
       return ok(res, { affected: result.count });
     }
 
     if (action === "status") {
       if (!value) throw new BadRequestError("value (status) is required");
-      const result = await prisma.record.updateMany({ where, data: { status: value, updatedById: req.auth!.userId } });
-      await recordAudit({ organizationId, action: "Updated", moduleId: module.id, label: `${result.count} records set to ${value}`, req });
+      // A bulk change must obey the same status list a single edit does, or a
+      // typo in the toolbar could park 400 records in a status the module has
+      // never heard of.
+      assertValidStatus(module, value);
+      const result = await prisma.record.updateMany({
+        where,
+        data: { status: value, updatedById: req.auth!.userId },
+      });
+      await recordAudit({
+        organizationId,
+        action: "Updated",
+        moduleId: module.id,
+        label: `${result.count} records set to ${value}`,
+        req,
+      });
       return ok(res, { affected: result.count });
     }
 
-    // assign
+    // assign — an empty value hands the records back to the unclaimed queue.
+    if (value === undefined) throw new BadRequestError("value (owner) is required");
     const resolved = await resolveOwnerBranch(organizationId, value, undefined);
     const result = await prisma.record.updateMany({
       where,
-      data: { ownerId: resolved.ownerId, ownerName: resolved.ownerName, updatedById: req.auth!.userId },
+      data: {
+        ownerId: resolved.ownerId,
+        ownerName: resolved.ownerName,
+        updatedById: req.auth!.userId,
+      },
     });
-    await recordAudit({ organizationId, action: "Assigned", moduleId: module.id, label: `${result.count} records assigned to ${value}`, req });
+    await recordAudit({
+      organizationId,
+      action: "Assigned",
+      moduleId: module.id,
+      label: `${result.count} records assigned to ${value || "the unclaimed queue"}`,
+      req,
+    });
     return ok(res, { affected: result.count });
+  }),
+);
+
+const importSchema = z.object({
+  // ~2 MB of CSV. Bigger files are split by the customer, and saying so is
+  // kinder than a silent timeout.
+  csv: z.string().min(1).max(2_000_000),
+});
+
+const mergeSchema = z.object({
+  /** The reference that survives — usually the oldest, and the one on paperwork. */
+  keep: z.string().min(1).max(40),
+  /** The references folded into it. */
+  merge: z.array(z.string().min(1).max(40)).min(1).max(5),
+});
+
+/**
+ * Records that look like the same thing, grouped, each group saying why.
+ *
+ * Detection is deliberately conservative — an exact email, phone number or
+ * name — because a merge tool that cries wolf gets clicked through, and a
+ * wrong merge destroys two customers' history at once.
+ */
+router.get(
+  "/:module/duplicates",
+  requirePermission("view"),
+  asyncHandler(async (req, res) => {
+    const module = MODULES.find((m) => m.id === req.params.module);
+    if (!module) throw new NotFoundError("Module");
+    return ok(res, await findDuplicateGroups(req.auth!.organizationId, module, req.auth!));
+  }),
+);
+
+/**
+ * Folds duplicates into one record.
+ *
+ * The duplicates are soft-deleted and re-pointed at the survivor, so this is
+ * both an edit and a delete — a role that may not delete records may not
+ * quietly remove them by merging either.
+ */
+router.post(
+  "/:module/merge",
+  requirePermission("edit"),
+  validate(mergeSchema),
+  asyncHandler(async (req, res) => {
+    const module = MODULES.find((m) => m.id === req.params.module);
+    if (!module) throw new NotFoundError("Module");
+    if (!hasPermission(req.auth!.permissions, module.id, "delete")) {
+      throw new ForbiddenError(`Your role cannot delete records in "${module.id}"`);
+    }
+
+    const { keep, merge } = req.body as z.infer<typeof mergeSchema>;
+    if (merge.includes(keep)) {
+      throw new BadRequestError("A record cannot be merged into itself");
+    }
+
+    const result = await mergeRecords({
+      organizationId: req.auth!.organizationId,
+      module,
+      keepReference: keep,
+      mergeReferences: merge,
+      auth: req.auth!,
+      actorId: req.auth!.userId,
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: module.id,
+      recordId: result.record.id,
+      label: `${merge.length} record${merge.length === 1 ? "" : "s"} merged into ${
+        result.record.reference
+      } (${merge.join(", ")})`,
+      meta: { keep, merged: merge, moved: result.moved },
+      req,
+    });
+
+    return ok(res, result);
+  }),
+);
+
+/**
+ * Imports a spreadsheet into a module.
+ *
+ * A business moving in from another system has three years of enquiries in a
+ * CSV. Retyping them is the reason people give up on a new CRM in week one, so
+ * this creates real records — owner and branch matched to the team that is
+ * already here — and reports every row it could not use.
+ */
+router.post(
+  "/:module/import",
+  requirePermission("create"),
+  validate(importSchema),
+  asyncHandler(async (req, res) => {
+    const module = MODULES.find((m) => m.id === req.params.module);
+    if (!module) throw new NotFoundError("Module");
+
+    const result = await importRecords({
+      organizationId: req.auth!.organizationId,
+      module,
+      csv: (req.body as z.infer<typeof importSchema>).csv,
+      createdById: req.auth!.userId,
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Created",
+      moduleId: module.id,
+      label: `${result.created} records imported from CSV${
+        result.skipped ? `, ${result.skipped} skipped` : ""
+      }`,
+      req,
+    });
+
+    return ok(res, result);
   }),
 );
 
@@ -521,7 +795,11 @@ router.get(
       req.query as Record<string, unknown>,
       req.auth!,
     );
-    const items = await prisma.record.findMany({ where, orderBy: { createdAt: "desc" }, take: 5000 });
+    const items = await prisma.record.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+    });
 
     const csv = toCsv(
       items.map((r) => {
@@ -545,7 +823,10 @@ router.get(
       }),
       [
         { key: "reference", label: "Reference" },
-        { key: "name", label: module.noun ? module.noun[0]!.toUpperCase() + module.noun.slice(1) : "Name" },
+        {
+          key: "name",
+          label: module.noun ? module.noun[0]!.toUpperCase() + module.noun.slice(1) : "Name",
+        },
         { key: "detail", label: "Details" },
         { key: "destination", label: "Destination" },
         { key: "owner", label: "Owner" },
@@ -559,7 +840,13 @@ router.get(
       ],
     );
 
-    await recordAudit({ organizationId, action: "Export", moduleId: module.id, label: `Exported ${items.length} records`, req });
+    await recordAudit({
+      organizationId,
+      action: "Export",
+      moduleId: module.id,
+      label: `Exported ${items.length} records`,
+      req,
+    });
 
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${module.id}-export.csv"`);

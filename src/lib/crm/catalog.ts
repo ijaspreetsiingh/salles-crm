@@ -333,6 +333,7 @@ export type Settings = {
   orgName: string;
   legalName: string;
   gstin: string;
+  stateCode?: string;
   supportEmail: string;
   phone: string;
   address: string;
@@ -346,12 +347,19 @@ export type Settings = {
   /** INR value of 1 unit of each currency — used on tax invoices for FX truth. */
   fxRates: Record<string, number>;
   security: { twoFactor: boolean; mask: boolean; quiet: boolean };
+  /** White-label branding */
+  brandLogo?: string;
+  brandPrimaryColor?: string;
+  brandSecondaryColor?: string;
+  whiteLabelDomain?: string;
+  hideBranding?: boolean;
 };
 
 export const defaultSettings: Settings = {
   orgName: "Horizon Travel",
   legalName: "Horizon Travel Pvt. Ltd.",
   gstin: "27AAECH1234F1Z5",
+  stateCode: "27",
   supportEmail: "hello@horizontravel.in",
   phone: "+91 22 4000 1200",
   address: "Level 4, Maker Chambers, Nariman Point, Mumbai 400021",
@@ -362,6 +370,9 @@ export const defaultSettings: Settings = {
   invoicePrefix: "HT-INV-",
   fxRates: { USD: 84, EUR: 91, GBP: 108, AED: 23, SGD: 63 },
   security: { twoFactor: true, mask: true, quiet: false },
+  brandPrimaryColor: "#2f5c50",
+  brandSecondaryColor: "#f2c94c",
+  hideBranding: false,
   branches: ["Mumbai", "Delhi", "Bengaluru"],
   employees: [
     { name: "Sarah Wilson", role: "Workspace administrator", branch: "Mumbai", active: true },

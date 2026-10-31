@@ -20,6 +20,7 @@ model Organization {
   id             String   @id @default(cuid())
   name           String
   slug           String   @unique
+  customDomain   String?  @unique // White-label domain e.g. crm.yourtravelagency.com
   legalName      String?
   gstin          String?
   supportEmail   String?
@@ -28,6 +29,7 @@ model Organization {
   currency       String   @default("INR")
   financialYear  String   @default("April – March")
   timezone       String   @default("Asia/Kolkata")
+  language       String   @default("en") // en | hi | es | fr | ar
   plan           String   @default("enterprise")
   planStatus     String   @default("active") // active | trialing | past_due | cancelled
   settings       String   @default("{}") // JSON: tax regime, invoice prefix, security prefs...

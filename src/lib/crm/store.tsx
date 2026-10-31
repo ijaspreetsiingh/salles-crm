@@ -19,7 +19,7 @@ import {
   type Task,
 } from "./catalog";
 import * as api from "@/lib/api/crm";
-import { updateSubscription } from "@/lib/api/modules";
+import { bulkRecords, updateSubscription } from "@/lib/api/modules";
 import { ApiError, errorMessage, tokenStore } from "@/lib/api/client";
 import { toast } from "sonner";
 
@@ -35,6 +35,20 @@ export type AuditEntry = {
 
 /** Session lifecycle of the workspace. */
 export type AuthStatus = "loading" | "unauthenticated" | "ready";
+
+/**
+ * How much of a module's list the browser is holding.
+ *
+ * A module can hold far more records than one page, so the screen always
+ * knows the true total and can say "showing 200 of 4,180" instead of quietly
+ * pretending the page is everything.
+ */
+export type ModulePageState = {
+  total: number;
+  page: number;
+  pageSize: number;
+  loading: boolean;
+};
 
 export type SessionUser = {
   id: string;
@@ -56,8 +70,30 @@ type Store = {
   organizationSlug: string;
   roleLabel: string;
   permissions: api.PermissionSetDto | null;
+  /** True when this role only ever sees records belonging to its own branch. */
+  branchScoped: boolean;
+  /** The office this person is attached to, by name. Empty = not set. */
+  myBranch: string;
   records: Record<string, RecordRow[]>;
+  /** Per-module page/total state, for honest "showing X of Y" copy. */
+  modulePages: Record<string, ModulePageState>;
+  /**
+   * Loads a module's records from the server, filtered and sorted there.
+   * Page 1 replaces the module's rows; later pages append to them.
+   */
+  loadModulePage: (
+    moduleId: string,
+    query: api.ModuleListQuery,
+    options?: { page?: number },
+  ) => Promise<void>;
   tasks: Task[];
+  /**
+   * Today's work from the server, scoped to this person. Null until the
+   * workspace has loaded (or when the API is unavailable).
+   */
+  attention: api.AttentionDto | null;
+  /** Re-reads today's work, optionally for the whole branch. */
+  refreshAttention: (scope?: "mine" | "team") => Promise<void>;
   audit: AuditEntry[];
   fields: Record<string, CustomField[]>;
   settings: Settings;
@@ -79,6 +115,22 @@ type Store = {
   createRecord: (module: string, row: RecordRow) => Promise<RecordRow | null>;
   update: (module: string, row: RecordRow) => void;
   remove: (module: string, rowId: string) => void;
+  /**
+   * Applies one change to many records at once and re-reads the list.
+   * Resolves with how many records actually changed.
+   */
+  bulkUpdate: (
+    moduleId: string,
+    references: string[],
+    action: "assign" | "status" | "delete",
+    value?: string,
+  ) => Promise<number>;
+  /** Folds duplicates into one record; resolves with what moved. */
+  mergeInto: (
+    moduleId: string,
+    keep: string,
+    merges: string[],
+  ) => Promise<api.MergeResultDto | null>;
   addTask: (task: Omit<Task, "id">) => void;
   updateTask: (task: Task) => void;
   toggleTask: (id: string, done: boolean) => void;
@@ -132,9 +184,18 @@ function buildSettings(
       ...(((org.settings ?? {})["fxRates"] ?? {}) as Record<string, number>),
     },
     security: {
-      twoFactor: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["twoFactor"] ?? defaultSettings.security.twoFactor),
-      mask: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["mask"] ?? defaultSettings.security.mask),
-      quiet: Boolean((((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["quiet"] ?? defaultSettings.security.quiet),
+      twoFactor: Boolean(
+        (((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["twoFactor"] ??
+        defaultSettings.security.twoFactor,
+      ),
+      mask: Boolean(
+        (((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["mask"] ??
+        defaultSettings.security.mask,
+      ),
+      quiet: Boolean(
+        (((org.settings ?? {})["security"] ?? {}) as Record<string, unknown>)["quiet"] ??
+        defaultSettings.security.quiet,
+      ),
     },
     branches: branches.filter((b) => b.active).map((b) => b.name),
     employees,
@@ -154,14 +215,28 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [organizationSlug, setOrganizationSlug] = useState("");
   const [roleLabel, setRoleLabel] = useState("Workspace admin");
   const [permissions, setPermissions] = useState<api.PermissionSetDto | null>(null);
+  /** True when this role only ever sees its own office. */
+  const [branchScoped, setBranchScoped] = useState(false);
+  /** The office this person works from, by name. */
+  const [myBranch, setMyBranch] = useState("");
   const [records, setRecords] = useState<Record<string, RecordRow[]>>({});
+  const [modulePages, setModulePages] = useState<Record<string, ModulePageState>>({});
   const [tasks, setTasks] = useState<Task[]>(() => seedTasks());
+  const [attention, setAttention] = useState<api.AttentionDto | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [fields, setFields] = useState<Record<string, CustomField[]>>({});
   const [settings, setSettings] = useState<Settings>(defaultSettings);
 
   // Server-side identifiers, kept out of React state (they never render).
   const recordIds = useRef(new Map<string, string>()); // `${module}/${reference}` -> server id
+  /** Latest list request per module, so a slow page cannot overwrite a newer one. */
+  const listRequests = useRef(new Map<string, number>());
+  /**
+   * The filters the module list is currently showing, and how many pages of
+   * it are loaded. A change made outside the list — a bulk edit, a merge —
+   * re-reads exactly this, so the screen goes back to matching the database.
+   */
+  const listQueries = useRef(new Map<string, { query: api.ModuleListQuery; pages: number }>());
   const branchIds = useRef(new Map<string, string>()); // branch name -> id
   const memberIds = useRef(new Map<string, string>()); // member name -> membership id
   const pendingOrgPatch = useRef<Record<string, unknown>>({});
@@ -186,14 +261,18 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   /** Loads the whole signed-in workspace: profile, records, tasks, fields, audit. */
   const loadWorkspace = useCallback(async () => {
-    const [me, customFields, taskList, organization, branches, members] = await Promise.all([
-      api.fetchMe(),
-      api.fetchCustomFields().catch(() => [] as api.CustomFieldDto[]),
-      api.fetchTasks().catch(() => [] as api.TaskDto[]),
-      api.fetchOrganization(),
-      api.fetchBranches().catch(() => [] as api.BranchDto[]),
-      api.fetchMembers().catch(() => [] as api.MemberDto[]),
-    ]);
+    const [me, customFields, taskList, organization, branches, members, attentionToday] =
+      await Promise.all([
+        api.fetchMe(),
+        api.fetchCustomFields().catch(() => [] as api.CustomFieldDto[]),
+        api.fetchTasks().catch(() => [] as api.TaskDto[]),
+        api.fetchOrganization(),
+        api.fetchBranches().catch(() => [] as api.BranchDto[]),
+        api.fetchMembers().catch(() => [] as api.MemberDto[]),
+        // The attention feed is what the home page and the sidebar count
+        // read. A failure here must never block the workspace.
+        api.fetchAttention().catch(() => null),
+      ]);
     const auditList = await api.fetchAudit().catch(() => [] as api.AuditDto[]);
 
     // One request for every module instead of twenty-four. The API groups
@@ -229,10 +308,13 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     });
     setRoleLabel(api.ROLE_LABEL_BY_KEY[me.membership.roleKey] ?? "Workspace admin");
     setPermissions(me.permissions ?? { modules: "*", actions: "*" });
+    setBranchScoped(me.membership.branchScoped === true);
+    setMyBranch(branches.find((branch) => branch.id === me.membership.branchId)?.name ?? "");
     setOrganizationName(organization.name);
     setOrganizationSlug(organization.slug ?? "");
     setRecords(nextRecords);
     setTasks(taskList.map(api.toTask));
+    setAttention(attentionToday);
     setFields(nextFields);
     setAudit(auditList.map(mapAudit));
     setSettings(buildSettings(organization, branches, members));
@@ -313,11 +395,21 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setPermissions(null);
     setOrganizationName(defaultSettings.orgName);
     setRecords({});
+    setModulePages({});
     setTasks(seedTasks());
+    setAttention(null);
     setFields({});
     setAudit([]);
     setSettings(defaultSettings);
     setStatus("unauthenticated");
+  }, []);
+
+  const refreshAttention = useCallback(async (scope: "mine" | "team" = "mine") => {
+    try {
+      setAttention(await api.fetchAttention(scope));
+    } catch {
+      // Keep the last known list; a transient failure should not blank the day.
+    }
   }, []);
 
   const reload = useCallback(async () => {
@@ -343,6 +435,67 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         setRecords((prev) => ({ ...prev, [moduleId]: ingestRecords(moduleId, dtos) }));
       } catch {
         /* keep the current list on a transient failure */
+      }
+    },
+    [ingestRecords],
+  );
+
+  /**
+   * Loads one page of a module's list from the server.
+   *
+   * Filtering, searching and sorting happen in the database, so the answer is
+   * about the whole module — not the slice the browser happens to hold. Page 1
+   * replaces the module's rows; later pages append.
+   */
+  const loadModulePage = useCallback(
+    async (moduleId: string, query: api.ModuleListQuery, options?: { page?: number }) => {
+      const page = options?.page ?? 1;
+      const pageSize = query.pageSize ?? 200;
+      listQueries.current.set(moduleId, {
+        query,
+        pages: page <= 1 ? 1 : Math.max(page, listQueries.current.get(moduleId)?.pages ?? 1),
+      });
+      const seq = (listRequests.current.get(moduleId) ?? 0) + 1;
+      listRequests.current.set(moduleId, seq);
+      setModulePages((prev) => ({
+        ...prev,
+        [moduleId]: {
+          total: prev[moduleId]?.total ?? 0,
+          page: prev[moduleId]?.page ?? 0,
+          pageSize,
+          loading: true,
+        },
+      }));
+      try {
+        const result = await api.fetchModulePage(moduleId, { ...query, page, pageSize });
+        // A newer request (another filter, another page) already won.
+        if (listRequests.current.get(moduleId) !== seq) return;
+        const rows = ingestRecords(moduleId, result.items);
+        setRecords((prev) => ({
+          ...prev,
+          [moduleId]: page <= 1 ? rows : [...(prev[moduleId] ?? []), ...rows],
+        }));
+        setModulePages((prev) => ({
+          ...prev,
+          [moduleId]: {
+            total: result.meta.total,
+            page,
+            pageSize: result.meta.pageSize,
+            loading: false,
+          },
+        }));
+      } catch (error) {
+        if (listRequests.current.get(moduleId) !== seq) return;
+        setModulePages((prev) => ({
+          ...prev,
+          [moduleId]: {
+            total: prev[moduleId]?.total ?? 0,
+            page: prev[moduleId]?.page ?? 0,
+            pageSize,
+            loading: false,
+          },
+        }));
+        toast.error(errorMessage(error, "Could not load this list"));
       }
     },
     [ingestRecords],
@@ -619,6 +772,105 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     [status, records, pushAudit, refreshAudit, refreshModule],
   );
 
+  /**
+   * Re-reads the module list a bulk change or a merge just altered.
+   *
+   * Only what was already on screen is re-fetched, so "load 200 more" does
+   * not quietly collapse back to the first page after an edit.
+   */
+  const reloadList = useCallback(
+    async (moduleId: string) => {
+      const state = listQueries.current.get(moduleId);
+      if (!state) return;
+      const pages = Math.min(Math.max(state.pages, 1), 10);
+      for (let page = 1; page <= pages; page++) {
+        await loadModulePage(moduleId, state.query, { page });
+      }
+    },
+    [loadModulePage],
+  );
+
+  /**
+   * Applies one change to many records at once.
+   *
+   * The change is made in the database and the list is then re-read from it,
+   * rather than edited row by row in the browser: 400 touched records that
+   * disagree with the server is worse than a slower button.
+   */
+  const bulkUpdate = useCallback(
+    async (
+      moduleId: string,
+      references: string[],
+      action: "assign" | "status" | "delete",
+      value?: string,
+    ): Promise<number> => {
+      if (status !== "ready") {
+        // Demo workspace — the same edit, applied in memory.
+        setRecords((prev) => {
+          const rows = prev[moduleId] ?? seedRows(moduleId);
+          const next =
+            action === "delete"
+              ? rows.filter((row) => !references.includes(row.id))
+              : rows.map((row) => {
+                  if (!references.includes(row.id)) return row;
+                  if (action === "status") return { ...row, status: value ?? row.status };
+                  return { ...row, owner: value ?? row.owner };
+                });
+          return { ...prev, [moduleId]: next };
+        });
+        pushAudit(
+          action === "delete" ? "Deleted" : action === "status" ? "Updated" : "Assigned",
+          moduleId,
+          "",
+          `${references.length} record${references.length === 1 ? "" : "s"} ${
+            action === "delete"
+              ? "deleted"
+              : action === "status"
+                ? `set to ${value}`
+                : `assigned to ${value || "the unclaimed queue"}`
+          }`,
+        );
+        return references.length;
+      }
+
+      const result = await bulkRecords(moduleId, {
+        action,
+        references,
+        ...(value !== undefined ? { value } : {}),
+      });
+      await reloadList(moduleId);
+      void refreshAudit();
+      return result.affected;
+    },
+    [status, pushAudit, refreshAudit, reloadList],
+  );
+
+  /**
+   * Folds duplicate records into one and re-reads the list.
+   *
+   * Returns how many child rows came across, so the screen can report what
+   * actually moved instead of just saying "done".
+   */
+  const mergeInto = useCallback(
+    async (moduleId: string, keep: string, merges: string[]) => {
+      if (status !== "ready") {
+        setRecords((prev) => ({
+          ...prev,
+          [moduleId]: (prev[moduleId] ?? seedRows(moduleId)).filter(
+            (row) => !merges.includes(row.id),
+          ),
+        }));
+        pushAudit("Updated", moduleId, "", `${merges.length} records merged into ${keep}`);
+        return null;
+      }
+      const result = await api.mergeModuleRecords(moduleId, keep, merges);
+      await reloadList(moduleId);
+      void refreshAudit();
+      return result;
+    },
+    [status, pushAudit, refreshAudit, reloadList],
+  );
+
   /* ----- Tasks ----- */
 
   const addTask = useCallback(
@@ -680,9 +932,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       setTasks((prev) => prev.filter((t) => t.id !== id));
       if (status !== "ready") return;
-      void api.deleteTask(id).catch(() =>
-        toast.error("Could not delete the task"),
-      );
+      void api.deleteTask(id).catch(() => toast.error("Could not delete the task"));
     },
     [status],
   );
@@ -745,8 +995,14 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         organizationSlug,
         roleLabel,
         permissions,
+        branchScoped,
+        myBranch,
         records,
+        modulePages,
+        loadModulePage,
         tasks,
+        attention,
+        refreshAttention,
         audit,
         fields,
         settings,
@@ -759,6 +1015,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         createRecord,
         update,
         remove,
+        bulkUpdate,
+        mergeInto,
         addTask,
         updateTask,
         toggleTask,

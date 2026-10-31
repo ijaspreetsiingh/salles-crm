@@ -9,6 +9,8 @@ import type { ModuleDef } from "../domain/modules";
 import { sendEmail } from "../services/email";
 import { env } from "../config/env";
 import { sha256 } from "../lib/utils";
+import { generateInvoicePdf } from "../services/invoice-pdf";
+import { parseJson } from "../lib/utils";
 
 /**
  * Public lead capture — the one marketing feature that puts this CRM on the
@@ -123,6 +125,113 @@ router.post(
       reference,
       message: "Thank you! Your enquiry is with our travel desk — we will reply within one working day.",
     });
+  }),
+);
+
+/**
+ * Customer portal lookup — a customer can look up their bookings by email +
+ * booking reference. No password needed — the reference is secret enough.
+ */
+const customerLookupSchema = z.object({
+  email: z.string().email().max(160).toLowerCase(),
+  reference: z.string().min(2).max(40),
+});
+
+router.get(
+  "/customer-portal/lookup",
+  validate(customerLookupSchema),
+  asyncHandler(async (req, res) => {
+    const { email, reference } = req.query as z.infer<typeof customerLookupSchema>;
+
+    // Find the organization via the booking reference + email match
+    const record = await prisma.record.findFirst({
+      where: {
+        email,
+        reference,
+        deletedAt: null,
+        moduleId: { in: ["bookings", "leads", "quotations", "finance"] },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!record) throw new NotFoundError("No booking found with this email and reference");
+
+    // Find all related records for this customer (same email, same org)
+    const related = await prisma.record.findMany({
+      where: {
+        organizationId: record.organizationId,
+        email,
+        deletedAt: null,
+        moduleId: { in: ["bookings", "leads", "quotations", "finance"] },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: record.organizationId },
+    });
+
+    return ok(res, {
+      organization: {
+        name: organization?.name ?? "Traveldesk",
+        supportEmail: organization?.supportEmail ?? "",
+        phone: organization?.phone ?? "",
+        gstin: organization?.gstin ?? "",
+        address: organization?.address ?? "",
+      },
+      customer: {
+        name: record.name,
+        email: record.email,
+        phone: record.phone,
+      },
+      records: related.map((r) => ({
+        id: r.id,
+        reference: r.reference,
+        moduleId: r.moduleId,
+        name: r.name,
+        destination: r.destination,
+        status: r.status,
+        amount: r.amount,
+        currency: r.currency,
+        date: r.date,
+        notes: r.notes,
+        canDownloadInvoice: r.moduleId === "finance" && r.status !== "Draft",
+      })),
+    });
+  }),
+);
+
+/**
+ * Public invoice download — customer can download their invoice PDF without
+ * logging in (they already proved identity via email + reference lookup).
+ */
+router.get(
+  "/customer-portal/invoice/:reference/download",
+  asyncHandler(async (req, res) => {
+    const { reference } = req.params;
+    const { email } = req.query as { email?: string };
+
+    if (!email) throw new NotFoundError("Email required");
+
+    const record = await prisma.record.findFirst({
+      where: {
+        reference,
+        email,
+        deletedAt: null,
+        moduleId: "finance",
+        status: { not: "Draft" },
+      },
+    });
+    if (!record) throw new NotFoundError("Invoice not found");
+
+    const { stream, filename } = await generateInvoicePdf({
+      organizationId: record.organizationId,
+      reference: record.reference,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    stream.pipe(res);
   }),
 );
 
