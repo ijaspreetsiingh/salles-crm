@@ -12,6 +12,9 @@ import { toast } from "sonner";
 const DEMO_EMAIL = "owner@horizontravel.in";
 const DEMO_PASSWORD = "Traveldesk@123";
 
+/** The vendor's internal workspace slug — see backend `domain/tenancy.ts`. */
+const INTERNAL_ORG_SLUG = "traveldesk-hq";
+
 /**
  * The sign-in screen.
  *
@@ -24,6 +27,14 @@ const DEMO_PASSWORD = "Traveldesk@123";
  */
 export function LandingGuest() {
   return <LandingPage />;
+}
+
+function RedirectToPlatform() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    void navigate({ to: "/admin", replace: true });
+  }, [navigate]);
+  return <BootScreen />;
 }
 
 function RedirectHome() {
@@ -42,7 +53,7 @@ function RedirectHome() {
  *    platform portal, its own dashboard next to the travel CRM.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { status } = useCRM();
+  const { status, user, organizationSlug } = useCRM();
   const path = typeof window !== "undefined" ? window.location.pathname : "";
 
   if (status === "loading") return <BootScreen />;
@@ -57,6 +68,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   // Signed in: never show the sign-up / sign-in cards again.
   if (path === "/login" || path === "/signup") return <RedirectHome />;
+  // The vendor's own workspace is a console, not a CRM.
+  if (
+    user?.isPlatformAdmin &&
+    organizationSlug === INTERNAL_ORG_SLUG &&
+    (path === "/" || path === "")
+  ) {
+    return <RedirectToPlatform />;
+  }
   // "/platform" also opens the portal, so old bookmarks keep working.
   if (path === "/admin" || path === "/platform") return <PlatformPortal />;
   return <>{children}</>;
