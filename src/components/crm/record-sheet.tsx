@@ -194,6 +194,7 @@ export function RecordSheet({
         <div className="record-sheet__hero-side">
           <strong>{money(row.amount, currency)}</strong>
           <Status value={row.status} />
+          {row.customerType && <span className="inline-flex items-center rounded-md bg-secondary/10 px-2.5 py-0.5 text-xs font-medium text-secondary">{row.customerType}</span>}
         </div>
       </div>
 

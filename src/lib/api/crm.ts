@@ -77,6 +77,7 @@ export type RecordDto = {
   phone: string;
   source: string;
   notes: string;
+  customerType: string;
   extra: Record<string, unknown>;
 };
 
@@ -198,6 +199,7 @@ export function toRecordRow(dto: RecordDto): RecordRow {
     phone: dto.phone ?? "",
     source: dto.source ?? "",
     notes: dto.notes ?? "",
+    customerType: dto.customerType ?? "",
   };
   const extra = (dto.extra ?? {}) as Record<string, string | number>;
   if (Object.keys(extra).length > 0) row.extra = extra;
@@ -302,6 +304,7 @@ export type ModuleListQuery = {
   to?: string;
   sort?: string;
   order?: "asc" | "desc";
+  customerType?: string;
 };
 
 export type PageMetaDto = { page: number; pageSize: number; total: number; totalPages: number };
@@ -336,6 +339,7 @@ const listQuery = (query: ModuleListQuery): Record<string, string | number> => {
   if (query.pageSize) out["pageSize"] = query.pageSize;
   if (query.search?.trim()) out["search"] = query.search.trim();
   if (query.status?.length) out["status"] = query.status.join(",");
+  if (query.customerType) out["customerType"] = query.customerType;
   if (query.owner) out["owner"] = query.owner;
   if (query.branch) out["branch"] = query.branch;
   if (query.from) out["from"] = query.from;

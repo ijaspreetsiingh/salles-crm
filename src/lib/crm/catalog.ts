@@ -295,6 +295,7 @@ export type RecordRow = {
   phone: string;
   source: string;
   notes: string;
+  customerType?: "Corporate" | "VIP" | "Leisure";
   extra?: Record<string, string | number>;
 };
 

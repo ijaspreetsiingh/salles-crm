@@ -77,7 +77,13 @@ function DepartureStatus({ status }: { status: string }) {
 }
 
 export function Home() {
-  const { getRows, tasks, settings, status, attention, user } = useCRM();
+  const { getRows, tasks, settings, status, attention, user, getModulePage } = useCRM();
+  const [customerTypeFilter, setCustomerTypeFilter] = useState<"" | "Corporate" | "VIP" | "Leisure">("");
+  const customerTypeWhere = customerTypeFilter
+    ? { customerType: customerTypeFilter }
+    : {};
+
+
   const navigate = useNavigate();
   const currency = settings.currency;
   const [open, setOpen] = useState<{ module: string; id: string } | null>(null);
@@ -97,14 +103,14 @@ export function Home() {
       ? fromAttention(live.data)
       : {
           tasks,
-          leads: getRows("leads"),
-          bookings: getRows("bookings"),
-          finance: getRows("finance"),
-          visa: getRows("visa"),
+          leads: customerTypeFilter ? getRows("leads").filter((r) => r.customerType === customerTypeFilter) : getRows("leads"),
+          bookings: customerTypeFilter ? getRows("bookings").filter((r) => r.customerType === customerTypeFilter) : getRows("bookings"),
+          finance: customerTypeFilter ? getRows("finance").filter((r) => r.customerType === customerTypeFilter) : getRows("finance"),
+          visa: customerTypeFilter ? getRows("visa").filter((r) => r.customerType === customerTypeFilter) : getRows("visa"),
           today,
         };
     return buildWorklist({ ...source, currency });
-  }, [live.data, tasks, getRows, currency, today]);
+  }, [live.data, tasks, getRows, currency, today, customerTypeFilter]);
 
   const m = overview?.metrics;
   const revenue = m?.revenue ?? 0;
@@ -158,6 +164,33 @@ export function Home() {
         }
         work={
           <>
+            {/* Customer Type Filter */}
+            <div className="grid gap-2 mb-3 sm:grid-cols-4">
+              <Btn
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomerTypeFilter("")}
+                className={customerTypeFilter === "" ? "bg-primary/10 text-primary" : ""}
+              >All</Btn>
+              <Btn
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomerTypeFilter("Corporate")}
+                className={customerTypeFilter === "Corporate" ? "bg-primary/10 text-primary" : ""}
+              >Corporate</Btn>
+              <Btn
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomerTypeFilter("VIP")}
+                className={customerTypeFilter === "VIP" ? "bg-primary/10 text-primary" : ""}
+              >VIP</Btn>
+              <Btn
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomerTypeFilter("Leisure")}
+                className={customerTypeFilter === "Leisure" ? "bg-primary/10 text-primary" : ""}
+              >Leisure</Btn>
+            </div>
             {/* KPI Row */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
               <KpiCard
