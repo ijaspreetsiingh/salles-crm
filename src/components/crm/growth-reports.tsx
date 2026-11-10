@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, Clock, Download, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -304,10 +304,22 @@ const SEGMENT_TONE: Record<Segment, string> = {
 /* ================= Growth Reports page ================= */
 
 export function GrowthReports() {
-  const { getRows, settings } = useCRM();
+  const { getRows, settings, status, ensureModuleRecords } = useCRM();
   const currency = settings.currency;
   const [range, setRange] = useState<"3M" | "6M" | "12M">("6M");
   const [unit, setUnit] = useState<"amount" | "percent">("amount");
+
+  /*
+   * These charts add up whole modules, so the recent sign-in slice is not
+   * enough — a total built from sixty rows would be a lie. Pull the five
+   * modules this page totals, page by page, before it draws.
+   */
+  useEffect(() => {
+    if (status !== "ready") return;
+    for (const id of ["leads", "customers", "quotations", "bookings", "finance"]) {
+      void ensureModuleRecords(id);
+    }
+  }, [status, ensureModuleRecords]);
 
   const count = range === "3M" ? 3 : range === "6M" ? 6 : 12;
   const months = useMemo(() => lastNMonths(count), [count]);

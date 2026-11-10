@@ -84,6 +84,14 @@ type Store = {
   /** The office this person is attached to, by name. Empty = not set. */
   myBranch: string;
   records: Record<string, RecordRow[]>;
+  /**
+   * True while the cross-module context cache is still arriving after sign-in.
+   *
+   * The shell paints as soon as the profile is known; the recent-records slice
+   * follows in the background. Screens use this to say "loading" rather than
+   * "empty" while it is in flight.
+   */
+  recordsLoading: boolean;
   /** Per-module page/total state, for honest "showing X of Y" copy. */
   modulePages: Record<string, ModulePageState>;
   /**
@@ -95,6 +103,11 @@ type Store = {
     query: api.ModuleListQuery,
     options?: { page?: number },
   ) => Promise<void>;
+  /**
+   * Loads every record of a module (paged), for screens that total numbers.
+   * The sign-in cache only holds a recent slice, so analytics call this.
+   */
+  ensureModuleRecords: (moduleId: string) => Promise<void>;
   tasks: Task[];
   /**
    * Today's work from the server, scoped to this person. Null until the
@@ -249,6 +262,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   /** The office this person works from, by name. */
   const [myBranch, setMyBranch] = useState("");
   const [records, setRecords] = useState<Record<string, RecordRow[]>>({});
+  const [recordsLoading, setRecordsLoading] = useState(false);
   const [modulePages, setModulePages] = useState<Record<string, ModulePageState>>({});
   // Tasks start empty: they arrive from the API with the rest of the
   // workspace, so an empty account never flashes sample tasks.
@@ -270,6 +284,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const listQueries = useRef(new Map<string, { query: api.ModuleListQuery; pages: number }>());
   const branchIds = useRef(new Map<string, string>()); // branch name -> id
   const memberIds = useRef(new Map<string, string>()); // member name -> membership id
+  /** Modules that have loaded their own page, so the context slice must not overwrite them. */
+  const loadedModules = useRef(new Set<string>());
   const pendingOrgPatch = useRef<Record<string, unknown>>({});
   const orgPatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -319,20 +335,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       ]);
     const auditList = await api.fetchAudit().catch(() => [] as api.AuditDto[]);
 
-    // One request for every module instead of twenty-four. The API groups
-    // the records by module, so the app is ready in a single round trip.
-    const grouped = await api.fetchAllRecords();
-
     recordIds.current = new Map();
+    loadedModules.current = new Set();
+    // Every module starts "loaded but empty" so the shell can paint without
+    // waiting for the cross-module context cache. The real slice follows below.
     const nextRecords: Record<string, RecordRow[]> = {};
-    for (const [moduleId, dtos] of Object.entries(grouped)) {
-      nextRecords[moduleId] = ingestRecords(moduleId, dtos);
-    }
-    // A module with no records still needs an (empty) entry so the UI knows
-    // it has been loaded.
-    for (const module of modules) {
-      if (!nextRecords[module.id]) nextRecords[module.id] = [];
-    }
+    for (const module of modules) nextRecords[module.id] = [];
 
     branchIds.current = new Map(branches.map((b) => [b.name, b.id]));
     memberIds.current = new Map(members.map((m) => [`${m.name}::${m.email ?? ""}`, m.id]));
@@ -364,7 +372,35 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setAudit(auditList.map(mapAudit));
     setSettings(buildSettings(organization, branches, members));
     setTwoFactorSetupRequired(false);
+    setRecordsLoading(true);
     setStatus("ready");
+
+    /*
+     * The recent slice of every module is *context* — the record drawer's
+     * history and cross-module links — not the lists themselves. Module
+     * screens ask for their own pages, filtered and sorted by the server. So
+     * this arrives after first paint: a workspace with tens of thousands of
+     * rows no longer makes sign-in wait on rows nobody is looking at.
+     */
+    void api
+      .fetchAllRecords()
+      .then((grouped) => {
+        setRecords((prev) => {
+          const next = { ...prev };
+          for (const [moduleId, dtos] of Object.entries(grouped)) {
+            // A module that already loaded its own page has fresher rows than
+            // this sign-in snapshot, so never clobber it.
+            if (loadedModules.current.has(moduleId)) continue;
+            if ((prev[moduleId] ?? []).length > 0) continue;
+            next[moduleId] = ingestRecords(moduleId, dtos);
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        /* Context is best-effort; each module screen loads its own page. */
+      })
+      .finally(() => setRecordsLoading(false));
   }, [ingestRecords]);
 
   useEffect(() => {
@@ -458,6 +494,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await api.logout();
     recordIds.current = new Map();
+    loadedModules.current = new Set();
     branchIds.current = new Map();
     memberIds.current = new Map();
     setUser(null);
@@ -501,11 +538,47 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   const refreshModule = useCallback(
     async (moduleId: string) => {
+      loadedModules.current.add(moduleId);
       try {
         const dtos = await api.fetchRecords(moduleId);
         setRecords((prev) => ({ ...prev, [moduleId]: ingestRecords(moduleId, dtos) }));
       } catch {
         /* keep the current list on a transient failure */
+      }
+    },
+    [ingestRecords],
+  );
+
+  /**
+   * Reads *every* record of a module, page by page.
+   *
+   * The sign-in cache deliberately holds only a recent slice — enough for a
+   * drawer, not enough to total a year of bookings. A screen that adds up
+   * numbers (growth, profitability) calls this so the figure it shows is the
+   * whole module, not whatever happened to be cached. It is opt-in per module
+   * so signing in never pays for it.
+   */
+  const ensureModuleRecords = useCallback(
+    async (moduleId: string): Promise<void> => {
+      loadedModules.current.add(moduleId);
+      try {
+        const pageSize = 500;
+        const all: api.RecordDto[] = [];
+        let total = Number.POSITIVE_INFINITY;
+        for (let page = 1; all.length < total && page <= 60; page += 1) {
+          const result = await api.fetchModulePage(moduleId, {
+            page,
+            pageSize,
+            sort: "createdAt",
+            order: "asc",
+          });
+          all.push(...(result.items ?? []));
+          total = result.meta?.total ?? all.length;
+          if ((result.items ?? []).length === 0) break;
+        }
+        setRecords((prev) => ({ ...prev, [moduleId]: ingestRecords(moduleId, all) }));
+      } catch {
+        /* keep the context slice; the screen still renders what it has */
       }
     },
     [ingestRecords],
@@ -521,6 +594,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const loadModulePage = useCallback(
     async (moduleId: string, query: api.ModuleListQuery, options?: { page?: number }) => {
       const page = options?.page ?? 1;
+      loadedModules.current.add(moduleId);
       const pageSize = query.pageSize ?? 200;
       listQueries.current.set(moduleId, {
         query,
@@ -1162,8 +1236,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         branchScoped,
         myBranch,
         records,
+        recordsLoading,
         modulePages,
         loadModulePage,
+        ensureModuleRecords,
         tasks,
         attention,
         refreshAttention,

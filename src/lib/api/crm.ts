@@ -344,13 +344,19 @@ export async function fetchRecords(moduleId: string): Promise<RecordDto[]> {
 
 /**
  * Every record in the workspace, grouped by module — one request instead of
- * one per module. The sign-in screen waits on this, so speed matters.
+ * one per module. This is a recent slice for cross-module context, not a
+ * module's full list: module screens page their own records in through
+ * `fetchModulePage`, and screens that total numbers call `ensureModuleRecords`.
  *
- * This is a recent slice for cross-module context, not a module's full list:
- * module screens page their own records in through `fetchModulePage`.
+ * A caller that already knows which modules it needs can narrow the call.
  */
-export async function fetchAllRecords(): Promise<Record<string, RecordDto[]>> {
-  return apiRequest<Record<string, RecordDto[]>>("/workspace/all-records");
+export async function fetchAllRecords(
+  options: { modules?: string[]; perModule?: number } = {},
+): Promise<Record<string, RecordDto[]>> {
+  const query: Record<string, string | number> = {};
+  if (options.modules?.length) query["modules"] = options.modules.join(",");
+  if (options.perModule) query["perModule"] = options.perModule;
+  return apiRequest<Record<string, RecordDto[]>>("/workspace/all-records", { query });
 }
 
 /**

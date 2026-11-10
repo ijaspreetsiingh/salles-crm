@@ -135,8 +135,17 @@ router.get(
   asyncHandler(async (_req, res) => ok(res, { modules: MODULES, groups: moduleGroups() })),
 );
 
-/** How many records of one module the sign-in cache keeps. */
+/**
+ * How many records of one module the sign-in cache keeps by default.
+ *
+ * This is a *context* cache: enough recent history for a record drawer to
+ * feel complete. It is loaded after first paint (see the store), so its size
+ * no longer delays sign-in. A screen that totals numbers calls
+ * `ensureModuleRecords`, and a caller may narrow or widen the slice with
+ * `?modules=` / `?perModule=`.
+ */
 const CONTEXT_PER_MODULE = 300;
+const CONTEXT_PER_MODULE_MAX = 500;
 
 /**
  * A recent slice of every module, in a single call.
@@ -158,10 +167,30 @@ router.get(
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const permitted = req.auth!.permissions.modules;
-    const allowedModules =
+    let allowedModules =
       permitted === "*"
         ? MODULES.map((module) => module.id)
         : MODULES.map((module) => module.id).filter((id) => permitted.includes(id));
+
+    // A caller that knows which modules it needs can ask for just those. The
+    // filter is applied *after* the permission check, so naming a module the
+    // role cannot read returns nothing rather than leaking it.
+    const requestedModules =
+      typeof req.query.modules === "string" && req.query.modules.trim()
+        ? req.query.modules
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean)
+        : null;
+    if (requestedModules) {
+      allowedModules = allowedModules.filter((id) => requestedModules.includes(id));
+    }
+
+    const requestedPerModule = Number.parseInt(String(req.query.perModule ?? ""), 10);
+    const perModule =
+      Number.isFinite(requestedPerModule) && requestedPerModule > 0
+        ? Math.min(requestedPerModule, CONTEXT_PER_MODULE_MAX)
+        : CONTEXT_PER_MODULE;
 
     /*
      * Every module is asked for its own most recent slice, in parallel.
@@ -183,7 +212,7 @@ router.get(
         const rows = await prisma.record.findMany({
           where,
           orderBy: { createdAt: "desc" },
-          take: CONTEXT_PER_MODULE,
+          take: perModule,
         });
         return [moduleId, rows.map(toRecordDto)] as const;
       }),

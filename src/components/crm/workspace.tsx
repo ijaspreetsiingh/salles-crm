@@ -236,7 +236,17 @@ const SPECIAL_TAB_MODULES = new Set([
 
 export function Workspace({ module }: { module: Module }) {
   const guide = guideFor(module);
-  const { getRows, update, createRecord, settings, fields, user, permissions, status } = useCRM();
+  const {
+    getRows,
+    update,
+    createRecord,
+    settings,
+    fields,
+    user,
+    permissions,
+    status,
+    recordsLoading,
+  } = useCRM();
   const navigate = useNavigate();
   const allowed =
     !permissions || permissions.modules === "*" || permissions.modules.includes(module.id);
@@ -479,11 +489,14 @@ export function Workspace({ module }: { module: Module }) {
     if (isSpecialView) return;
     // Only a loaded, genuinely empty module gets the guided first record.
     if (status !== "ready") return;
+    // The context slice may still be arriving; an empty array now would open
+    // the first-run wizard on a workspace that is not empty.
+    if (recordsLoading) return;
     if (rows.length === 0 && !query && statusFilter.length === 0 && owner === "All owners") {
       offered.current = true;
       setWizard(true);
     }
-  }, [rows.length, query, statusFilter.length, owner, status, isSpecialView]);
+  }, [rows.length, query, statusFilter.length, owner, status, isSpecialView, recordsLoading]);
 
   const specialBody = (() => {
     if (module.id === "assistant") return <Assistant tab={tab} />;
