@@ -77,6 +77,9 @@ function TwoFactorSetupScreen() {
     setBusy(true);
     try {
       await logout();
+    } catch {
+      // The local session is cleared either way; a failed API call must not
+      // trap the person on this screen.
     } finally {
       setBusy(false);
     }
