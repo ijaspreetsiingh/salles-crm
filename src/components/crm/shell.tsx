@@ -30,24 +30,31 @@ import {
   Package,
   PlaneTakeoff,
   Receipt,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCRM } from "@/lib/crm/store";
 import { toRecordRow, toTask } from "@/lib/api/crm";
 import { findModule, modules } from "@/lib/crm/catalog";
 import {
+  activeKeyFor,
   buildGoShortcuts,
   buildNavEntries,
-  buildNavGroups,
+  buildSidebarGroups,
   CORE_MODULE_IDS,
   DEFAULT_ENABLED_MODULES,
+  EXTRA_HINTS,
   EXTRA_MODULE_IDS,
   ICONS,
+  type NavEntry,
 } from "@/lib/crm/nav";
 import { plainModule } from "@/lib/crm/language";
 import { buildWorklist } from "@/lib/crm/worklist";
 import { prefs, useDensity, usePrefs } from "@/lib/crm/prefs";
 import { useApiQuery } from "@/lib/api/hooks";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { ContextualHelp } from "./contextual-help";
+import { SetupWizard, useSetupWizard } from "./setup-wizard";
 import {
   fetchNotifications,
   markAllNotificationsRead,
@@ -89,6 +96,57 @@ type PaletteGroup = {
     run: () => void;
   }>;
 };
+
+/**
+ * The five-step welcome tour.
+ *
+ * Each step has a title, body, icon, a tip (shown in a highlight box),
+ * and an optional action link that navigates the user directly to the
+ * relevant module so they can try it immediately.
+ */
+const TOUR_STEPS: Array<{
+  title: string;
+  body: string;
+  tip: string;
+  icon: ReactNode;
+  action?: { label: string; to: string };
+}> = [
+  {
+    title: "Capture every enquiry",
+    body: "When a customer asks about a trip, add an enquiry — name, destination, travel dates, and phone number. Takes 20 seconds. Every future quote, booking and invoice ties back to this one record.",
+    tip: "Sidebar → Enquiries → + New",
+    icon: <Plus className="size-4" />,
+    action: { label: "Open Enquiries", to: "/workspace/leads" },
+  },
+  {
+    title: "Build a quote in minutes",
+    body: "Pick the enquiry, add flights, hotels and transfers as line items. GST calculates automatically. One click sends a professional PDF to the customer's email — no spreadsheet needed.",
+    tip: "Open the enquiry → Convert to Quote",
+    icon: <FileText className="size-4" />,
+    action: { label: "Open Quotations", to: "/workspace/quotations" },
+  },
+  {
+    title: "Confirm the booking",
+    body: "Customer said yes? Convert the quote to a booking in one click. Add departure date, travellers, and supplier confirmations. The PNR queue tracks any pending ticket deadlines with countdown timers.",
+    tip: "Quote → Confirm Booking",
+    icon: <PlaneTakeoff className="size-4" />,
+    action: { label: "Open Bookings", to: "/workspace/bookings" },
+  },
+  {
+    title: "Collect payment",
+    body: "Raise a GST invoice from the booking and share a Razorpay payment link. When the customer pays, the invoice marks itself paid automatically — no chasing, no manual entry.",
+    tip: "Booking → Raise Invoice → Send Link",
+    icon: <Receipt className="size-4" />,
+    action: { label: "Open Finance", to: "/workspace/finance" },
+  },
+  {
+    title: "Build repeat business",
+    body: "Every trip builds the customer's full history — past bookings, money owed, open follow-ups. Next time they travel, you already know them. That is the whole CRM in one line.",
+    tip: "Customers module → full history",
+    icon: <Users className="size-4" />,
+    action: { label: "Open Customers", to: "/workspace/customers" },
+  },
+];
 
 /**
  * Which office you are looking at.
@@ -169,6 +227,73 @@ function BranchSwitch({
   );
 }
 
+/**
+ * One sidebar destination.
+ *
+ * Standalone screens (Today, Tasks, Your team) have their own route; module
+ * screens go through `/workspace/$module`. Keeping the three explicit keeps
+ * the router's types honest instead of casting a string.
+ */
+function SidebarItem({
+  entry,
+  active,
+  badge,
+  onNavigate,
+}: {
+  entry: NavEntry;
+  active: boolean;
+  badge: number;
+  onNavigate: () => void;
+}) {
+  const Icon = entry.icon;
+  const className = cn("sidebar__item", active && "is-active");
+  const body = (
+    <>
+      <span className="sidebar__icon">
+        <Icon className="size-4" />
+      </span>
+      <span className="sidebar__label">{entry.label}</span>
+      {badge > 0 && (
+        <span className={cn("sidebar__count", entry.moduleId !== "today" && "is-alert")}>
+          {badge}
+        </span>
+      )}
+    </>
+  );
+
+  if (entry.to === "/") {
+    return (
+      <Link to="/" className={className} onClick={onNavigate}>
+        {body}
+      </Link>
+    );
+  }
+  if (entry.to === "/tasks") {
+    return (
+      <Link to="/tasks" className={className} onClick={onNavigate}>
+        {body}
+      </Link>
+    );
+  }
+  if (entry.to === "/team") {
+    return (
+      <Link to="/team" className={className} onClick={onNavigate}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      to="/workspace/$module"
+      params={{ module: entry.moduleId }}
+      className={className}
+      onClick={onNavigate}
+    >
+      {body}
+    </Link>
+  );
+}
+
 export function CRMShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
@@ -203,15 +328,23 @@ export function CRMShell({ children }: { children: ReactNode }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [extraPopupOpen, setExtraPopupOpen] = useState(false);
   const [welcomeTourOpen, setWelcomeTourOpen] = useState(false);
+  const [tourStep, setTourStep] = useState(0);
   /** The office every screen is narrowed to. One value, kept in preferences. */
   const branch = prefsState.defaultBranch;
-  const navGroupList = buildNavGroups(enabledModuleIds);
-  const [openGroups, setOpenGroups] = useState<string[]>(() => navGroupList.map((g) => g.id));
-
+  /** Core destinations are always present; extras only once added. */
+  const sidebarGroups = buildSidebarGroups(enabledModuleIds, permissions?.modules ?? "*");
   const searchRef = useRef<HTMLInputElement>(null);
   const pendingGo = useRef<string | null>(null);
 
   useDensity(prefsState.density);
+
+  // Register browser push notifications once the workspace is ready.
+  // Silent no-op when VAPID is not configured or browser doesn't support it.
+  usePushNotifications(status === "ready");
+
+  // Setup wizard — shown once to company_admin on first login
+  const isAdmin = roleLabel === "Company Admin" || roleLabel === "company_admin";
+  const { open: setupOpen, close: closeSetup } = useSetupWizard(status === "ready" && isAdmin);
 
   // Apply white-label brand color to CSS variables for active states.
   useEffect(() => {
@@ -263,7 +396,10 @@ export function CRMShell({ children }: { children: ReactNode }) {
 
   const counts = useMemo(() => {
     const out: Record<string, { total: number; alert: number }> = {};
-    for (const module of visibleModules) {
+    const allowed = modules.filter(
+      (m) => !permissions || permissions.modules === "*" || permissions.modules.includes(m.id),
+    );
+    for (const module of allowed) {
       const rows = getRows(module.id);
       const alertStatuses = ALERT_STATUS[module.id];
       out[module.id] = {
@@ -272,7 +408,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
       };
     }
     return out;
-  }, [getRows, visibleModules]);
+  }, [getRows, permissions]);
 
   /**
    * How many things are waiting for this person right now.
@@ -289,6 +425,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
           bookings: attention.bookings.map(toRecordRow),
           finance: attention.finance.map(toRecordRow),
           visa: attention.visa.map(toRecordRow),
+          groups: attention.groups.map(toRecordRow),
           today: attention.today,
         }
       : {
@@ -297,6 +434,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
           bookings: getRows("bookings"),
           finance: getRows("finance"),
           visa: getRows("visa"),
+          groups: getRows("groups"),
           today,
         };
     return buildWorklist({ ...source, currency: settings.currency }).length;
@@ -352,7 +490,9 @@ export function CRMShell({ children }: { children: ReactNode }) {
         return;
       }
       if (pendingGo.current === "g") {
-        const destination = buildGoShortcuts(enabledModuleIds)[event.key];
+        const destination = buildGoShortcuts(enabledModuleIds, permissions?.modules ?? "*")[
+          event.key
+        ];
         pendingGo.current = null;
         if (destination) {
           event.preventDefault();
@@ -399,7 +539,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
     const goTo: PaletteGroup = {
       id: "go",
       label: "Go to",
-      items: buildNavEntries(enabledModuleIds)
+      items: buildNavEntries(enabledModuleIds, permissions?.modules ?? "*")
         .filter((e) => matches(e.label))
         .slice(0, 6)
         .map((e) => ({
@@ -408,7 +548,10 @@ export function CRMShell({ children }: { children: ReactNode }) {
           subtitle: "Open this page",
           icon: <e.icon className="size-4" />,
           run: () => {
-            void navigate({ to: "/workspace/$module", params: { module: e.id } });
+            if (e.to === "/tasks") void navigate({ to: "/tasks" });
+            else if (e.to === "/team") void navigate({ to: "/team" });
+            else if (e.to === "/") void navigate({ to: "/" });
+            else void navigate({ to: "/workspace/$module", params: { module: e.moduleId } });
           },
         })),
     };
@@ -582,6 +725,15 @@ export function CRMShell({ children }: { children: ReactNode }) {
     prefs.set({ favouriteModules: next });
   };
 
+  /** Finishing or skipping the tour marks it done, so it never returns. */
+  const closeTour = () => {
+    setWelcomeTourOpen(false);
+    setTourStep(0);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("travo.welcome_tour_done", "true");
+    }
+  };
+
   // Public lead-form pages render standalone — no workspace chrome around them.
   if (path.startsWith("/lead/")) return <div className="public-page">{children}</div>;
 
@@ -652,122 +804,35 @@ export function CRMShell({ children }: { children: ReactNode }) {
             {needsYou > 0 && <span className="sidebar__now-count">{needsYou}</span>}
           </Link>
 
-          {/* Travo-style main navigation — 5 core options upfront */}
-          <Link
-            to="/"
-            className={`sidebar__item ${path === "/" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <Home className="size-4" />
-            </span>
-            <span className="sidebar__label">Today</span>
-            {needsYou > 0 && <span className="sidebar__count">{needsYou}</span>}
-          </Link>
+          {/* The fixed core of the CRM, then anything this person added. */}
+          {sidebarGroups.map((group) => (
+            <div key={group.id} className="sidebar__group">
+              <p className="sidebar__grouplabel">{group.label}</p>
+              {group.entries.map((entry) => (
+                <SidebarItem
+                  key={entry.id}
+                  entry={entry}
+                  active={activeKeyFor(path, activeModuleId) === entry.moduleId}
+                  badge={
+                    entry.moduleId === "today" ? needsYou : (counts[entry.moduleId]?.alert ?? 0)
+                  }
+                  onNavigate={() => setMobileOpen(false)}
+                />
+              ))}
+            </div>
+          ))}
 
-          <Link
-            to="/workspace/$module"
-            params={{ module: "leads" }}
-            className={`sidebar__item ${activeModuleId === "leads" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <UserPlus className="size-4" />
-            </span>
-            <span className="sidebar__label">Enquiries</span>
-            {counts["leads"]?.alert ? (
-              <span className="sidebar__count is-alert">{counts["leads"].alert}</span>
-            ) : null}
-          </Link>
-
-          <Link
-            to="/workspace/$module"
-            params={{ module: "customers" }}
-            className={`sidebar__item ${activeModuleId === "customers" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <Users className="size-4" />
-            </span>
-            <span className="sidebar__label">Customers</span>
-          </Link>
-
-          <Link
-            to="/workspace/$module"
-            params={{ module: "quotations" }}
-            className={`sidebar__item ${activeModuleId === "quotations" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <FileText className="size-4" />
-            </span>
-            <span className="sidebar__label">Quotes</span>
-            {counts["quotations"]?.alert ? (
-              <span className="sidebar__count is-alert">{counts["quotations"].alert}</span>
-            ) : null}
-          </Link>
-
-          <Link
-            to="/workspace/$module"
-            params={{ module: "bookings" }}
-            className={`sidebar__item ${activeModuleId === "bookings" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <Ticket className="size-4" />
-            </span>
-            <span className="sidebar__label">Bookings</span>
-            {counts["bookings"]?.alert ? (
-              <span className="sidebar__count is-alert">{counts["bookings"].alert}</span>
-            ) : null}
-          </Link>
-
-          <Link
-            to="/workspace/$module"
-            params={{ module: "finance" }}
-            className={`sidebar__item ${activeModuleId === "finance" ? "is-active" : ""}`}
-            onClick={() => setMobileOpen(false)}
-          >
-            <span className="sidebar__icon">
-              <Wallet className="size-4" />
-            </span>
-            <span className="sidebar__label">Money</span>
-            {counts["finance"]?.alert ? (
-              <span className="sidebar__count is-alert">{counts["finance"].alert}</span>
-            ) : null}
-          </Link>
-
-          {/* More — extra modules popup */}
           <button
             type="button"
             className="sidebar__item"
             onClick={() => setExtraPopupOpen(true)}
-            title="More modules"
+            title="Add more modules"
           >
             <span className="sidebar__icon">
               <Plus className="size-4" />
             </span>
-            <span className="sidebar__label">More</span>
+            <span className="sidebar__label">Add more</span>
           </button>
-
-          {/* Extra modules added by user via Extra popup */}
-          {navGroupList
-            .flatMap((g) => g.entries)
-            .filter((entry) => EXTRA_MODULE_IDS.includes(entry.id) && enabledModuleIds.includes(entry.id))
-            .map((entry) => (
-              <Link
-                key={entry.id}
-                to="/workspace/$module"
-                params={{ module: entry.id }}
-                className={`sidebar__item ${activeModuleId === entry.id ? "is-active" : ""}`}
-                onClick={() => setMobileOpen(false)}
-              >
-                <span className="sidebar__icon">
-                  <entry.icon className="size-4" />
-                </span>
-                <span className="sidebar__label">{entry.label}</span>
-              </Link>
-            ))}
         </div>
 
         <div className="sidebar__foot">
@@ -874,7 +939,8 @@ export function CRMShell({ children }: { children: ReactNode }) {
         <main id="main-content">
           {status !== "ready" && (
             <div className="demo-banner" role="status">
-              You are viewing demo data. Sign in to use your own workspace.
+              Not connected to the workspace — nothing you add will be saved until the connection is
+              back.
             </div>
           )}
           {children}
@@ -1088,17 +1154,20 @@ export function CRMShell({ children }: { children: ReactNode }) {
         open={extraPopupOpen}
         onClose={() => setExtraPopupOpen(false)}
         title="Add more modules"
-        description="Pick extra features to add to your sidebar. Travo CRM keeps it simple — start with the core, add more as you grow."
+        description="The core CRM is fixed in the sidebar (whatever your role can open). Add the extras your agency actually needs — they stay until you remove them."
         width={560}
       >
         <div className="space-y-3">
           <p className="text-[12.5px] text-muted">
-            Core modules are always available. Choose any extras below:
+            Always there: Today, Enquiries, Customers, Packages, Quotes, Bookings, money, Tasks,
+            Conversations, Reports and Your team.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {EXTRA_MODULE_IDS.map((id) => {
               const m = modules.find((mod) => mod.id === id);
               if (!m) return null;
+              // Never offer a screen this person's role cannot open.
+              if (!moduleAllowed(id)) return null;
               const isEnabled = enabledModuleIds.includes(id);
               const Icon = ICONS[id] ?? Package;
               return (
@@ -1110,6 +1179,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
                       ? "border-ink bg-ink/5 text-foreground"
                       : "border-line bg-white text-foreground hover:bg-glass-2 hover:border-ink"
                   }`}
+                  title={EXTRA_HINTS[id] ?? plainModule(m.name)}
                   onClick={() => {
                     if (isEnabled) {
                       setPrefs({
@@ -1125,7 +1195,14 @@ export function CRMShell({ children }: { children: ReactNode }) {
                   <span className={`size-4 shrink-0 ${isEnabled ? "text-ink" : "text-muted"}`}>
                     <Icon className="size-4" />
                   </span>
-                  <span className="text-[13px] font-medium truncate">{plainModule(m.name)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium">
+                      {plainModule(m.name)}
+                    </span>
+                    <span className="block truncate text-[11px] text-muted">
+                      {EXTRA_HINTS[id] ?? ""}
+                    </span>
+                  </span>
                   <span className="ml-auto text-[11px] text-muted">
                     {isEnabled ? "Added" : "Add to sidebar"}
                   </span>
@@ -1149,129 +1226,46 @@ export function CRMShell({ children }: { children: ReactNode }) {
       <Sheet
         open={helpOpen}
         onClose={() => setHelpOpen(false)}
-        title="How to use Traveldesk"
-        description="You do not need to learn much. Here is the whole thing."
+        title={
+          activeModuleId
+            ? `How to use ${activeModuleId.charAt(0).toUpperCase() + activeModuleId.slice(1)}`
+            : "How to use Traveldesk"
+        }
+        description="Tips, shortcuts and answers — just for this screen."
         width={520}
       >
-        <div className="space-y-5">
-          <section>
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-faint">
-              The idea
-            </h3>
-            <ul className="mt-2 space-y-2 text-[13.5px] leading-relaxed text-foreground">
-              <li>
-                <b className="font-semibold">Today</b> is the home page. It lists the things that
-                need you, in order. Start there every morning.
-              </li>
-              <li>
-                <b className="font-semibold">The sidebar</b> is every part of the business, in five
-                short groups: selling, trips, working, money and tools.
-              </li>
-              <li>
-                <b className="font-semibold">Search</b> finds anything — a customer, a reference
-                like LD-2401, or a task.
-              </li>
-              <li>
-                <b className="font-semibold">Every record</b> shows the same way: what it is, what
-                it is worth, who owns it, and what to do next.
-              </li>
-            </ul>
-          </section>
-
-          <section>
-            <h3 className="text-[12px] font-semibold uppercase tracking-wide text-faint">
-              Keyboard
-            </h3>
-            <div className="mt-2 grid gap-1.5">
-              {[
-                [[isMac ? "⌘K" : "Ctrl K"], "Find anything"],
-                [["/"], "Find anything"],
-                [["n"], "Add something new"],
-                [["g", "l"], "Go to enquiries"],
-                [["g", "b"], "Go to trips"],
-                [["g", "F"], "Go to money"],
-                [["g", "r"], "Go to numbers"],
-                [["g", "S"], "Go to settings"],
-                [["?"], "Open this panel"],
-                [["Esc"], "Close any panel"],
-              ].map(([keys, description]) => (
-                <div
-                  key={description as string}
-                  className="flex items-center justify-between gap-4 rounded-xl border border-line bg-glass-2 px-3.5 py-2.5"
-                >
-                  <span className="text-[12.5px] text-muted">{description}</span>
-                  <span className="flex shrink-0 gap-1">
-                    {(keys as string[]).map((k) => (
-                      <Kbd key={k}>{k}</Kbd>
-                    ))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
+        <ContextualHelp moduleId={activeModuleId} isMac={isMac} />
       </Sheet>
 
       {/* ------------------------------------------------------ Welcome tour */}
       <Sheet
         open={welcomeTourOpen}
-        onClose={() => {
-          setWelcomeTourOpen(false);
-          if (typeof localStorage !== "undefined") {
-            localStorage.setItem("travo.welcome_tour_done", "true");
-          }
-        }}
+        onClose={() => closeTour()}
         title="Welcome to Travo CRM"
         description="Five steps to run your travel business. You will get it in under a minute."
         width={560}
       >
         <TourStep
-          step={1}
-          total={5}
-          title="Start with an enquiry"
-          body="A customer asks about a trip. Create a lead — name, destination, phone, email. That is the first step of every journey."
-          icon={<Plus className="size-4" />}
-          cta="Next"
-          onNext={() => {}}
-        />
-        <TourStep
-          step={2}
-          total={5}
-          title="Send a price quote"
-          body="Turn the enquiry into a quotation. Add flights, hotels, transfers — the price calculates automatically with GST. Send it to the customer."
-          icon={<FileText className="size-4" />}
-          cta="Next"
-          onNext={() => {}}
-        />
-        <TourStep
-          step={3}
-          total={5}
-          title="Confirm the booking"
-          body="Customer said yes? Convert the quote to a booking in one click. Track departure dates, passengers and supplier confirmations."
-          icon={<PlaneTakeoff className="size-4" />}
-          cta="Next"
-          onNext={() => {}}
-        />
-        <TourStep
-          step={4}
-          total={5}
-          title="Send the invoice"
-          body="Create a GST invoice with a Razorpay payment link. The customer pays online and the invoice marks itself paid."
-          icon={<Receipt className="size-4" />}
-          cta="Next"
-          onNext={() => {}}
-        />
-        <TourStep
-          step={5}
-          total={5}
-          title="Happy customer, repeat business"
-          body="Every trip builds the customer's history — passport, preferences, past trips. Next time they travel, you already know them."
-          icon={<Users className="size-4" />}
-          cta="Start using Travo"
-          onNext={() => {}}
-          isLast
+          step={tourStep + 1}
+          total={TOUR_STEPS.length}
+          title={TOUR_STEPS[tourStep]!.title}
+          body={TOUR_STEPS[tourStep]!.body}
+          tip={TOUR_STEPS[tourStep]!.tip}
+          icon={TOUR_STEPS[tourStep]!.icon}
+          {...(TOUR_STEPS[tourStep]!.action ? { action: TOUR_STEPS[tourStep]!.action } : {})}
+          cta={tourStep === TOUR_STEPS.length - 1 ? "Start using Traveldesk" : "Next"}
+          isLast={tourStep === TOUR_STEPS.length - 1}
+          onNext={() => {
+            if (tourStep === TOUR_STEPS.length - 1) closeTour();
+            else setTourStep((s) => s + 1);
+          }}
+          {...(tourStep > 0 ? { onBack: () => setTourStep((s) => s - 1) } : {})}
+          onSkip={closeTour}
         />
       </Sheet>
+
+      {/* ------------------------------------------------------ Setup Wizard (first-time admin) */}
+      <SetupWizard open={setupOpen} onClose={closeSetup} />
 
       {/* ------------------------------------------------------ Mobile bottom dock */}
       <nav className="mobile-dock" aria-label="Bottom navigation">
@@ -1310,20 +1304,29 @@ function TourStep({
   total,
   title,
   body,
+  tip,
   icon,
+  action,
   cta,
   onNext,
+  onBack,
+  onSkip,
   isLast = false,
 }: {
   step: number;
   total: number;
   title: string;
   body: string;
+  tip?: string;
   icon: React.ReactNode;
+  action?: { label: string; to: string };
   cta: string;
   onNext: () => void;
+  onBack?: (() => void) | undefined;
+  onSkip?: (() => void) | undefined;
   isLast?: boolean;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -1335,7 +1338,7 @@ function TourStep({
             <span
               key={i}
               className={`h-1.5 w-2 rounded-full transition-colors ${
-                i < step ? "bg-pine" : "bg-well"
+                i < step - 1 ? "bg-pine" : i === step - 1 ? "bg-pine/60" : "bg-well"
               }`}
               aria-hidden
             />
@@ -1353,18 +1356,57 @@ function TourStep({
         </div>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-line">
+      {tip && (
+        <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+          <Zap className="size-3.5 text-amber-500 shrink-0" />
+          <p className="text-[12px] text-amber-800 font-medium">{tip}</p>
+        </div>
+      )}
+
+      {action && (
         <button
           type="button"
-          onClick={onNext}
-          className={`w-full py-3 rounded-xl text-[13px] font-semibold transition-colors ${
-            isLast
-              ? "bg-ink text-on-ink hover:opacity-90"
-              : "border border-line text-foreground hover:bg-glass-2"
-          }`}
+          onClick={() => {
+            void navigate({ to: action.to } as Parameters<typeof navigate>[0]);
+          }}
+          className="flex items-center gap-1.5 text-[12.5px] font-semibold text-pine hover:underline"
         >
-          {isLast ? cta : cta + " →"}
+          {action.label} <ArrowRight className="size-3.5" />
         </button>
+      )}
+
+      <div className="mt-4 pt-3 border-t border-line">
+        <div className="flex gap-2">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="rounded-xl border border-line px-4 py-3 text-[13px] font-semibold text-foreground transition-colors hover:bg-glass-2"
+            >
+              Back
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onNext}
+            className={`flex-1 rounded-xl px-4 py-3 text-[13px] font-semibold transition-colors ${
+              isLast
+                ? "bg-ink text-on-ink hover:opacity-90"
+                : "border border-line text-foreground hover:bg-glass-2"
+            }`}
+          >
+            {isLast ? cta : cta + " →"}
+          </button>
+        </div>
+        {!isLast && onSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="mt-2 w-full py-2 text-[12px] font-medium text-muted hover:text-foreground"
+          >
+            Skip — I will explore on my own
+          </button>
+        )}
       </div>
     </div>
   );

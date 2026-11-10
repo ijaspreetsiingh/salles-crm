@@ -29,7 +29,6 @@ import {
   quoteItemsFromPlan,
   readPackagePlan,
   type PackagePlan,
-
 } from "@/lib/crm/package-plan";
 
 /**
@@ -394,7 +393,9 @@ function PackageQuoteForm({
             <strong>
               {money(price.total, currency)} + GST {taxRate}%
             </strong>
-            <small>{money(grandTotal, currency)} quoted for {adultCount + childCount} travellers</small>
+            <small>
+              {money(grandTotal, currency)} quoted for {adultCount + childCount} travellers
+            </small>
           </div>
         </li>
       </ul>
@@ -494,7 +495,9 @@ function PlanEditor({
               <button
                 type="button"
                 aria-label={`Remove price row ${index + 1}`}
-                onClick={() => onChange({ ...draft, slabs: draft.slabs.filter((_, i) => i !== index) })}
+                onClick={() =>
+                  onChange({ ...draft, slabs: draft.slabs.filter((_, i) => i !== index) })
+                }
                 className="grid size-8 shrink-0 place-items-center rounded-lg text-faint hover:text-tomato"
               >
                 <Trash2 size={14} />
@@ -507,7 +510,10 @@ function PlanEditor({
           onClick={() =>
             onChange({
               ...draft,
-              slabs: [...draft.slabs, { pax: Math.max(2, (draft.slabs.at(-1)?.pax ?? 0) + 2), rate: 0 }],
+              slabs: [
+                ...draft.slabs,
+                { pax: Math.max(2, (draft.slabs.at(-1)?.pax ?? 0) + 2), rate: 0 },
+              ],
             })
           }
           className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line-2 px-3 text-[12.5px] font-semibold text-foreground hover:bg-well"
@@ -528,9 +534,7 @@ function PlanEditor({
             min={0}
             value={draft.costPerPerson ?? ""}
             placeholder="supplier cost"
-            onChange={(e) =>
-              onChange({ ...draft, costPerPerson: Number(e.target.value) || null })
-            }
+            onChange={(e) => onChange({ ...draft, costPerPerson: Number(e.target.value) || null })}
           />
         </label>
         <label className="record-sheet__field">
@@ -609,7 +613,9 @@ function LineListEditor({
   };
   return (
     <div className="rounded-2xl border border-line bg-glass-2 p-3.5">
-      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
+        {label}
+      </span>
       {items.length > 0 && (
         <ul className="mt-2 space-y-1.5">
           {items.map((item) => (

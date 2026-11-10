@@ -25,6 +25,12 @@ describe("platform endpoints", () => {
     expect(res.body.error.code).toBe("route_not_found");
     expect(res.body.error.requestId).toBeTruthy();
   });
+
+  it("serves Prometheus metrics outside production", async () => {
+    const res = await request(app).get("/api/v1/metrics");
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("traveldesk_http_requests_in_flight");
+  });
 });
 
 describe("auth guards", () => {
@@ -32,6 +38,11 @@ describe("auth guards", () => {
     const res = await request(app).get("/api/v1/workspace/leads/records");
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe("unauthorized");
+  });
+
+  it("keeps the two-factor status endpoint behind a session", async () => {
+    const res = await request(app).get("/api/v1/auth/2fa/status");
+    expect(res.status).toBe(401);
   });
 
   it("rejects invalid credentials with a validation envelope", async () => {

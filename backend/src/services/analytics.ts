@@ -4,13 +4,22 @@ import { parseJson } from "../lib/utils";
 
 type Filters = { branch?: string; from?: string; to?: string };
 
-const recordFilter = (organizationId: string, moduleId: string, filters: Filters): Prisma.RecordWhereInput => ({
+const recordFilter = (
+  organizationId: string,
+  moduleId: string,
+  filters: Filters,
+): Prisma.RecordWhereInput => ({
   organizationId,
   moduleId,
   deletedAt: null,
   ...(filters.branch ? { branchName: filters.branch } : {}),
   ...(filters.from || filters.to
-    ? { date: { ...(filters.from ? { gte: filters.from } : {}), ...(filters.to ? { lte: filters.to } : {}) } }
+    ? {
+        date: {
+          ...(filters.from ? { gte: filters.from } : {}),
+          ...(filters.to ? { lte: filters.to } : {}),
+        },
+      }
     : {}),
 });
 
@@ -31,9 +40,12 @@ export function costOf(row: { amount: number; extra?: string | null }): number |
 }
 
 /** Revenue, cost and the margin between them — only when cost is known. */
-export function marginOf(
-  rows: Array<{ amount: number; extra?: string | null }>,
-): { revenue: number; cost: number | null; margin: number | null; marginPercent: number | null } {
+export function marginOf(rows: Array<{ amount: number; extra?: string | null }>): {
+  revenue: number;
+  cost: number | null;
+  margin: number | null;
+  marginPercent: number | null;
+} {
   const revenue = sum(rows);
   const costs = rows.map(costOf).filter((c): c is number => c !== null);
   if (costs.length === 0) {
@@ -83,13 +95,17 @@ export async function dashboardOverview(organizationId: string, filters: Filters
     prisma.task.findMany({ where: { organizationId, done: false } }),
   ]);
 
-  const confirmedBookings = bookings.filter((b) => ["Confirmed", "paid", "Paid"].includes(b.status));
+  const confirmedBookings = bookings.filter((b) =>
+    ["Confirmed", "paid", "Paid"].includes(b.status),
+  );
   const revenue = sum(confirmedBookings.length ? confirmedBookings : bookings);
   const outstanding = sum(finance.filter((f) => f.status !== "Paid"));
   const collected = sum(finance.filter((f) => f.status === "Paid"));
   const newLeads = leads.filter((l) => l.status === "New").length;
   const wonLeads = leads.filter((l) => l.status === "Won").length;
-  const upcoming = bookings.filter((b) => b.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = bookings
+    .filter((b) => b.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   // Revenue series — last 6 months by record date.
   const buckets = lastMonths(6);
@@ -113,15 +129,33 @@ export async function dashboardOverview(organizationId: string, filters: Filters
     ...finance
       .filter((f) => f.status === "Overdue")
       .slice(0, 3)
-      .map((f) => ({ label: `Overdue payment · ${f.reference}`, detail: f.name, moduleId: "finance", recordId: f.id, level: "danger" as const })),
+      .map((f) => ({
+        label: `Overdue payment · ${f.reference}`,
+        detail: f.name,
+        moduleId: "finance",
+        recordId: f.id,
+        level: "danger" as const,
+      })),
     ...bookings
       .filter((b) => ["Pending", "On hold"].includes(b.status))
       .slice(0, 3)
-      .map((b) => ({ label: `Booking awaiting confirmation · ${b.reference}`, detail: b.destination, moduleId: "bookings", recordId: b.id, level: "warning" as const })),
+      .map((b) => ({
+        label: `Booking awaiting confirmation · ${b.reference}`,
+        detail: b.destination,
+        moduleId: "bookings",
+        recordId: b.id,
+        level: "warning" as const,
+      })),
     ...visa
       .filter((v) => v.status === "Documents pending")
       .slice(0, 2)
-      .map((v) => ({ label: `Visa documents pending · ${v.reference}`, detail: v.name, moduleId: "visa", recordId: v.id, level: "warning" as const })),
+      .map((v) => ({
+        label: `Visa documents pending · ${v.reference}`,
+        detail: v.name,
+        moduleId: "visa",
+        recordId: v.id,
+        level: "warning" as const,
+      })),
   ];
 
   // Real margin from the recorded supplier cost — null when unknown.
@@ -144,7 +178,10 @@ export async function dashboardOverview(organizationId: string, filters: Filters
       grossMarginPercent: margin.marginPercent,
       cost: margin.cost,
     },
-    revenueSeries: buckets.map((key) => ({ month: monthLabel(key), ...(seriesMap.get(key) ?? { revenue: 0, bookings: 0 }) })),
+    revenueSeries: buckets.map((key) => ({
+      month: monthLabel(key),
+      ...(seriesMap.get(key) ?? { revenue: 0, bookings: 0 }),
+    })),
     pipeline,
     upcomingDepartures: upcoming.slice(0, 5).map((b) => ({
       id: b.id,
@@ -176,11 +213,7 @@ function topBy<T extends { amount: number }>(rows: T[], keyFn: (row: T) => strin
 }
 
 /** Report builder used by every tab under Reports & analytics. */
-export async function buildReport(
-  organizationId: string,
-  report: string,
-  filters: Filters,
-) {
+export async function buildReport(organizationId: string, report: string, filters: Filters) {
   const moduleByReport: Record<string, string> = {
     sales: "leads",
     bookings: "bookings",
@@ -192,12 +225,21 @@ export async function buildReport(
   };
 
   const moduleId = moduleByReport[report] ?? "bookings";
-  const rows = await prisma.record.findMany({ where: recordFilter(organizationId, moduleId, filters) });
+  const rows = await prisma.record.findMany({
+    where: recordFilter(organizationId, moduleId, filters),
+  });
 
   const wonRows = rows.filter((r) =>
-    ["Won", "Confirmed", "Paid", "Accepted", "Active", "Published", "Resolved", "Approved"].includes(
-      r.status,
-    ),
+    [
+      "Won",
+      "Confirmed",
+      "Paid",
+      "Accepted",
+      "Active",
+      "Published",
+      "Resolved",
+      "Approved",
+    ].includes(r.status),
   );
   const revenue = sum(wonRows);
   // Real margin from the recorded supplier cost — never a guess.
@@ -222,7 +264,10 @@ export async function buildReport(
     generatedAt: new Date().toISOString(),
     filters: {
       branch: filters.branch ?? "All branches",
-      range: filters.from || filters.to ? `${filters.from ?? "…"} → ${filters.to ?? "…"}` : "Last 90 days",
+      range:
+        filters.from || filters.to
+          ? `${filters.from ?? "…"} → ${filters.to ?? "…"}`
+          : "Last 90 days",
     },
     summary: {
       records: rows.length,
@@ -234,7 +279,10 @@ export async function buildReport(
       averageValue: rows.length ? Math.round(revenue / rows.length) : 0,
       won: won,
     },
-    series: buckets.map((key) => ({ month: monthLabel(key), ...(seriesMap.get(key) ?? { value: 0, count: 0 }) })),
+    series: buckets.map((key) => ({
+      month: monthLabel(key),
+      ...(seriesMap.get(key) ?? { value: 0, count: 0 }),
+    })),
     byDestination: topBy(rows, (r) => r.destination, 8),
     byOwner: topBy(rows, (r) => r.ownerName, 8),
     byStatus: topBy(rows, (r) => r.status, 8),

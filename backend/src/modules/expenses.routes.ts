@@ -40,11 +40,20 @@ const asDate = (value: string | null | undefined): Date | null => {
 const createSchema = z.object({
   category: z.string().min(1).max(60),
   vendor: z.string().max(160).optional(),
+  /** Needed to claim input credit in GSTR-3B. */
+  vendorGstin: z
+    .string()
+    .max(20)
+    .transform((value) => value.trim().toUpperCase())
+    .optional(),
   description: z.string().max(300).optional(),
   amount: z.number().positive().max(1_000_000_000),
   currency: z.string().max(8).optional(),
   gstRate: z.number().min(0).max(50).optional(),
-  spentOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  spentOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   method: z.string().max(40).optional(),
   referenceNo: z.string().max(120).optional(),
   notes: z.string().max(600).optional(),
@@ -58,6 +67,7 @@ const mapExpense = (row: {
   amount: number;
   currency: string;
   gstRate: number;
+  vendorGstin?: string;
   spentOn: Date | null;
   method: string;
   referenceNo: string;
@@ -67,6 +77,7 @@ const mapExpense = (row: {
   id: row.id,
   category: row.category,
   vendor: row.vendor,
+  vendorGstin: row.vendorGstin ?? "",
   description: row.description,
   amount: row.amount,
   currency: row.currency,
@@ -140,6 +151,7 @@ router.post(
         organizationId: req.auth!.organizationId,
         category: body.category,
         vendor: body.vendor?.trim() ?? "",
+        ...(body.vendorGstin ? { vendorGstin: body.vendorGstin } : {}),
         description: body.description?.trim() ?? "",
         amount: body.amount,
         ...(body.currency ? { currency: body.currency } : {}),
@@ -181,6 +193,7 @@ router.patch(
       data: {
         ...(body.category !== undefined ? { category: body.category } : {}),
         ...(body.vendor !== undefined ? { vendor: body.vendor.trim() } : {}),
+        ...(body.vendorGstin !== undefined ? { vendorGstin: body.vendorGstin } : {}),
         ...(body.description !== undefined ? { description: body.description.trim() } : {}),
         ...(body.amount !== undefined ? { amount: body.amount } : {}),
         ...(body.gstRate !== undefined ? { gstRate: body.gstRate } : {}),
@@ -251,7 +264,14 @@ router.get(
           deletedAt: null,
           date: { gte: from, lte: to },
         },
-        select: { reference: true, name: true, amount: true, status: true, date: true, extra: true },
+        select: {
+          reference: true,
+          name: true,
+          amount: true,
+          status: true,
+          date: true,
+          extra: true,
+        },
       }),
       prisma.payable.findMany({ where: { organizationId } }),
       prisma.expense.findMany({
@@ -320,7 +340,9 @@ router.get(
       netProfit: round(netProfit),
       netMargin: revenue > 0 ? Math.round((netProfit / revenue) * 1000) / 10 : null,
       months: [...months.entries()]
-        .filter(([, value]) => value.revenue > 0.5 || value.supplierCost > 0.5 || value.expenses > 0.5)
+        .filter(
+          ([, value]) => value.revenue > 0.5 || value.supplierCost > 0.5 || value.expenses > 0.5,
+        )
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([month, value]) => ({
           month,

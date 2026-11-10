@@ -46,8 +46,14 @@ export async function createNotification(input: NotificationInput) {
 export async function deriveNotifications(organizationId: string) {
   const base: Prisma.RecordWhereInput = { organizationId, deletedAt: null };
   const [newLead, overdue, pendingBooking, pendingVisa] = await Promise.all([
-    prisma.record.findFirst({ where: { ...base, moduleId: "leads", status: "New" }, orderBy: { createdAt: "desc" } }),
-    prisma.record.findFirst({ where: { ...base, moduleId: "finance", status: "Overdue" }, orderBy: { createdAt: "desc" } }),
+    prisma.record.findFirst({
+      where: { ...base, moduleId: "leads", status: "New" },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.record.findFirst({
+      where: { ...base, moduleId: "finance", status: "Overdue" },
+      orderBy: { createdAt: "desc" },
+    }),
     prisma.record.findFirst({
       where: { ...base, moduleId: "bookings", status: { in: ["Pending", "On hold"] } },
       orderBy: { createdAt: "desc" },

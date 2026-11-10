@@ -1,18 +1,17 @@
 import { useMemo, useState } from "react";
-import {
-  Building2,
-  Copy,
-  Mail,
-  MapPin,
-  Phone,
-  Star,
-  User,
-} from "lucide-react";
+import { Building2, Copy, Mail, MapPin, Phone, Star, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Avatar, Status, RecordDialog, workflowDataFor } from "./common";
 import { RecordSheet } from "./record-sheet";
-import { formatDay, money, type Module, type RecordRow, modules, findModule } from "@/lib/crm/catalog";
+import {
+  formatDay,
+  money,
+  type Module,
+  type RecordRow,
+  modules,
+  findModule,
+} from "@/lib/crm/catalog";
 import { useCRM } from "@/lib/crm/store";
 import { setCommsFocus } from "@/lib/crm/handoff";
 import { cn } from "@/lib/utils";
@@ -126,11 +125,7 @@ export function CustomerDirectory({
         />
       )}
       {sheetEdit && sheet && (
-        <RecordDialog
-          module={sheet.module}
-          row={sheetEdit}
-          onClose={() => setSheetEdit(null)}
-        />
+        <RecordDialog module={sheet.module} row={sheetEdit} onClose={() => setSheetEdit(null)} />
       )}
       {workflowCreate && !sheet && (
         <RecordDialog

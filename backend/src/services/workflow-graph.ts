@@ -172,7 +172,8 @@ async function runAction(node: GraphNode, context: RuntimeContext): Promise<stri
           : `WhatsApp to ${to} queued — link a number in Settings`;
     }
     case "assign_owner": {
-      if (context.dryRun) return `Would assign ${context.recordName || "matching records"} to ${context.userName}`;
+      if (context.dryRun)
+        return `Would assign ${context.recordName || "matching records"} to ${context.userName}`;
       const updated = await prisma.record.updateMany({
         where: {
           organizationId: context.organizationId,
@@ -215,7 +216,12 @@ export async function runWorkflowGraph(input: {
 }): Promise<GraphRunResult> {
   const trigger = input.graph.nodes.find((node) => node.type === "trigger");
   if (!trigger) {
-    return { status: "failed", log: "No trigger node — add one and connect the steps", nodes: [], dryRun: input.dryRun };
+    return {
+      status: "failed",
+      log: "No trigger node — add one and connect the steps",
+      nodes: [],
+      dryRun: input.dryRun,
+    };
   }
 
   // A real record makes the test honest: the conditions read actual values.

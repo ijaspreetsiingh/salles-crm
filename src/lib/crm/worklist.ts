@@ -35,6 +35,8 @@ export type WorklistInput = {
   bookings: RecordRow[];
   finance: RecordRow[];
   visa: RecordRow[];
+  /** Group trips departing soon — or gone without the record saying so. */
+  groups?: RecordRow[];
   currency: string;
   /** Today's date as yyyy-mm-dd. */
   today: string;
@@ -54,7 +56,7 @@ const waitPhrase = (days: number) =>
  * Builds the list of things that need a human, most urgent first.
  */
 export function buildWorklist(input: WorklistInput): WorkItem[] {
-  const { tasks, leads, bookings, finance, visa, currency, today } = input;
+  const { tasks, leads, bookings, finance, visa, groups = [], currency, today } = input;
   const items: WorkItem[] = [];
 
   // 1 — Overdue work. The most expensive kind of waiting.
@@ -99,7 +101,7 @@ export function buildWorklist(input: WorklistInput): WorkItem[] {
     items.push({
       id: `lead-${lead.id}`,
       title: `Reply to ${lead.name}${lead.destination ? ` about ${lead.destination}` : ""}`,
-      detail: `waiting ${waitPhrase(days)}`,
+      detail: days === 1 ? "waiting 1 day for a reply" : `waiting ${days} days for a reply`,
       moduleId: "leads",
       recordId: lead.id,
       tone: "overdue",
@@ -128,6 +130,38 @@ export function buildWorklist(input: WorklistInput): WorkItem[] {
       recordId: application.id,
       tone: "soon",
     });
+  }
+
+  // 7 — Group trips leaving soon, or gone without anyone saying so.
+  for (const group of groups) {
+    if (!group.date) continue;
+    if (["Completed", "Cancelled", "Departed"].includes(group.status)) continue;
+    const days = daysBetween(today, group.date);
+    if (days < 0) {
+      items.push({
+        id: `group-${group.id}`,
+        title: `Update ${group.name} — it was due to leave ${waitPhrase(-days)}`,
+        detail: `still marked "${group.status}"`,
+        moduleId: "groups",
+        recordId: group.id,
+        tone: "overdue",
+      });
+    } else if (days <= 7) {
+      items.push({
+        id: `group-${group.id}`,
+        title:
+          days === 0
+            ? `${group.name} leaves today`
+            : `${group.name} leaves in ${days} ${days === 1 ? "day" : "days"}`,
+        detail:
+          group.status === "Confirmed"
+            ? "rooming list and manifest"
+            : `still marked "${group.status}"`,
+        moduleId: "groups",
+        recordId: group.id,
+        tone: days === 0 ? "today" : "soon",
+      });
+    }
   }
 
   const order: Record<WorkTone, number> = { overdue: 0, today: 1, soon: 2 };

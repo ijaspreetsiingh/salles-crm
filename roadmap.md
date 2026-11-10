@@ -58,12 +58,42 @@
       drag-and-drop, ⌘K palette, keyboard shortcuts.
 - [x] **142 tests pass · 0 lint errors · 0 TypeScript errors.**
 
+### Money and recovery (this round)
+
+- [x] **Recycle bin** — Settings → Recycle bin lists everything deleted with
+      its module, restores in one click, and deletes for good only after a
+      second click. Deleting now says "moved to the recycle bin" and offers
+      **Undo** in the toast.
+- [x] **Hotel rate plans** — a `HotelRate` master (room type, meal plan,
+      season, validity, cost, selling price, cancellation) on Hotels → Rate
+      plans, with the margin shown while you type.
+- [x] **TCS under 206C(1G)** — an organisation rate in Tax settings, an
+      override per invoice, a separate line on the tax invoice, and TCS
+      reported apart from GST in the working paper.
+- [x] **Report exports** — real `.xlsx` (summary, every breakdown, records)
+      and a printable PDF, from the same filters the screen is showing.
+- [x] **One GST rule** — the amount stored on an invoice is what the customer
+      pays, tax included; the PDF carves the tax back out instead of adding it
+      twice, so the invoice and the Tax & GST paper agree to the rupee.
+- [x] **Audit-ready invoice numbers** — `HT-INV-26-27-0001`, one unbroken
+      series per financial year, derived from the highest number already
+      issued so a deleted invoice never hands its number to the next one.
+- [x] **Versioned migrations** — a baseline `prisma/migrations/0_init` and
+      `db:migrate` / `db:baseline` / `db:drift` scripts, so production schema
+      changes no longer rely on `db push`.
+- [x] **Webhook delivery log** — Integrations → Connection logs shows every
+      attempt with the response code, the payload, and a "Send again" button.
+- [x] **Campaign sender** — Marketing → Campaigns: write the message, choose
+      the audience (records + statuses), see who is in it before sending, then
+      send on email or WhatsApp. Runs in the background with a progress bar,
+      counts opt-outs out loud, and keeps a per-recipient delivery log.
+      `{{name}}`, `{{reference}}` and `{{destination}}` fill themselves in.
+
 ## Next
 
 - [ ] Saved views per person (personal + shared), stored server-side
 - [ ] Favourites for individual records, not just pages
-- [ ] Webhook delivery log in the Integrations page (the backend has the
-      data; the screen still needs building)
+- [ ] Scheduled campaigns (pick a date and time instead of sending now)
 - [ ] Real customer directory refresh (the health score is honest now, but
       the "interaction history" join still needs the relation table)
 - [ ] `RecordRelation` model so links are explicit rather than inferred
@@ -74,7 +104,6 @@
 
 ## Later
 
-- [ ] WhatsApp and email integration
 - [ ] GDS / supplier connectors
 - [ ] GST e-invoicing
 - [ ] Payment links

@@ -14,10 +14,7 @@ import { parseGraph, runWorkflowGraph } from "./workflow-graph";
  * through the plain API (text trigger only) fall back to reading the words.
  */
 
-export type AutomationEvent =
-  | "record.created"
-  | "record.status_changed"
-  | "payment.received";
+export type AutomationEvent = "record.created" | "record.status_changed" | "payment.received";
 
 export const TRIGGER_KINDS = [
   "lead_created",

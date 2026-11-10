@@ -13,6 +13,8 @@ import { parseJson } from "../lib/utils";
 import { sendEmail } from "../services/email";
 import { applyBranchScope } from "../services/records";
 import { MODULES } from "../domain/modules";
+import { env } from "../config/env";
+import { num } from "../lib/money";
 
 const router = Router();
 router.use(requireAuth);
@@ -47,7 +49,14 @@ const inviteSchema = z.object({
   phone: z.string().max(30).optional(),
   roleKey: z.string().min(2),
   branchId: z.string().optional(),
-  password: z.string().min(8).max(128).optional(),
+  password: z
+    .string()
+    .min(8)
+    .max(128)
+    .refine((v) => /[a-z]/.test(v), "Password must contain a lowercase letter")
+    .refine((v) => /[A-Z]/.test(v), "Password must contain an uppercase letter")
+    .refine((v) => /\d/.test(v), "Password must contain a digit")
+    .optional(),
 });
 
 const updateSchema = z.object({
@@ -134,6 +143,10 @@ router.get(
     const memberships = await prisma.membership.findMany({
       where: {
         organizationId,
+        // The vendor's platform staff are never part of a customer's team.
+        ...(env.PLATFORM_ADMIN_EMAILS.length > 0
+          ? { user: { email: { notIn: env.PLATFORM_ADMIN_EMAILS } } }
+          : {}),
         ...(branchId ? { OR: [{ branchId }, { branchId: null }] } : {}),
       },
       include: {
@@ -196,7 +209,7 @@ router.get(
     const enquiryBy = new Map(
       enquiryCounts.map((row) => [
         row.ownerName,
-        { count: row._count._all, value: row._sum.amount ?? 0 },
+        { count: row._count._all, value: num(row._sum.amount) },
       ]),
     );
     const tripBy = new Map(tripCounts.map((row) => [row.ownerName, row._count._all]));
@@ -245,6 +258,13 @@ router.post(
       if (membership) throw new ConflictError("This person is already in your team");
     }
 
+    // A new teammate needs a usable credential. Generate one and return it
+    // once to the admin — the previous flow created a password nobody could
+    // see, which locked every invited user out.
+    const temporaryPassword = existing
+      ? null
+      : (password ?? `Welcome1@${Math.random().toString(36).slice(2, 8)}`);
+
     const user =
       existing ??
       (await prisma.user.create({
@@ -252,10 +272,7 @@ router.post(
           email,
           name,
           phone,
-          // Temporary password — the invitee is expected to reset it.
-          passwordHash: await hashPassword(
-            password ?? `Welcome@${Math.random().toString(36).slice(2, 8)}`,
-          ),
+          passwordHash: await hashPassword(temporaryPassword!),
         },
       }));
 
@@ -278,7 +295,7 @@ router.post(
         "",
         ...(existing
           ? ["Sign in with your existing Traveldesk password."]
-          : ["Sign in with the temporary password your admin shared, then change it right away:"]),
+          : ["Your workspace admin will share a temporary password with you. Change it after your first sign-in."]),
         "",
         `${process.env.APP_URL ?? "http://localhost:8080"}`,
         "",
@@ -306,6 +323,8 @@ router.post(
       roleKey,
       branchId: branchId ?? null,
       newUser: !existing,
+      // Shown once to the admin so the invitation can actually be completed.
+      temporaryPassword,
     });
   }),
 );
@@ -332,7 +351,40 @@ router.patch(
     }
 
     if (body.active !== undefined) {
-      await prisma.user.update({ where: { id: membership.userId }, data: { active: body.active } });
+      if (body.active === false) {
+        // A person can belong to several organisations. Removing them here
+        // must not lock them out of the others.
+        const otherActive = await prisma.membership.count({
+          where: { userId: membership.userId, active: true, id: { not: membership.id } },
+        });
+        if (otherActive === 0) {
+          await prisma.user.update({
+            where: { id: membership.userId },
+            data: { active: false, tokenVersion: { increment: 1 } },
+          });
+        } else {
+          // Still a member elsewhere, but this organisation's access tokens
+          // must stop working here — bumping the version is the only lever.
+          await prisma.user.update({
+            where: { id: membership.userId },
+            data: { tokenVersion: { increment: 1 } },
+          });
+        }
+      } else {
+        await prisma.user.update({ where: { id: membership.userId }, data: { active: true } });
+      }
+    }
+
+    /*
+     * A role change is a permission change, and permissions are baked into the
+     * session at sign-in. Bumping the version forces the person to sign in
+     * again so a demoted admin cannot keep their old powers for 15 minutes.
+     */
+    if (body.roleKey && body.roleKey !== membership.roleKey) {
+      await prisma.user.update({
+        where: { id: membership.userId },
+        data: { tokenVersion: { increment: 1 } },
+      });
     }
 
     const updated = await prisma.membership.update({
@@ -389,6 +441,11 @@ router.delete(
     await prisma.refreshToken.updateMany({
       where: { userId: membership.userId, revokedAt: null },
       data: { revokedAt: new Date() },
+    });
+    // Access tokens already issued must stop working too.
+    await prisma.user.update({
+      where: { id: membership.userId },
+      data: { tokenVersion: { increment: 1 } },
     });
 
     // `reassignTo` may arrive in the body or the query string; both are fine.

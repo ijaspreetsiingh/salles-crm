@@ -2,11 +2,13 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
+import { requireModulePermission } from "../middlewares/rbac";
 import { dashboardOverview } from "../services/analytics";
 import { deriveNotifications } from "../services/notifications";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("reports", "view"));
 
 const filtersFrom = (query: Record<string, unknown>) => ({
   branch: (query.branch as string) || undefined,
@@ -42,14 +44,38 @@ router.get(
     const today = new Date().toISOString().slice(0, 10);
 
     const [leads, bookings, tickets, tasksToday, unpaidInvoices] = await Promise.all([
-      prisma.record.count({ where: { organizationId, moduleId: "leads", status: "New", deletedAt: null } }),
-      prisma.record.count({ where: { organizationId, moduleId: "bookings", status: { in: ["Pending", "On hold"] }, deletedAt: null } }),
-      prisma.record.count({ where: { organizationId, moduleId: "support", status: { in: ["Open", "Escalated"] }, deletedAt: null } }),
+      prisma.record.count({
+        where: { organizationId, moduleId: "leads", status: "New", deletedAt: null },
+      }),
+      prisma.record.count({
+        where: {
+          organizationId,
+          moduleId: "bookings",
+          status: { in: ["Pending", "On hold"] },
+          deletedAt: null,
+        },
+      }),
+      prisma.record.count({
+        where: {
+          organizationId,
+          moduleId: "support",
+          status: { in: ["Open", "Escalated"] },
+          deletedAt: null,
+        },
+      }),
       prisma.task.count({ where: { organizationId, done: false, date: today } }),
-      prisma.record.count({ where: { organizationId, moduleId: "finance", status: "Overdue", deletedAt: null } }),
+      prisma.record.count({
+        where: { organizationId, moduleId: "finance", status: "Overdue", deletedAt: null },
+      }),
     ]);
 
-    return ok(res, { newLeads: leads, pendingBookings: bookings, openTickets: tickets, tasksToday, overdueInvoices: unpaidInvoices });
+    return ok(res, {
+      newLeads: leads,
+      pendingBookings: bookings,
+      openTickets: tickets,
+      tasksToday,
+      overdueInvoices: unpaidInvoices,
+    });
   }),
 );
 

@@ -13,10 +13,10 @@ CREATE TABLE "Campaign" (
     "sent" INTEGER NOT NULL DEFAULT 0,
     "failed" INTEGER NOT NULL DEFAULT 0,
     "skipped" INTEGER NOT NULL DEFAULT 0,
-    "lastSentAt" DATETIME,
+    "lastSentAt" TIMESTAMP,
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Campaign_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 

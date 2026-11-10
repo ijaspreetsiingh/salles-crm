@@ -41,12 +41,40 @@ env stays as the fallback for everyone else.
 
 ## 2. Database
 
+### Migrations (the only way to change a production schema)
+
+The schema is versioned in `backend/prisma/migrations`. Never run `db push`
+against a database that holds real data — it compares and rewrites without a
+record of what it did.
+
+```bash
+cd backend
+npm run db:migrate      # prisma migrate deploy — applies pending migrations
+```
+
+A database that was created before migrations existed (any `db push` install)
+is already at `0_init`. Mark it once, do not re-run it:
+
+```bash
+npm run db:baseline     # prisma migrate resolve --applied 0_init
+```
+
+Changing the schema later:
+
+```bash
+npx prisma migrate dev --name add_something   # creates prisma/migrations/<ts>_add_something
+npm run db:drift                              # fails if the database and schema disagree
+```
+
+Deploy order: run `db:migrate` **before** starting the new build, so the old
+process never sees a column it does not know about.
+
 ### Quick start (SQLite — dev/small offices)
 ```bash
 cd backend
 npm install
 npx prisma generate
-npx prisma db push
+npm run db:migrate
 npm run seed
 npm run dev
 ```
@@ -61,7 +89,7 @@ npm run db:pg            # edits prisma/schema.prisma to provider = "postgres"
 
 # 3) Create the schema and seed
 npx prisma generate
-npx prisma db push
+npm run db:migrate
 npm run seed
 
 # Back to SQLite (dev):
@@ -150,7 +178,39 @@ entry appears in the finance outbox trail.
 - Can view all companies, create/delete plans, and move a company between
   plans; deleting a plan fails cleanly if any company is subscribed to it.
 
-## 7. Running the frontend in production
+## 7. Two-factor authentication
+
+- Company admins, branch managers and finance must enrol an authenticator app
+  (any TOTP app: Google Authenticator, Authy, 1Password) before the workspace
+  opens for them. The first sign-in lands on a single setup screen, so nobody
+  has to hunt for the setting.
+- Ten single-use recovery codes are shown once at enrolment. They are stored as
+  hashes; support cannot read them back, only reissue them.
+- `TWO_FACTOR_ENFORCEMENT=true` is the production default. Setting it to `false`
+  turns the *requirement* off but leaves enrolment available in
+  Settings → Profile.
+- A password change, password reset, member deactivation or role change bumps
+  the account's token version, which ends every existing session immediately —
+  not after the 15-minute access token expires.
+- Sales, operations and support keep password-only sign-in on purpose: forcing
+  a second factor on a small front desk leads to codes being shared on
+  WhatsApp, which is worse than no second factor.
+
+## 8. GST, Tally and compliance exports
+
+- `GET /api/v1/gst/gstr1?month=YYYY-MM` returns GSTR-1 data as JSON;
+  add `&format=csv` for the file most accountants upload.
+- `GET /api/v1/gst/gstr3b?month=YYYY-MM` returns the 3B summary.
+- `GET /api/v1/tally/export?month=YYYY-MM` returns Tally-ready XML with
+  CGST/SGST/IGST ledgers, place of supply and party GSTIN.
+- Both use `services/gst.ts`, the same rules the invoice PDF and the tax
+  working paper use, so the three cannot disagree.
+- An unknown place of supply is never assumed to be local: it prints as a
+  warning on the invoice and is flagged in the exports.
+- IRP e-invoicing (IRN/QR) is **not** integrated yet; use your GSP portal until
+  it is.
+
+## 9. Running the frontend in production
 
 ```bash
 npm run build        # vite build
@@ -159,6 +219,11 @@ npx vite preview     # or serve dist/ behind nginx/caddy
 
 Serve the API on the same domain or set `CORS_ORIGINS` accordingly.
 
-## 8. Health
+## 10. Health and metrics
 
-`GET /api/v1/health` returns service status — wire it into uptime monitoring.
+- `GET /api/v1/health` returns service status — wire it into uptime monitoring.
+- `GET /api/v1/ready` checks the database connection.
+- `GET /api/v1/metrics` returns Prometheus text: request counts by route and
+  status, total latency, in-flight requests and process memory.
+  Set `METRICS_TOKEN` to require `Authorization: Bearer <token>`; with no token
+  the endpoint is served in development and hidden in production.

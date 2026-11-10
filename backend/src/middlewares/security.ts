@@ -16,10 +16,7 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
 
   // HSTS — tell browsers to only use HTTPS for a year (production only)
   if (isProd) {
-    res.setHeader(
-      "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains; preload",
-    );
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
 
   // Content Security Policy — restrictive but functional for our SPA + APIs

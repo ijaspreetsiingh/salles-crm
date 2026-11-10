@@ -38,7 +38,13 @@ export function RowMenu({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { save, update, remove, user } = useCRM();
   const schema = getSchema(module.id);
-  const statusOptions = schema.boardStatuses ?? module.tabs.filter((t) => t !== "All");
+  /**
+   * The chips must be the module's real statuses. Falling back to the tab
+   * names used to offer "Delegates" and "Room blocks" as stages — pressing
+   * one wrote that label into the record's status field, where no report or
+   * filter would ever make sense of it again.
+   */
+  const statusOptions = schema.boardStatuses ?? schema.statuses;
   const close = () => {
     setOpen(false);
     setConfirmDelete(false);
@@ -70,7 +76,9 @@ export function RowMenu({
             style={{ top: "1.75rem" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="filter__label">{row.id} · {row.name || "—"}</div>
+            <div className="filter__label">
+              {row.id} · {row.name || "—"}
+            </div>
             <button
               type="button"
               className="filter__option"
@@ -109,7 +117,9 @@ export function RowMenu({
 
             {statusOptions.length > 0 && (
               <>
-                <div className="filter__label" style={{ marginTop: 4 }}>Set stage</div>
+                <div className="filter__label" style={{ marginTop: 4 }}>
+                  Set stage
+                </div>
                 <div className="flex flex-wrap gap-1 px-2 pb-1">
                   {statusOptions.map((s) => (
                     <button
@@ -176,10 +186,14 @@ export function RowMenu({
                         customerPhone: row.phone || undefined,
                       });
                       if (link.configured && link.checkoutUrl) {
-                        await navigator.clipboard?.writeText(link.checkoutUrl).catch(() => undefined);
+                        await navigator.clipboard
+                          ?.writeText(link.checkoutUrl)
+                          .catch(() => undefined);
                         toast.success("Razorpay payment link copied");
                       } else {
-                        toast.info("Payment link recorded — add Razorpay keys on the server to charge.");
+                        toast.info(
+                          "Payment link recorded — add Razorpay keys on the server to charge.",
+                        );
                       }
                     } catch (err) {
                       toast.error(errorMessage(err));

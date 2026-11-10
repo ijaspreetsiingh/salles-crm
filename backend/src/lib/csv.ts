@@ -1,7 +1,13 @@
 export type CsvValue = string | number | boolean | null | undefined;
 
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
 const escapeCell = (value: CsvValue): string => {
-  const text = value === null || value === undefined ? "" : String(value);
+  let text = value === null || value === undefined ? "" : String(value);
+  // Spreadsheet apps execute cells that start with these characters. A name
+  // captured from the public lead form must never be able to run a formula in
+  // the accountant's Excel — neutralise it with a leading apostrophe.
+  if (typeof value === "string" && FORMULA_PREFIX.test(text)) text = `'${text}`;
   return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 };
 

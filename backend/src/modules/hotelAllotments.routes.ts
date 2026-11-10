@@ -58,8 +58,7 @@ const dto = (row: {
 }) => ({
   ...row,
   availableRooms: Math.max(0, row.totalRooms - row.usedRooms),
-  occupancy:
-    row.totalRooms > 0 ? Math.round((row.usedRooms / row.totalRooms) * 1000) / 10 : 0,
+  occupancy: row.totalRooms > 0 ? Math.round((row.usedRooms / row.totalRooms) * 1000) / 10 : 0,
   margin: Math.round((row.sellingPrice - row.costPrice) * 100) / 100,
   updatedAt: row.updatedAt.toISOString(),
 });

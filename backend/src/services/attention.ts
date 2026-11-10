@@ -39,6 +39,9 @@ export const todayIn = (timeZone: string): string => {
 export const isoDaysBefore = (iso: string, days: number) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
+export const isoDaysAfter = (iso: string, days: number) =>
+  new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
 /** The person whose day we are describing — enough to scope the queries. */
 export type AttentionPerson = {
   name: string;
@@ -69,6 +72,7 @@ export type AttentionDto = {
   bookings: ReturnType<typeof toRecordDto>[];
   finance: ReturnType<typeof toRecordDto>[];
   visa: ReturnType<typeof toRecordDto>[];
+  groups: ReturnType<typeof toRecordDto>[];
 };
 
 const attentionTask = (task: {
@@ -114,6 +118,11 @@ export async function buildAttention(
   const today = todayIn(organization?.timezone || "Asia/Kolkata");
   // An enquiry is only late once it has waited three full days.
   const leadCutoff = isoDaysBefore(today, 3);
+  // A group earns a line on the list from a month before its departure date
+  // until a fortnight after — the window where a record out of date is
+  // actually expensive (rooms, manifest, tour manager).
+  const groupFrom = isoDaysBefore(today, 30);
+  const groupTo = isoDaysAfter(today, 14);
 
   const allowedModules = person.modules === "*" ? null : person.modules;
   const canView = (moduleId: string) => !allowedModules || allowedModules.includes(moduleId);
@@ -175,7 +184,7 @@ export async function buildAttention(
     });
   };
 
-  const [tasks, leads, bookings, finance, visa] = await Promise.all([
+  const [tasks, leads, bookings, finance, visa, groups] = await Promise.all([
     prisma.task.findMany({
       where: taskWhere,
       orderBy: { date: "asc" },
@@ -185,6 +194,10 @@ export async function buildAttention(
     recordsFor("bookings", { status: { in: ["Pending", "On hold"] } }),
     recordsFor("finance", { status: "Overdue" }),
     recordsFor("visa", { status: "Documents pending" }),
+    recordsFor("groups", {
+      status: { notIn: ["Completed", "Cancelled", "Departed"] },
+      date: { gte: groupFrom, lte: groupTo },
+    }),
   ]);
 
   return {
@@ -196,5 +209,6 @@ export async function buildAttention(
     bookings: bookings.map(toRecordDto),
     finance: finance.map(toRecordDto),
     visa: visa.map(toRecordDto),
+    groups: groups.map(toRecordDto),
   };
 }

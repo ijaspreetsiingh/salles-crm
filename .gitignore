@@ -24,6 +24,7 @@ dist-ssr
 # Local archives and logs
 *.rar
 *.zip
+*.out
 devlog.txt
 backend-dev.log
 

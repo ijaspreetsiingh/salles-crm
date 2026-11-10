@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { validate } from "../middlewares/validate";
-import { NotFoundError } from "../lib/errors";
+import { ForbiddenError, NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { resolveOwnerBranch } from "../services/records";
 import { recordAudit } from "../services/audit";
@@ -13,8 +13,7 @@ import { recordAudit } from "../services/audit";
 const router = Router();
 router.use(requireAuth);
 
-const taskSchema = z.object({
-  title: z.string().min(2).max(200),
+const taskSchema = z.object({  title: z.string().min(2).max(200),
   type: z.string().max(60).default("Sales follow-up"),
   owner: z.string().max(120).optional(),
   date: z.string().min(4).max(40),
@@ -23,6 +22,19 @@ const taskSchema = z.object({
   relatedModule: z.string().max(40).optional(),
   relatedRecordId: z.string().max(60).optional(),
 });
+
+/**
+ * Anyone may see the shared task list, but only the owner, the creator or a
+ * manager may change or delete someone else's task.
+ */
+const canManageTask = (
+  auth: { userId: string; roleKey: string },
+  task: { ownerId: string | null; createdById: string | null },
+) =>
+  auth.roleKey === "company_admin" ||
+  auth.roleKey === "branch_manager" ||
+  task.ownerId === auth.userId ||
+  task.createdById === auth.userId;
 
 const dto = (task: {
   id: string;
@@ -54,7 +66,10 @@ const dto = (task: {
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { owner, done, from, to, relatedModule, search } = req.query as Record<string, string | undefined>;
+    const { owner, done, from, to, relatedModule, search } = req.query as Record<
+      string,
+      string | undefined
+    >;
     const where: Prisma.TaskWhereInput = { organizationId: req.auth!.organizationId };
 
     if (owner) where.ownerName = { contains: owner };
@@ -66,7 +81,12 @@ router.get(
 
     const p = getPagination(req.query as Record<string, unknown>, 50);
     const [items, total] = await Promise.all([
-      prisma.task.findMany({ where, orderBy: [{ done: "asc" }, { date: "asc" }], skip: p.skip, take: p.take }),
+      prisma.task.findMany({
+        where,
+        orderBy: [{ done: "asc" }, { date: "asc" }],
+        skip: p.skip,
+        take: p.take,
+      }),
       prisma.task.count({ where }),
     ]);
 
@@ -96,7 +116,11 @@ router.post(
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof taskSchema>;
     const organizationId = req.auth!.organizationId;
-    const resolved = await resolveOwnerBranch(organizationId, body.owner ?? req.auth!.name, undefined);
+    const resolved = await resolveOwnerBranch(
+      organizationId,
+      body.owner ?? req.auth!.name,
+      undefined,
+    );
 
     const task = await prisma.task.create({
       data: {
@@ -135,6 +159,9 @@ router.patch(
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!existing) throw new NotFoundError("Task");
+    if (!canManageTask(req.auth!, existing)) {
+      throw new ForbiddenError("Only the owner or a manager can change this task");
+    }
 
     const body = req.body as Partial<z.infer<typeof taskSchema>>;
     const resolved =
@@ -169,6 +196,9 @@ router.patch(
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!existing) throw new NotFoundError("Task");
+    if (!canManageTask(req.auth!, existing)) {
+      throw new ForbiddenError("Only the owner or a manager can complete this task");
+    }
 
     const task = await prisma.task.update({
       where: { id: existing.id },
@@ -185,6 +215,9 @@ router.delete(
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!existing) throw new NotFoundError("Task");
+    if (!canManageTask(req.auth!, existing)) {
+      throw new ForbiddenError("Only the owner or a manager can delete this task");
+    }
     await prisma.task.delete({ where: { id: existing.id } });
     return ok(res, { deleted: true });
   }),

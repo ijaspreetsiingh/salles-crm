@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request } from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -6,9 +6,11 @@ import pinoHttp from "pino-http";
 import { env, isProd } from "./config/env";
 import { logger } from "./lib/logger";
 import { requestContext } from "./middlewares/requestContext";
+import { metricsMiddleware } from "./lib/metrics";
 import { apiLimiter } from "./middlewares/rateLimit";
 import { errorHandler, notFoundHandler } from "./middlewares/error";
 import { securityHeaders } from "./middlewares/security";
+import { csrfProtection } from "./middlewares/csrf";
 import { buildRoutes } from "./routes";
 
 /** Builds the Express application (kept separate from listen() for tests). */
@@ -33,11 +35,25 @@ export function createApp(): Express {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "2mb" }));
+  app.use(
+    express.json({
+      limit: "2mb",
+      /*
+       * Keep the exact bytes of every JSON body. Payment webhooks are signed
+       * over the raw payload — re-serialising the parsed object changes the
+       * bytes (key order, spacing) and makes every signature check fail.
+       */
+      verify: (req, _res, buffer) => {
+        (req as Request & { rawBody?: string }).rawBody = buffer.toString("utf8");
+      },
+    }),
+  );
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
   app.use(securityHeaders);
   app.use(requestContext);
+  // Counted before the routers so every route is measured, including 404s.
+  app.use(metricsMiddleware);
   app.use(
     pinoHttp({
       logger,
@@ -60,7 +76,7 @@ export function createApp(): Express {
     });
   });
 
-  app.use("/api/v1", apiLimiter, buildRoutes());
+  app.use("/api/v1", apiLimiter, csrfProtection, buildRoutes());
 
   app.use(notFoundHandler);
   app.use(errorHandler);

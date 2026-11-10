@@ -78,7 +78,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["All quotations", "Itinerary builder", "Templates", "Approvals"],
     description: "Thoughtful itineraries. Clear pricing. Faster decisions.",
     noun: "quotation",
-    statuses: ["Sent", "Draft", "Accepted", "Expired"],
+    statuses: ["Draft", "Sent", "Accepted", "Expired", "Declined"],
     prefix: "QT",
   },
   {
@@ -119,7 +119,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["All bookings", "Reservations", "Amendments", "Cancellations", "Refunds"],
     description: "One booking. Every service. Nothing left behind.",
     noun: "booking",
-    statuses: ["Confirmed", "Pending", "On hold", "Cancelled"],
+    statuses: ["Pending", "On hold", "Confirmed", "Completed", "Cancelled"],
     prefix: "BK",
   },
   {
@@ -129,7 +129,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Flight search", "PNR queue", "Tickets", "Ancillaries", "Reissues & refunds"],
     description: "Manage air reservations, ticketing queues and deadlines.",
     noun: "reservation",
-    statuses: ["Confirmed", "Pending", "On hold", "Cancelled"],
+    statuses: ["Held", "Queued", "Ticketed", "Reissued", "Cancelled"],
     prefix: "FLT",
   },
   {
@@ -139,7 +139,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Hotels", "Room inventory", "Rate plans", "Vouchers"],
     description: "Room availability, contracts and every guest confirmation.",
     noun: "hotel",
-    statuses: ["Active", "Pending", "Confirmed"],
+    statuses: ["Requested", "Confirmed", "Vouchered", "Cancelled"],
     prefix: "HTL",
   },
   {
@@ -149,7 +149,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Tour packages", "Activities", "Fixed departures", "Seasonal rates"],
     description: "Curate memorable journeys and bookable experiences.",
     noun: "package",
-    statuses: ["Active", "Pending", "Confirmed"],
+    statuses: ["Draft", "Published", "Sold out", "Archived"],
     prefix: "PKG",
   },
   {
@@ -159,7 +159,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Transfers", "Vehicles", "Drivers", "Rail, bus & cruise"],
     description: "Coordinate every pickup, connection and arrival.",
     noun: "transfer",
-    statuses: ["Confirmed", "Pending", "In progress"],
+    statuses: ["Requested", "Assigned", "Confirmed", "Completed", "Cancelled"],
     prefix: "TRF",
   },
   {
@@ -169,17 +169,17 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Applications", "Document checklists", "Appointments", "Insurance", "Travel advisories"],
     description: "Travel documents and protection, tracked end to end.",
     noun: "application",
-    statuses: ["In review", "Documents pending", "Approved", "Submitted"],
+    statuses: ["Documents pending", "Submitted", "In review", "Approved", "Rejected"],
     prefix: "VIS",
   },
   {
     id: "groups",
     name: "Groups & MICE",
     group: "Bookings & trips",
-    tabs: ["Group trips", "Delegates", "Room blocks", "Budgets", "Suppliers"],
+    tabs: ["Group trips", "Delegates", "Room blocks"],
     description: "Seamless coordination for groups, conferences and events.",
     noun: "group",
-    statuses: ["Confirmed", "Pending", "In progress"],
+    statuses: ["Planning", "Open for sale", "Confirmed", "Departed", "Completed"],
     prefix: "GRP",
   },
   {
@@ -189,7 +189,7 @@ export const MODULES: ModuleDef[] = [
     tabs: ["Departures", "Manifests", "Daily operations", "Vouchers", "Incidents", "Deadlines"],
     description: "Give every departure the attention it deserves.",
     noun: "trip",
-    statuses: ["Confirmed", "Pending", "In progress"],
+    statuses: ["Upcoming", "In progress", "Completed", "Cancelled"],
     prefix: "OPS",
   },
   {
@@ -227,7 +227,7 @@ export const MODULES: ModuleDef[] = [
     ],
     description: "Grow your distribution network with confidence.",
     noun: "agent",
-    statuses: ["Active", "KYC pending", "Active"],
+    statuses: ["Active", "KYC pending", "Suspended", "Inactive"],
     prefix: "AGN",
   },
   {
@@ -247,7 +247,7 @@ export const MODULES: ModuleDef[] = [
     ],
     description: "A clear view of your cash flow and every booking's margin.",
     noun: "invoice",
-    statuses: ["Paid", "Overdue", "Pending", "Partially paid"],
+    statuses: ["Draft", "Sent", "Partially paid", "Paid", "Overdue"],
     prefix: "INV",
   },
   {

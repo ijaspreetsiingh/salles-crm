@@ -3,10 +3,11 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission } from "../middlewares/rbac";
+import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { recordAudit } from "../services/audit";
+import { applyBranchScope } from "../services/records";
 
 /**
  * Group travel: the delegate list and the rooming list.
@@ -18,6 +19,7 @@ import { recordAudit } from "../services/audit";
  */
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("groups", "view"));
 
 const memberSchema = z.object({
   name: z.string().min(1).max(160),
@@ -55,10 +57,14 @@ const memberDto = (row: {
   updatedAt: Date;
 }) => ({ ...row, updatedAt: row.updatedAt.toISOString() });
 
-/** Verifies the group belongs to this tenant before touching its travellers. */
-async function assertGroup(organizationId: string, recordId: string) {
+/** Verifies the group belongs to this tenant and this caller's branch before touching its travellers. */
+type AuthCtx = { organizationId: string; roleKey: string; branchId: string | null };
+async function assertGroup(auth: AuthCtx, recordId: string) {
   const record = await prisma.record.findFirst({
-    where: { id: recordId, organizationId, moduleId: "groups", deletedAt: null },
+    where: applyBranchScope(
+      { id: recordId, organizationId: auth.organizationId, moduleId: "groups", deletedAt: null },
+      auth,
+    ),
   });
   if (!record) throw new NotFoundError("Group");
   return record;
@@ -67,9 +73,9 @@ async function assertGroup(organizationId: string, recordId: string) {
 /** Delegates on a group trip. */
 router.get(
   "/:recordId/members",
-  requirePermission("view"),
+  requireModulePermission("groups", "view"),
   asyncHandler(async (req, res) => {
-    await assertGroup(req.auth!.organizationId, req.params.recordId);
+    await assertGroup(req.auth!, req.params.recordId);
     const members = await prisma.groupMember.findMany({
       where: { organizationId: req.auth!.organizationId, groupRecordId: req.params.recordId },
       orderBy: [{ roomNumber: "asc" }, { name: "asc" }],
@@ -93,10 +99,10 @@ router.get(
 
 router.post(
   "/:recordId/members",
-  requirePermission("create"),
+  requireModulePermission("groups", "create"),
   validate(memberSchema),
   asyncHandler(async (req, res) => {
-    await assertGroup(req.auth!.organizationId, req.params.recordId);
+    await assertGroup(req.auth!, req.params.recordId);
     const body = req.body as z.infer<typeof memberSchema>;
     const member = await prisma.groupMember.create({
       data: {
@@ -132,10 +138,12 @@ router.post(
 
 router.post(
   "/:recordId/members/bulk",
-  requirePermission("create"),
-  validate(z.object({ text: z.string().min(1).max(20000), roomType: z.string().max(20).optional() })),
+  requireModulePermission("groups", "create"),
+  validate(
+    z.object({ text: z.string().min(1).max(20000), roomType: z.string().max(20).optional() }),
+  ),
   asyncHandler(async (req, res) => {
-    await assertGroup(req.auth!.organizationId, req.params.recordId);
+    await assertGroup(req.auth!, req.params.recordId);
     const { text, roomType } = req.body as { text: string; roomType?: string };
     // One name per line; "Name, phone, passport" also works for a pasted list.
     const lines = text
@@ -155,22 +163,41 @@ router.post(
       };
     });
     await prisma.groupMember.createMany({ data: rows });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Created",
+      moduleId: "groups",
+      recordId: req.params.recordId,
+      label: `${rows.length} delegates added`,
+      req,
+    });
     return created(res, { added: rows.length });
   }),
 );
 
 router.patch(
   "/members/:id",
-  requirePermission("edit"),
+  requireModulePermission("groups", "edit"),
   validate(memberSchema.partial()),
   asyncHandler(async (req, res) => {
     const existing = await prisma.groupMember.findFirst({
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!existing) throw new NotFoundError("Delegate");
+    // The delegate is only reachable through an in-scope group, so a
+    // branch-scoped role cannot edit a sibling branch's traveller by id.
+    await assertGroup(req.auth!, existing.groupRecordId);
     const member = await prisma.groupMember.update({
       where: { id: existing.id },
       data: req.body as Partial<z.infer<typeof memberSchema>>,
+    });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: "groups",
+      recordId: existing.groupRecordId,
+      label: `Delegate updated: ${member.name}`,
+      req,
     });
     return ok(res, memberDto(member));
   }),
@@ -178,13 +205,22 @@ router.patch(
 
 router.delete(
   "/members/:id",
-  requirePermission("delete"),
+  requireModulePermission("groups", "delete"),
   asyncHandler(async (req, res) => {
     const existing = await prisma.groupMember.findFirst({
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!existing) throw new NotFoundError("Delegate");
+    await assertGroup(req.auth!, existing.groupRecordId);
     await prisma.groupMember.delete({ where: { id: existing.id } });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Deleted",
+      moduleId: "groups",
+      recordId: existing.groupRecordId,
+      label: `Delegate removed: ${existing.name}`,
+      req,
+    });
     return ok(res, { deleted: true });
   }),
 );
@@ -199,10 +235,10 @@ router.delete(
  */
 router.post(
   "/:recordId/auto-rooms",
-  requirePermission("edit"),
+  requireModulePermission("groups", "edit"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
-    await assertGroup(organizationId, req.params.recordId);
+    await assertGroup(req.auth!, req.params.recordId);
     const members = await prisma.groupMember.findMany({
       where: { organizationId, groupRecordId: req.params.recordId, status: { not: "Cancelled" } },
       orderBy: { name: "asc" },
@@ -268,9 +304,19 @@ router.post(
       ),
     );
 
+    const roomCount = new Set([...assignments.values()].map((value) => value.room)).size;
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "groups",
+      recordId: req.params.recordId,
+      label: `Rooms auto-assigned: ${assignments.size} delegates into ${roomCount} rooms`,
+      req,
+    });
+
     return ok(res, {
       assigned: assignments.size,
-      rooms: new Set([...assignments.values()].map((value) => value.room)).size,
+      rooms: roomCount,
     });
   }),
 );
@@ -278,16 +324,19 @@ router.post(
 /** The rooming list a hotel asks for: rooms, guests in each, meal and bedding. */
 router.get(
   "/:recordId/rooming",
-  requirePermission("view"),
+  requireModulePermission("groups", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
-    const group = await assertGroup(organizationId, req.params.recordId);
+    const group = await assertGroup(req.auth!, req.params.recordId);
     const members = await prisma.groupMember.findMany({
       where: { organizationId, groupRecordId: group.id, status: { not: "Cancelled" } },
       orderBy: { name: "asc" },
     });
 
-    const rooms = new Map<string, { roomNumber: string; roomType: string; guests: typeof members }>();
+    const rooms = new Map<
+      string,
+      { roomNumber: string; roomType: string; guests: typeof members }
+    >();
     for (const member of members) {
       const key = member.roomNumber || "unassigned";
       const room = rooms.get(key) ?? {
@@ -329,10 +378,10 @@ router.get(
 /** The manifest the tour manager carries: every traveller, every detail. */
 router.get(
   "/:recordId/manifest",
-  requirePermission("view"),
+  requireModulePermission("groups", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
-    const group = await assertGroup(organizationId, req.params.recordId);
+    const group = await assertGroup(req.auth!, req.params.recordId);
     const members = await prisma.groupMember.findMany({
       where: { organizationId, groupRecordId: group.id },
       orderBy: [{ status: "asc" }, { roomNumber: "asc" }, { name: "asc" }],

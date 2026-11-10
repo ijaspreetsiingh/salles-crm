@@ -5,7 +5,7 @@ import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { NotFoundError } from "../lib/errors";
+import { ForbiddenError, NotFoundError } from "../lib/errors";
 import { parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 
@@ -21,8 +21,6 @@ const changeSchema = z.object({
   seats: z.coerce.number().int().min(1).max(1000).optional(),
   cancelAtPeriodEnd: z.boolean().optional(),
 });
-
-const period = () => new Date().toISOString().slice(0, 7);
 
 /** Available SaaS plans. */
 router.get(
@@ -93,7 +91,7 @@ router.get(
   }),
 );
 
-/** Change plan, billing cycle or seat count. */
+/** Cancel or resume the current subscription. Plan/seat changes are billable. */
 router.patch(
   "/subscription",
   requireRole("company_admin"),
@@ -102,40 +100,35 @@ router.patch(
     const organizationId = req.auth!.organizationId;
     const body = req.body as z.infer<typeof changeSchema>;
 
+    // A tenant must never be able to grant itself a paid plan or extra seats.
+    // Those changes come from the payment provider webhook or the platform
+    // admin console, where money actually changes hands.
+    if (body.planKey || body.billingCycle || body.seats !== undefined) {
+      throw new ForbiddenError(
+        "Plan and seat changes are handled by your Traveldesk account manager. You can cancel or resume the current plan here.",
+      );
+    }
+
     const existing = await prisma.subscription.findUnique({ where: { organizationId } });
     if (!existing) throw new NotFoundError("Subscription");
-
-    if (body.planKey) {
-      const plan = await prisma.plan.findUnique({ where: { key: body.planKey } });
-      if (!plan) throw new NotFoundError("Plan");
-    }
 
     const subscription = await prisma.subscription.update({
       where: { organizationId },
       data: {
-        planKey: body.planKey,
-        billingCycle: body.billingCycle,
-        seats: body.seats,
         cancelAtPeriodEnd: body.cancelAtPeriodEnd,
-        status: body.cancelAtPeriodEnd === false ? "active" : undefined,
-        // Changing plan starts a fresh billing period.
-        currentPeriodStart: body.planKey ? new Date() : undefined,
-        currentPeriodEnd: body.planKey
-          ? new Date(Date.now() + 1000 * 60 * 60 * 24 * (body.billingCycle === "Monthly" ? 30 : 365))
-          : undefined,
+        status:
+          body.cancelAtPeriodEnd === false && existing.status === "cancelled"
+            ? "active"
+            : undefined,
       },
       include: { plan: true },
     });
-
-    if (body.planKey) {
-      await prisma.organization.update({ where: { id: organizationId }, data: { plan: body.planKey } });
-    }
 
     await recordAudit({
       organizationId,
       action: "Updated",
       moduleId: "settings",
-      label: `Subscription ${body.planKey ? `changed to ${subscription.plan.name}` : "updated"}`,
+      label: body.cancelAtPeriodEnd ? "Subscription set to cancel at period end" : "Subscription resumed",
       req,
     });
 
@@ -157,9 +150,12 @@ router.get(
 );
 
 /**
- * Invoice history derived from the active subscription. In a full deployment
- * this is populated by the billing provider's webhook; here it reflects the
- * subscription's own billing periods so the UI has real rows to render.
+ * Billing history.
+ *
+ * This deployment does not run a subscription payment provider, so there are
+ * no real invoices to show. The endpoint returns an empty, honest list rather
+ * than inventing six months of paid rows that never existed — money screens
+ * must never display a number that cannot be backed by a record.
  */
 router.get(
   "/invoices",
@@ -170,30 +166,10 @@ router.get(
     });
     if (!subscription) throw new NotFoundError("Subscription");
 
-    const amount =
-      subscription.billingCycle === "Monthly" ? subscription.plan.priceMonthly : subscription.plan.priceYearly;
-    const cycles = 6;
-    const stepDays = subscription.billingCycle === "Monthly" ? 30 : 365;
-
-    const invoices = Array.from({ length: cycles }, (_, index) => {
-      const issued = new Date(Date.now() - index * stepDays * 24 * 60 * 60 * 1000);
-      return {
-        id: `INV-${issued.getFullYear()}${String(issued.getMonth() + 1).padStart(2, "0")}-${subscription.id.slice(-4)}`,
-        issuedAt: issued.toISOString(),
-        period,
-        amount,
-        currency: subscription.plan.currency,
-        status: index === 0 ? subscription.status : "paid",
-        planKey: subscription.planKey,
-      };
-    });
-
     return ok(res, {
-      invoices,
-      totals: {
-        billed: invoices.reduce((total, invoice) => total + invoice.amount, 0),
-        currency: subscription.plan.currency,
-      },
+      invoices: [],
+      totals: { billed: 0, currency: subscription.plan.currency },
+      note: "Subscription billing is handled outside this workspace. Platform invoices appear here once a billing provider is connected.",
     });
   }),
 );

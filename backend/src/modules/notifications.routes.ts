@@ -27,15 +27,18 @@ function getOrgConnections(organizationId: string): Set<SseStream> {
 }
 
 /** Broadcast a new notification to all open SSE streams for an organisation. */
-export function broadcastNotification(organizationId: string, notification: {
-  id: string;
-  title: string;
-  body: string;
-  moduleId?: string;
-  recordId?: string;
-  level: string;
-  createdAt: string;
-}) {
+export function broadcastNotification(
+  organizationId: string,
+  notification: {
+    id: string;
+    title: string;
+    body: string;
+    moduleId?: string;
+    recordId?: string;
+    level: string;
+    createdAt: string;
+  },
+) {
   const conns = getOrgConnections(organizationId);
   const payload = `data: ${JSON.stringify(notification)}\n\n`;
   const encoder = new TextEncoder();
@@ -61,7 +64,7 @@ router.get(
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     });
     res.write(": connected\n\n");
@@ -135,7 +138,10 @@ router.post(
     });
     if (!notification) throw new NotFoundError("Notification");
 
-    await prisma.notification.update({ where: { id: notification.id }, data: { readAt: new Date() } });
+    await prisma.notification.update({
+      where: { id: notification.id },
+      data: { readAt: new Date() },
+    });
     return ok(res, { read: true });
   }),
 );

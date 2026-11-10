@@ -72,11 +72,21 @@ export function Payables() {
   const { data, loading, error, reload } = useApiQuery(() => fetchPayables(), []);
 
   const supplierNames = useMemo(
-    () => [...new Set(getRows("suppliers").map((row) => row.name).filter(Boolean))].slice(0, 200),
+    () =>
+      [
+        ...new Set(
+          getRows("suppliers")
+            .map((row) => row.name)
+            .filter(Boolean),
+        ),
+      ].slice(0, 200),
     [getRows],
   );
   const bookingRefs = useMemo(
-    () => getRows("bookings").map((row) => row.id).slice(0, 300),
+    () =>
+      getRows("bookings")
+        .map((row) => row.id)
+        .slice(0, 300),
     [getRows],
   );
 
@@ -187,7 +197,11 @@ export function Payables() {
           tone={totals?.overdue ? "tomato" : "ink"}
         />
         <Stat label="Settled" value={money(totals?.paid ?? 0, currency)} hint="Already paid out" />
-        <Stat label="Billed" value={money(totals?.billed ?? 0, currency)} hint="Every supplier bill" />
+        <Stat
+          label="Billed"
+          value={money(totals?.billed ?? 0, currency)}
+          hint="Every supplier bill"
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -315,9 +329,11 @@ export function Payables() {
                   <div className="flex items-center gap-2">
                     <strong className="truncate text-sm">{item.supplierName}</strong>
                     <BillPill
-                      label={item.overdue ? "Overdue" : STATUS_LABEL[item.status] ?? item.status}
+                      label={item.overdue ? "Overdue" : (STATUS_LABEL[item.status] ?? item.status)}
                     />
-                    {item.reference && <span className="text-xs text-faint">for {item.reference}</span>}
+                    {item.reference && (
+                      <span className="text-xs text-faint">for {item.reference}</span>
+                    )}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted">
                     {item.description || "Supplier bill"}
@@ -326,10 +342,14 @@ export function Payables() {
                   </p>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="font-semibold">{money(item.amount, item.currency || currency)}</div>
+                  <div className="font-semibold">
+                    {money(item.amount, item.currency || currency)}
+                  </div>
                   <div className="text-xs text-muted">
                     {money(item.paid, item.currency || currency)} paid
-                    {item.balance > 0.5 ? ` · ${money(item.balance, item.currency || currency)} left` : ""}
+                    {item.balance > 0.5
+                      ? ` · ${money(item.balance, item.currency || currency)} left`
+                      : ""}
                   </div>
                 </div>
                 {item.balance > 0.5 && (
@@ -344,7 +364,12 @@ export function Payables() {
                     >
                       <Wallet className="size-4" /> Settle
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => void remove(item)} title="Remove bill">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void remove(item)}
+                      title="Remove bill"
+                    >
                       <Trash2 className="size-4" />
                     </Button>
                   </>
@@ -378,11 +403,13 @@ export function Payables() {
                       value={settle.method}
                       onChange={(e) => setSettle({ ...settle, method: e.target.value })}
                     >
-                      {["Bank transfer", "UPI", "Card", "Cash", "Cheque", "Razorpay"].map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
+                      {["Bank transfer", "UPI", "Card", "Cash", "Cheque", "Razorpay"].map(
+                        (mode) => (
+                          <option key={mode} value={mode}>
+                            {mode}
+                          </option>
+                        ),
+                      )}
                     </select>
                   </Field>
                   <Field label="UTR / cheque no.">
@@ -449,7 +476,10 @@ const periodFor = (preset: string): { from: string; to: string } => {
   }
   if (preset === "This quarter") {
     const quarterStart = month - (month % 3);
-    return { from: iso(new Date(year, quarterStart, 1)), to: iso(new Date(year, quarterStart + 3, 0)) };
+    return {
+      from: iso(new Date(year, quarterStart, 1)),
+      to: iso(new Date(year, quarterStart + 3, 0)),
+    };
   }
   if (preset === "Last financial year") {
     const start = month + 1 >= 4 ? year - 1 : year - 2;
@@ -476,19 +506,21 @@ export function TaxSummary() {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        {["This month", "This quarter", "This financial year", "Last financial year"].map((option) => (
-          <Button
-            key={option}
-            size="sm"
-            variant={!custom && preset === option ? "default" : "outline"}
-            onClick={() => {
-              setCustom(null);
-              setPreset(option);
-            }}
-          >
-            {option}
-          </Button>
-        ))}
+        {["This month", "This quarter", "This financial year", "Last financial year"].map(
+          (option) => (
+            <Button
+              key={option}
+              size="sm"
+              variant={!custom && preset === option ? "default" : "outline"}
+              onClick={() => {
+                setCustom(null);
+                setPreset(option);
+              }}
+            >
+              {option}
+            </Button>
+          ),
+        )}
         <div className="flex items-center gap-1.5 text-xs text-muted">
           <input
             type="date"
@@ -573,8 +605,12 @@ export function TaxSummary() {
                     {data.months.map((month) => (
                       <tr key={month.month} className="border-t border-rim">
                         <td className="py-1.5">{monthLabel(month.month)}</td>
-                        <td className="py-1.5 text-right tabular-nums">{money(month.output, currency)}</td>
-                        <td className="py-1.5 text-right tabular-nums">{money(month.input, currency)}</td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {money(month.output, currency)}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {money(month.input, currency)}
+                        </td>
                         <td className="py-1.5 text-right font-semibold tabular-nums">
                           {money(month.net, currency)}
                         </td>
@@ -594,7 +630,8 @@ export function TaxSummary() {
                   <li key={rate.rate} className="flex items-center justify-between text-sm">
                     <span>{rate.rate}%</span>
                     <span className="text-xs text-muted">
-                      collected {money(rate.output, currency)} · credit {money(rate.input, currency)}
+                      collected {money(rate.output, currency)} · credit{" "}
+                      {money(rate.input, currency)}
                     </span>
                   </li>
                 ))}
@@ -624,8 +661,12 @@ export function TaxSummary() {
                         <td className="py-1.5">{invoice.name}</td>
                         <td className="py-1.5 text-muted">{invoice.date}</td>
                         <td className="py-1.5 text-right tabular-nums">{invoice.rate}%</td>
-                        <td className="py-1.5 text-right tabular-nums">{money(invoice.taxable, currency)}</td>
-                        <td className="py-1.5 text-right tabular-nums">{money(invoice.tax, currency)}</td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {money(invoice.taxable, currency)}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {money(invoice.tax, currency)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -735,11 +776,7 @@ export function Expenses() {
           hint={`${totals?.count ?? 0} entr${(totals?.count ?? 0) === 1 ? "y" : "ies"}`}
           tone="tomato"
         />
-        <Stat
-          label="Average"
-          value={money(totals?.average ?? 0, currency)}
-          hint="Per entry"
-        />
+        <Stat label="Average" value={money(totals?.average ?? 0, currency)} hint="Per entry" />
         <Stat
           label="Biggest head"
           value={totals?.byCategory[0]?.category ?? "—"}
@@ -896,9 +933,7 @@ export function Expenses() {
               {(totals?.byCategory ?? []).map((row) => (
                 <li key={row.category} className="flex items-center justify-between text-sm">
                   <span className="truncate">{row.category}</span>
-                  <span className="font-semibold tabular-nums">
-                    {money(row.amount, currency)}
-                  </span>
+                  <span className="font-semibold tabular-nums">{money(row.amount, currency)}</span>
                 </li>
               ))}
             </ul>
@@ -930,19 +965,21 @@ export function ProfitLoss() {
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        {["This month", "This quarter", "This financial year", "Last financial year"].map((option) => (
-          <Button
-            key={option}
-            size="sm"
-            variant={!custom && preset === option ? "default" : "outline"}
-            onClick={() => {
-              setCustom(null);
-              setPreset(option);
-            }}
-          >
-            {option}
-          </Button>
-        ))}
+        {["This month", "This quarter", "This financial year", "Last financial year"].map(
+          (option) => (
+            <Button
+              key={option}
+              size="sm"
+              variant={!custom && preset === option ? "default" : "outline"}
+              onClick={() => {
+                setCustom(null);
+                setPreset(option);
+              }}
+            >
+              {option}
+            </Button>
+          ),
+        )}
         <div className="flex items-center gap-1.5 text-xs text-muted">
           <input
             type="date"
@@ -1053,7 +1090,9 @@ export function ProfitLoss() {
                 {data.expenseCategories.map((row) => (
                   <li key={row.category} className="flex items-center justify-between text-sm">
                     <span className="truncate">{row.category}</span>
-                    <span className="font-semibold tabular-nums">{money(row.amount, currency)}</span>
+                    <span className="font-semibold tabular-nums">
+                      {money(row.amount, currency)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -1066,8 +1105,7 @@ export function ProfitLoss() {
 }
 
 function BillPill({ label }: { label: string }) {
-  const tone =
-    label === "Overdue" ? "danger" : label === "Settled" ? "success" : "warning";
+  const tone = label === "Overdue" ? "danger" : label === "Settled" ? "success" : "warning";
   return (
     <span className={`status status-${tone}`}>
       <span />
@@ -1114,4 +1152,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </label>
   );
 }
-

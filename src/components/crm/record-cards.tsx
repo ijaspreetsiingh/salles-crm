@@ -1,12 +1,4 @@
-import {
-  Building2,
-  CalendarDays,
-  Mail,
-  MapPin,
-  Phone,
-  Star,
-  UserRound,
-} from "lucide-react";
+import { Building2, CalendarDays, Mail, MapPin, Phone, Star, UserRound } from "lucide-react";
 import { Avatar, Status } from "./common";
 import { money, type Module, type RecordRow } from "@/lib/crm/catalog";
 import { cn } from "@/lib/utils";
@@ -30,9 +22,7 @@ export function RecordCards({
   emptyHint?: string;
 }) {
   if (rows.length === 0) {
-    return (
-      <div className="glass-card p-10 text-center text-sm text-muted">{emptyHint}</div>
-    );
+    return <div className="glass-card p-10 text-center text-sm text-muted">{emptyHint}</div>;
   }
 
   return (

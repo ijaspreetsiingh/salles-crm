@@ -31,7 +31,17 @@ const updateSchema = z.object({
   permissions: permissionSchema.optional(),
 });
 
-function toDto(role: { id: string; key: string; name: string; description: string | null; permissions: string; isSystem: boolean }, members = 0) {
+function toDto(
+  role: {
+    id: string;
+    key: string;
+    name: string;
+    description: string | null;
+    permissions: string;
+    isSystem: boolean;
+  },
+  members = 0,
+) {
   return {
     id: role.id,
     key: role.key,
@@ -49,11 +59,21 @@ router.get(
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const [roles, counts] = await Promise.all([
-      prisma.role.findMany({ where: { organizationId }, orderBy: [{ isSystem: "desc" }, { name: "asc" }] }),
-      prisma.membership.groupBy({ by: ["roleKey"], where: { organizationId }, _count: { _all: true } }),
+      prisma.role.findMany({
+        where: { organizationId },
+        orderBy: [{ isSystem: "desc" }, { name: "asc" }],
+      }),
+      prisma.membership.groupBy({
+        by: ["roleKey"],
+        where: { organizationId },
+        _count: { _all: true },
+      }),
     ]);
     const countMap = new Map(counts.map((c) => [c.roleKey, c._count._all]));
-    return ok(res, roles.map((role) => toDto(role, countMap.get(role.key) ?? 0)));
+    return ok(
+      res,
+      roles.map((role) => toDto(role, countMap.get(role.key) ?? 0)),
+    );
   }),
 );
 
@@ -83,7 +103,9 @@ router.post(
     const organizationId = req.auth!.organizationId;
     const key = slugify(body.name) || "role";
 
-    const clash = await prisma.role.findUnique({ where: { organizationId_key: { organizationId, key } } });
+    const clash = await prisma.role.findUnique({
+      where: { organizationId_key: { organizationId, key } },
+    });
     if (clash) throw new ConflictError("A role with a similar name already exists");
 
     const role = await prisma.role.create({

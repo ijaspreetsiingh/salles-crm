@@ -12,4 +12,18 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes("node_modules/recharts")) return "recharts";
+            if (id.includes("node_modules/date-fns")) return "date-fns";
+            if (id.includes("node_modules/@radix-ui")) return "radix";
+            return undefined;
+          },
+        },
+      },
+    },
+  },
 });

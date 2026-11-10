@@ -240,6 +240,20 @@ const STATUS_GUIDE: Record<string, { meaning: string; next: string }> = {
   },
   Cancelled: { meaning: "The trip will not happen.", next: "Sort out any refund." },
 
+  // Groups & events
+  Planning: {
+    meaning: "Being put together — dates, rooms and budget are not final.",
+    next: "Lock the dates and start collecting delegates.",
+  },
+  "Open for sale": {
+    meaning: "Seats are being sold to travellers.",
+    next: "Watch the fill rate and chase the people who have not paid.",
+  },
+  Departed: {
+    meaning: "The group is travelling right now.",
+    next: "Keep the tour manager reachable and log anything that goes wrong.",
+  },
+
   // Money
   "Partially paid": {
     meaning: "Some money has arrived, some has not.",

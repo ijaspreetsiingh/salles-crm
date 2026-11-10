@@ -166,13 +166,21 @@ export function digestBody(person: string, day: AttentionDto): string {
         ...day.visa.map((row) => `  • ${record(row)}`),
       ].join("\n"),
     );
+  if (day.groups.length)
+    sections.push(
+      [
+        `Groups leaving soon (${day.groups.length})`,
+        ...day.groups.map((row) => `  • ${record(row)}`),
+      ].join("\n"),
+    );
 
   const total =
     day.tasks.length +
     day.leads.length +
     day.finance.length +
     day.bookings.length +
-    day.visa.length;
+    day.visa.length +
+    day.groups.length;
   const opening = total
     ? `Good morning, ${person.split(" ")[0] ?? person}.\n\n${total} ${total === 1 ? "thing needs" : "things need"} you today.`
     : `Good morning, ${person.split(" ")[0] ?? person}.\n\nNothing is waiting on you today.`;
@@ -257,7 +265,8 @@ export async function sendDigestTo(input: {
     day.leads.length +
     day.finance.length +
     day.bookings.length +
-    day.visa.length;
+    day.visa.length +
+    day.groups.length;
   const subject = total
     ? `Your day at ${input.organizationName}: ${total} ${total === 1 ? "thing" : "things"}`
     : `Your day at ${input.organizationName}: nothing waiting`;

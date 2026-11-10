@@ -1,8 +1,10 @@
 import PDFDocument from "pdfkit";
-import { prisma } from "../lib/prisma";
+import { lockOrganization, prisma, type Tx } from "../lib/prisma";
 import { parseJson } from "../lib/utils";
+import { roundMoney, sumMoney, subtractMoney, moneyGte } from "../lib/money";
 import { NotFoundError, BadRequestError } from "../lib/errors";
 import { fireWorkflows } from "./automation";
+import { dispatchWebhookEvent } from "./webhook-dispatch";
 
 /**
  * The payment ledger.
@@ -21,12 +23,10 @@ export type LedgerTotals = {
   count: number;
 };
 
-const round = (value: number) => Math.round(value * 100) / 100;
-
 /** Record.date is stored as a "YYYY-MM-DD" string, so parse it explicitly. */
 const asDate = (value: unknown): Date | null => {
   const raw = String(value ?? "").slice(0, 10);
-  if (!/^d{4}-d{2}-d{2}$/.test(raw)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
   const parsed = new Date(`${raw}T00:00:00`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
@@ -40,14 +40,21 @@ export function assertMoneyModule(moduleId: string) {
   }
 }
 
-/** Sums the ledger for one document. */
-export async function ledgerTotals(input: {
+export type LedgerScope = {
   organizationId: string;
   moduleId: string;
   reference: string;
   total: number;
-}): Promise<LedgerTotals> {
-  const rows = await prisma.payment.findMany({
+};
+
+/** Sums the ledger for one document. */
+export async function ledgerTotals(input: LedgerScope): Promise<LedgerTotals> {
+  return prisma.$transaction((tx) => ledgerTotalsInTx(tx, input));
+}
+
+/** Same as `ledgerTotals`, inside an existing transaction. */
+export async function ledgerTotalsInTx(tx: Tx, input: LedgerScope): Promise<LedgerTotals> {
+  const rows = await tx.payment.findMany({
     where: {
       organizationId: input.organizationId,
       moduleId: input.moduleId,
@@ -56,18 +63,18 @@ export async function ledgerTotals(input: {
     },
     select: { amount: true, kind: true },
   });
-  const received = round(
-    rows.filter((row) => row.kind !== "refund").reduce((sum, row) => sum + row.amount, 0),
+  const received = sumMoney(
+    rows.filter((row) => row.kind !== "refund").map((row) => row.amount),
   );
-  const refunded = round(
-    rows.filter((row) => row.kind === "refund").reduce((sum, row) => sum + row.amount, 0),
+  const refunded = sumMoney(
+    rows.filter((row) => row.kind === "refund").map((row) => row.amount),
   );
-  const net = round(received - refunded);
+  const net = subtractMoney(received, refunded);
   return {
     received,
     refunded,
     net,
-    balance: round(Math.max(0, input.total - net)),
+    balance: Math.max(0, subtractMoney(input.total, net)),
     count: rows.length,
   };
 }
@@ -78,12 +85,21 @@ export async function ledgerTotals(input: {
  * `extra.received` keeps the existing columns, KPIs and reports working, and an
  * invoice earns its status from the money that actually arrived.
  */
-export async function syncRecordMoney(input: {
-  organizationId: string;
-  moduleId: string;
-  reference: string;
-}): Promise<LedgerTotals | null> {
-  const record = await prisma.record.findFirst({
+export async function syncRecordMoney(
+  input: Omit<LedgerScope, "total">,
+): Promise<LedgerTotals | null> {
+  return prisma.$transaction(async (tx) => {
+    await lockOrganization(tx, input.organizationId);
+    return syncRecordMoneyInTx(tx, input);
+  });
+}
+
+/** Same as `syncRecordMoney`, inside an existing (already locked) transaction. */
+export async function syncRecordMoneyInTx(
+  tx: Tx,
+  input: Omit<LedgerScope, "total">,
+): Promise<LedgerTotals | null> {
+  const record = await tx.record.findFirst({
     where: {
       organizationId: input.organizationId,
       moduleId: input.moduleId,
@@ -103,16 +119,16 @@ export async function syncRecordMoney(input: {
   const legacyReceived = Number(extra.received) || 0;
   let migratedLegacy = false;
   if (!extra.ledgerMigrated && legacyReceived > 0) {
-    await prisma.payment.create({
+    await tx.payment.create({
       data: {
         organizationId: input.organizationId,
         moduleId: input.moduleId,
         recordReference: input.reference,
         kind: "payment",
-        receiptNo: await nextReceiptNo(input.organizationId, "payment"),
+        receiptNo: await nextReceiptNoInTx(tx, input.organizationId, "payment"),
         referenceNo: "",
         note: "Opening balance carried over from earlier records",
-        amount: round(legacyReceived),
+        amount: roundMoney(legacyReceived),
         currency: record.currency || "INR",
         method: String(extra.paymentMode ?? "Bank transfer"),
         status: "recorded",
@@ -123,7 +139,7 @@ export async function syncRecordMoney(input: {
     migratedLegacy = true;
   }
 
-  const totals = await ledgerTotals({
+  const totals = await ledgerTotalsInTx(tx, {
     organizationId: input.organizationId,
     moduleId: input.moduleId,
     reference: input.reference,
@@ -142,12 +158,12 @@ export async function syncRecordMoney(input: {
   let status = record.status;
   if (input.moduleId === "finance") {
     const current = record.status;
-    if (totals.net >= record.amount - 0.5 && record.amount > 0) status = "Paid";
+    if (moneyGte(totals.net, record.amount) && record.amount > 0) status = "Paid";
     else if (totals.net > 0) status = "Partially paid";
     else if (current === "Paid" || current === "Partially paid") status = "Draft";
   }
 
-  await prisma.record.update({
+  await tx.record.update({
     where: { id: record.id },
     data: { status, extra: JSON.stringify(nextExtra) },
   });
@@ -155,11 +171,45 @@ export async function syncRecordMoney(input: {
   return totals;
 }
 
-/** Next human receipt number for the organisation. */
-async function nextReceiptNo(organizationId: string, kind: string): Promise<string> {
-  const count = await prisma.payment.count({ where: { organizationId } });
+/**
+ * Next human receipt number for the organisation.
+ *
+ * Counting rows is wrong as soon as one receipt is deleted: the next number
+ * repeats and two receipts share an identity. A retired sequence row keeps the
+ * series moving forward, and the `(organizationId, receiptNo)` unique index is
+ * the last line of defence if two tills ever race.
+ */
+async function nextReceiptNoInTx(tx: Tx, organizationId: string, kind: string): Promise<string> {
   const prefix = kind === "refund" ? "REF" : "RCP";
-  return `${prefix}-${String(count + 1).padStart(4, "0")}`;
+  const latest = await tx.payment.findFirst({
+    where: { organizationId, receiptNo: { startsWith: `${prefix}-` } },
+    orderBy: { receiptNo: "desc" },
+    select: { receiptNo: true },
+  });
+  const parsed = Number.parseInt((latest?.receiptNo ?? "").slice(prefix.length + 1), 10);
+  const highest = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+
+  const key = { organizationId, moduleId: "receipt", stem: prefix };
+  const seq = await tx.sequence.upsert({
+    where: { organizationId_moduleId_stem: key },
+    // First use seeds from whatever receipts already exist.
+    create: { ...key, lastNumber: highest + 1 },
+    update: { lastNumber: { increment: 1 } },
+  });
+
+  // A sequence that predates some receipts can lag behind the real highest
+  // number. Jump ahead instead of handing out a duplicate.
+  const number =
+    seq.lastNumber > highest
+      ? seq.lastNumber
+      : (
+          await tx.sequence.update({
+            where: { organizationId_moduleId_stem: key },
+            data: { lastNumber: highest + 1 },
+          })
+        ).lastNumber;
+
+  return `${prefix}-${String(number).padStart(4, "0")}`;
 }
 
 export async function createLedgerPayment(input: {
@@ -178,41 +228,58 @@ export async function createLedgerPayment(input: {
   assertMoneyModule(input.moduleId);
   if (!(input.amount > 0)) throw new BadRequestError("Amount must be greater than zero");
 
-  const record = await prisma.record.findFirst({
-    where: {
+  const kind = input.kind === "refund" ? "refund" : "payment";
+  const paidOn = input.paidOn ? new Date(`${input.paidOn}T00:00:00`) : new Date();
+
+  // The receipt, its number and the parent document's derived totals must land
+  // together: a receipt that exists while the invoice still says "unpaid" is a
+  // reconciliation bug waiting to happen.
+  const result = await prisma.$transaction(async (tx) => {
+    await lockOrganization(tx, input.organizationId);
+
+    const record = await tx.record.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        moduleId: input.moduleId,
+        reference: input.reference,
+        deletedAt: null,
+      },
+    });
+    if (!record) throw new NotFoundError("Record for this payment");
+
+    const payment = await tx.payment.create({
+      data: {
+        organizationId: input.organizationId,
+        moduleId: input.moduleId,
+        recordReference: input.reference,
+        kind,
+        receiptNo: await nextReceiptNoInTx(tx, input.organizationId, kind),
+        referenceNo: input.referenceNo?.slice(0, 120) ?? "",
+        note: input.note?.slice(0, 400) ?? "",
+        amount: roundMoney(input.amount),
+        currency: input.currency || record.currency || "INR",
+        method: input.method || "Bank transfer",
+        status: "recorded",
+        provider: "manual",
+        paidOn,
+        createdById: input.createdById ?? null,
+      },
+    });
+
+    const totals = await syncRecordMoneyInTx(tx, {
       organizationId: input.organizationId,
       moduleId: input.moduleId,
       reference: input.reference,
-      deletedAt: null,
-    },
-  });
-  if (!record) throw new NotFoundError("Record for this payment");
+    });
 
-  const kind = input.kind === "refund" ? "refund" : "payment";
-  const paidOn = input.paidOn ? new Date(`${input.paidOn}T00:00:00`) : new Date();
-  const payment = await prisma.payment.create({
-    data: {
-      organizationId: input.organizationId,
-      moduleId: input.moduleId,
-      recordReference: input.reference,
-      kind,
-      receiptNo: await nextReceiptNo(input.organizationId, kind),
-      referenceNo: input.referenceNo?.slice(0, 120) ?? "",
-      note: input.note?.slice(0, 400) ?? "",
-      amount: round(input.amount),
-      currency: input.currency || record.currency || "INR",
-      method: input.method || "Bank transfer",
-      status: "recorded",
-      provider: "manual",
-      paidOn,
-      createdById: input.createdById ?? null,
-    },
-  });
+    // The status the invoice earned from this payment, not the one it had
+    // before it — workflows branch on it.
+    const settled = await tx.record.findUnique({
+      where: { id: record.id },
+      select: { status: true },
+    });
 
-  const totals = await syncRecordMoney({
-    organizationId: input.organizationId,
-    moduleId: input.moduleId,
-    reference: input.reference,
+    return { payment, totals, recordId: record.id, status: settled?.status ?? record.status };
   });
 
   // Money arriving is a trigger in its own right: send the receipt, thank the
@@ -221,34 +288,49 @@ export async function createLedgerPayment(input: {
     void fireWorkflows({
       organizationId: input.organizationId,
       moduleId: input.moduleId,
-      recordId: record.id,
+      recordId: result.recordId,
       event: "payment.received",
-      status: record.status,
+      status: result.status,
       userId: input.createdById ?? null,
+    });
+    void dispatchWebhookEvent({
+      organizationId: input.organizationId,
+      event: "payment.received",
+      dedupeKey: `payment.received:${result.payment.id}`,
+      data: {
+        id: result.payment.id,
+        moduleId: input.moduleId,
+        reference: input.reference,
+        amount: result.payment.amount,
+        currency: result.payment.currency,
+        totals: result.totals,
+      },
     });
   }
 
-  return { payment: mapPayment(payment), totals };
+  return { payment: mapPayment(result.payment), totals: result.totals };
 }
 
-export async function deleteLedgerPayment(input: {
-  organizationId: string;
-  paymentId: string;
-}) {
-  const payment = await prisma.payment.findFirst({
-    where: { id: input.paymentId, organizationId: input.organizationId },
-  });
-  if (!payment) throw new NotFoundError("Payment");
+export async function deleteLedgerPayment(input: { organizationId: string; paymentId: string }) {
+  return prisma.$transaction(async (tx) => {
+    await lockOrganization(tx, input.organizationId);
 
-  await prisma.payment.delete({ where: { id: payment.id } });
-  const totals = payment.provider === "manual"
-    ? await syncRecordMoney({
-        organizationId: input.organizationId,
-        moduleId: payment.moduleId,
-        reference: payment.recordReference,
-      })
-    : null;
-  return { deleted: true, totals };
+    const payment = await tx.payment.findFirst({
+      where: { id: input.paymentId, organizationId: input.organizationId },
+    });
+    if (!payment) throw new NotFoundError("Payment");
+
+    await tx.payment.delete({ where: { id: payment.id } });
+    const totals =
+      payment.provider === "manual"
+        ? await syncRecordMoneyInTx(tx, {
+            organizationId: input.organizationId,
+            moduleId: payment.moduleId,
+            reference: payment.recordReference,
+          })
+        : null;
+    return { deleted: true, totals };
+  });
 }
 
 /**
@@ -339,7 +421,10 @@ export async function generateReceiptPdf(input: {
   doc.font("Helvetica");
 
   doc.fontSize(16).fillColor("#111111").text(organization.name, { continued: false });
-  doc.fontSize(8).fillColor("#666666").text(`GSTIN: ${organization.gstin || "—"}`);
+  doc
+    .fontSize(8)
+    .fillColor("#666666")
+    .text(`GSTIN: ${organization.gstin || "—"}`);
   if (organization.address) doc.text(organization.address, { width: 360 });
   doc.moveDown(0.8);
 
@@ -347,13 +432,19 @@ export async function generateReceiptPdf(input: {
     .fontSize(13)
     .fillColor("#111111")
     .text(payment.kind === "refund" ? "Refund receipt" : "Payment receipt");
-  doc.fontSize(9).fillColor("#666666").text(`No. ${payment.receiptNo ?? payment.id.slice(-6)}`);
+  doc
+    .fontSize(9)
+    .fillColor("#666666")
+    .text(`No. ${payment.receiptNo ?? payment.id.slice(-6)}`);
   doc.text(`Date: ${date}`);
   doc.moveDown(0.8);
 
   const rows: Array<[string, string]> = [
     ["Received from", record?.name || "Customer"],
-    ["Against", `${payment.moduleId === "finance" ? "Invoice" : "Booking"} ${payment.recordReference}`],
+    [
+      "Against",
+      `${payment.moduleId === "finance" ? "Invoice" : "Booking"} ${payment.recordReference}`,
+    ],
     ["Mode", payment.method],
     ["Reference", payment.referenceNo || "—"],
   ];

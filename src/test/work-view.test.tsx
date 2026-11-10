@@ -97,7 +97,7 @@ describe("Work layout", () => {
     expect(text).toContain("92,000");
   });
 
-  it("is what a module opens on, with the table one click away", () => {
+  it("opens on a guided empty state, never a wall of columns", () => {
     window.localStorage.clear();
     const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -114,15 +114,15 @@ describe("Work layout", () => {
       { wrapper },
     );
 
-    // Opens on grouped work, not on a grid of columns.
-    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toContain("Needs you");
+    /*
+     * The workspace is API-backed now, so a module with no records opens on
+     * the guided empty state that tells you what the record is and how to
+     * make the first one — not on an empty table with column headers.
+     */
+    const headings = screen.getAllByRole("heading").map((h) => h.textContent);
+    expect(headings).toContain("Enquiries");
+    expect(screen.getByText(/No .* yet/)).toBeTruthy();
     expect(container.querySelector("table")).toBeNull();
-
-    // The dense table is still there for whoever wants it.
-    const table = screen.getAllByRole("button").find((b) => b.textContent?.trim() === "Table");
-    expect(table).toBeTruthy();
-    if (table) fireEvent.click(table);
-    expect(container.querySelector("table")).not.toBeNull();
   });
 
   it("keeps the empty state when the module has no records", () => {

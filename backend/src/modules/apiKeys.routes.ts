@@ -8,13 +8,20 @@ import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { parseJson, randomToken, sha256, stringifyJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
+import { API_KEY_SCOPES } from "../domain/rbac";
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, requireRole("company_admin", "branch_manager"));
 
 const createSchema = z.object({
   name: z.string().min(2).max(80),
-  scopes: z.array(z.string()).default(["*"]),
+  // Least privilege by default: a new key can read, and nothing else until
+  // the person creating it says so.
+  scopes: z
+    .array(z.enum(API_KEY_SCOPES))
+    .min(1)
+    .max(API_KEY_SCOPES.length)
+    .default(["read"]),
 });
 
 /** API keys for integrations and the B2B agent portal. */

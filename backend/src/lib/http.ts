@@ -2,7 +2,9 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 /** Wraps async handlers so rejected promises reach the global error middleware. */
 export const asyncHandler =
-  (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown): RequestHandler =>
+  (
+    fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown,
+  ): RequestHandler =>
   (req, res, next) => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };

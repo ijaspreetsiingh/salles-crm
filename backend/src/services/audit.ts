@@ -15,7 +15,16 @@ export type AuditAction =
   | "Connected"
   | "Disconnected"
   | "WorkflowRun"
-  | "MessageSent";
+  | "MessageSent"
+  | "ReminderSent"
+  | "Sent"
+  | "PNRCreated"
+  | "PNRTicketed"
+  | "PNRVoided"
+  | "PNRRefunded"
+  | "PNRExpired"
+  | "PaymentReconciled"
+  | (string & Record<never, never>); // allow arbitrary strings while keeping autocomplete
 
 type AuditInput = {
   organizationId: string;

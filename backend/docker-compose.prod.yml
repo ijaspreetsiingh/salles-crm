@@ -56,6 +56,12 @@ services:
       AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID}
       AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET}
       AMADEUS_HOST: ${AMADEUS_HOST:-https://api.amadeus.com}
+      HOTELBEDS_API_KEY: ${HOTELBEDS_API_KEY:-}
+      HOTELBEDS_SECRET: ${HOTELBEDS_SECRET:-}
+      HOTELBEDS_ENV: ${HOTELBEDS_ENV:-production}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@yourdomain.com}
     volumes:
       - traveldesk-data:/app/data
     depends_on:

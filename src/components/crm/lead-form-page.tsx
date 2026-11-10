@@ -73,7 +73,11 @@ export function LeadFormPage() {
           </span>
           <h1>Enquiry received — thank you!</h1>
           <p className="lead-form-sub">{sent.message}</p>
-          {sent.reference ? <p className="lead-ref">Your reference: <b>{sent.reference}</b></p> : null}
+          {sent.reference ? (
+            <p className="lead-ref">
+              Your reference: <b>{sent.reference}</b>
+            </p>
+          ) : null}
         </div>
       </div>
     );
@@ -97,11 +101,23 @@ export function LeadFormPage() {
           <div className="lead-form-grid">
             <label>
               <User size={14} /> Full name
-              <input name="name" required minLength={2} maxLength={120} placeholder="Aarav Sharma" />
+              <input
+                name="name"
+                required
+                minLength={2}
+                maxLength={120}
+                placeholder="Aarav Sharma"
+              />
             </label>
             <label>
               <Mail size={14} /> Email
-              <input name="email" type="email" required maxLength={160} placeholder="you@example.com" />
+              <input
+                name="email"
+                type="email"
+                required
+                maxLength={160}
+                placeholder="you@example.com"
+              />
             </label>
             <label>
               <Phone size={14} /> Phone / WhatsApp
@@ -137,8 +153,8 @@ export function LeadFormPage() {
           </button>
         </form>
         <p className="lead-form-foot">
-          Your details go straight to {meta?.organization.name ?? "the travel desk"} — never to third
-          parties.
+          Your details go straight to {meta?.organization.name ?? "the travel desk"} — never to
+          third parties.
           {meta?.organization.supportEmail ? (
             <> Prefer email? Write to {meta.organization.supportEmail}.</>
           ) : null}

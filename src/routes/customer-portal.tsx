@@ -1,11 +1,20 @@
 import { useState, type ReactNode, type FormEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plane, Mail, Search, ArrowRight, Download, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  Plane,
+  Mail,
+  Search,
+  ArrowRight,
+  Download,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Panel } from "@/components/crm/ui";
 import { PageIdentity } from "@/components/crm/page";
-import { downloadInvoicePdf } from "@/lib/api/modules";
+import { API_BASE_URL } from "@/lib/api/client";
 import { formatDay, money } from "@/lib/crm/catalog";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +36,8 @@ type BookingRecord = {
   date: string;
   notes: string;
   canDownloadInvoice: boolean;
+  /** Signed, short-lived token for the public invoice PDF. */
+  invoiceDownloadToken: string | null;
 };
 
 type CustomerPortalData = {
@@ -65,7 +76,7 @@ export function CustomerPortal() {
 
     try {
       const response = await fetch(
-        `/api/v1/public/customer-portal/lookup?email=${encodeURIComponent(email)}&reference=${encodeURIComponent(reference)}`,
+        `${API_BASE_URL}/public/customer-portal/lookup?email=${encodeURIComponent(email)}&reference=${encodeURIComponent(reference)}`,
       );
       if (!response.ok) {
         setState("not-found");
@@ -73,7 +84,14 @@ export function CustomerPortal() {
         return;
       }
       const result = await response.json();
-      setData(result);
+      // The API wraps every payload in `{ success, data }`.
+      const payload = (result?.data ?? result) as CustomerPortalData;
+      if (!payload || !payload.organization || !Array.isArray(payload.records)) {
+        setState("error");
+        setError("We could not read this booking. Please contact your travel company.");
+        return;
+      }
+      setData(payload);
       setState("found");
     } catch {
       setState("error");
@@ -81,9 +99,25 @@ export function CustomerPortal() {
     }
   };
 
-  const downloadInvoice = async (reference: string) => {
+  const downloadInvoice = async (record: BookingRecord) => {
+    if (!record.invoiceDownloadToken) {
+      setError("This invoice is not available for download yet. Please contact support.");
+      return;
+    }
     try {
-      await downloadInvoicePdf(reference);
+      // Public endpoint: the signed token is the credential, not the session.
+      const url = `${API_BASE_URL}/public/customer-portal/invoice/${encodeURIComponent(
+        record.invoiceDownloadToken,
+      )}/download`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = `invoice-${record.reference}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
     } catch {
       setError("Unable to download invoice. Please contact support.");
     }
@@ -134,7 +168,11 @@ export function CustomerPortal() {
               disabled={state === "searching"}
               className="w-full bg-ink text-on-ink hover:opacity-90"
             >
-              {state === "searching" ? <Clock className="size-4 mr-2" /> : <Search className="size-4" />}
+              {state === "searching" ? (
+                <Clock className="size-4 mr-2" />
+              ) : (
+                <Search className="size-4" />
+              )}
               {state === "searching" ? "Searching…" : "Find My Booking"}
             </Button>
           </form>
@@ -155,7 +193,9 @@ export function CustomerPortal() {
                 <div>
                   <h3 className="text-sm font-semibold text-foreground">{data.customer.name}</h3>
                   <p className="text-xs text-muted">{data.customer.email}</p>
-                  {data.customer.phone && <p className="text-xs text-muted">{data.customer.phone}</p>}
+                  {data.customer.phone && (
+                    <p className="text-xs text-muted">{data.customer.phone}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 ml-auto">
@@ -164,7 +204,9 @@ export function CustomerPortal() {
               </div>
             </Panel>
 
-            <h2 className="text-lg font-bold text-foreground">Your Bookings ({data.records.length})</h2>
+            <h2 className="text-lg font-bold text-foreground">
+              Your Bookings ({data.records.length})
+            </h2>
 
             <div className="grid gap-4">
               {data.records.map((record) => (
@@ -195,18 +237,21 @@ export function CustomerPortal() {
                       {record.destination} • {formatDay(record.date)}
                     </p>
                     <p className="text-xs text-muted">
-                      Reference: <span className="font-mono text-foreground">{record.reference}</span>
+                      Reference:{" "}
+                      <span className="font-mono text-foreground">{record.reference}</span>
                     </p>
                   </Panel>
                   <div className="text-right">
-                    <div className="text-sm font-bold text-foreground">{money(record.amount, record.currency)}</div>
+                    <div className="text-sm font-bold text-foreground">
+                      {money(record.amount, record.currency || "INR")}
+                    </div>
                     {record.canDownloadInvoice && (
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={(e) => {
                           e.preventDefault();
-                          downloadInvoice(record.reference);
+                          downloadInvoice(record);
                         }}
                       >
                         <Download className="size-4 mr-2" /> Download Invoice
@@ -218,13 +263,8 @@ export function CustomerPortal() {
             </div>
 
             <div className="pt-4 border-t border-line flex items-center justify-between">
-              <p className="text-xs text-muted">
-                Powered by {data.organization.name}
-              </p>
-              <Link
-                to="/"
-                className="text-xs font-medium text-pine hover:underline"
-              >
+              <p className="text-xs text-muted">Powered by {data.organization.name}</p>
+              <Link to="/" className="text-xs font-medium text-pine hover:underline">
                 ← Back to main site
               </Link>
             </div>
@@ -238,7 +278,8 @@ export function CustomerPortal() {
             <h3 className="text-lg font-bold text-foreground">No booking found</h3>
             <p className="text-muted mt-2">
               We couldn't find a booking with this email and reference. Please check your details
-              and try again, or contact {data?.organization.supportEmail || "our support team"} for help.
+              and try again, or contact {data?.organization.supportEmail || "our support team"} for
+              help.
             </p>
             <div className="mt-6 flex justify-center gap-3">
               <Button onClick={() => setState("idle")}>Try Again</Button>

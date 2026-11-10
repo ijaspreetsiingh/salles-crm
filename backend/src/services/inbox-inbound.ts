@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { createNotification } from "./notifications";
+import { emitToOrg } from "../lib/socket";
 
 /**
  * Inbound messages reach the shared inbox.
@@ -80,19 +81,20 @@ export async function recordInboundMessage(input: InboundMessage): Promise<Inbou
   }
 
   // Find the thread this message belongs to: same channel, same person.
-  let conversation = phone || email
-    ? await prisma.conversation.findFirst({
-        where: {
-          organizationId: input.organizationId,
-          channel: input.channel,
-          OR: [
-            ...(email ? [{ contactEmail: email }] : []),
-            ...(phone ? [{ contactPhone: { contains: phone.slice(-10) } }] : []),
-          ],
-        },
-        orderBy: { lastMessageAt: "desc" },
-      })
-    : null;
+  let conversation =
+    phone || email
+      ? await prisma.conversation.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            channel: input.channel,
+            OR: [
+              ...(email ? [{ contactEmail: email }] : []),
+              ...(phone ? [{ contactPhone: { contains: phone.slice(-10) } }] : []),
+            ],
+          },
+          orderBy: { lastMessageAt: "desc" },
+        })
+      : null;
 
   // Also link the thread to the record it is about, if the customer is on file.
   const linkedRecord =
@@ -117,7 +119,8 @@ export async function recordInboundMessage(input: InboundMessage): Promise<Inbou
         contactName: name,
         contactEmail: email,
         contactPhone: clean(input.contactPhone, 40),
-        subject: clean(input.subject, 200) || (linkedRecord ? `Enquiry — ${linkedRecord.name}` : ""),
+        subject:
+          clean(input.subject, 200) || (linkedRecord ? `Enquiry — ${linkedRecord.name}` : ""),
         status: "Open",
         recordId: linkedRecord?.id ?? null,
       },
@@ -145,11 +148,18 @@ export async function recordInboundMessage(input: InboundMessage): Promise<Inbou
         lastMessageAt: new Date(),
         // A customer replying reopens a thread somebody had marked resolved.
         status: "Open",
-        contactName: conversation.contactName === "Unknown contact" ? name : conversation.contactName,
+        contactName:
+          conversation.contactName === "Unknown contact" ? name : conversation.contactName,
         ...(conversation.recordId ? {} : linkedRecord ? { recordId: linkedRecord.id } : {}),
       },
     }),
   ]);
+
+  // Fetch the saved message to build a complete DTO for socket broadcast.
+  const savedMessage = await prisma.message.findFirst({
+    where: { conversationId: conversation.id },
+    orderBy: { createdAt: "desc" },
+  });
 
   await createNotification({
     organizationId: input.organizationId,
@@ -159,6 +169,44 @@ export async function recordInboundMessage(input: InboundMessage): Promise<Inbou
     recordId: conversation.id,
     level: "info",
   }).catch(() => undefined);
+
+  // Push live updates so every open inbox tab sees the new message immediately.
+  if (savedMessage) {
+    const messageDto = {
+      id: savedMessage.id,
+      conversationId: conversation.id,
+      direction: "in",
+      channel: input.channel,
+      body,
+      sentBy: name,
+      createdAt: savedMessage.createdAt.toISOString(),
+      delivery: null,
+    };
+    emitToOrg(input.organizationId, "message:new", messageDto);
+  }
+
+  if (created) {
+    emitToOrg(input.organizationId, "conversation:new", {
+      id: conversation.id,
+      channel: input.channel,
+      contactName: name,
+      contactEmail: email,
+      contactPhone: input.contactPhone ?? "",
+      subject: conversation.subject,
+      status: "Open",
+      assignedTo: null,
+      lastMessageAt: conversation.lastMessageAt.toISOString(),
+      preview: body.slice(0, 120),
+      messageCount: 1,
+    });
+  } else {
+    emitToOrg(input.organizationId, "conversation:updated", {
+      id: conversation.id,
+      status: "Open",
+      lastMessageAt: new Date().toISOString(),
+      preview: body.slice(0, 120),
+    });
+  }
 
   return { conversationId: conversation.id, created, duplicate: false };
 }

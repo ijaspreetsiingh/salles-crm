@@ -110,6 +110,23 @@ describe("The worklist", () => {
     });
     expect(list).toHaveLength(0);
   });
+
+  it("nudges about a group trip leaving soon and one that already left", () => {
+    const list = buildWorklist({
+      ...base,
+      groups: [
+        row({ id: "GRP-1", name: "TechCorp offsite", status: "Open for sale", date: "2026-03-14" }),
+        row({ id: "GRP-2", name: "Rajasthan heritage", status: "Planning", date: "2026-03-05" }),
+        row({ id: "GRP-3", name: "Old group", status: "Completed", date: "2026-03-01" }),
+      ],
+    });
+    const ids = list.map((i) => i.id);
+    expect(ids).toContain("group-GRP-1");
+    expect(ids).toContain("group-GRP-2");
+    expect(ids).not.toContain("group-GRP-3");
+    expect(list.find((i) => i.id === "group-GRP-2")?.tone).toBe("overdue");
+    expect(list.find((i) => i.id === "group-GRP-1")?.title).toContain("leaves in 4 days");
+  });
 });
 
 describe("The headline", () => {

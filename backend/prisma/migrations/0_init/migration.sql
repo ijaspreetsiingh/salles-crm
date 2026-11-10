@@ -16,8 +16,8 @@ CREATE TABLE "Organization" (
     "plan" TEXT NOT NULL DEFAULT 'enterprise',
     "planStatus" TEXT NOT NULL DEFAULT 'active',
     "settings" TEXT NOT NULL DEFAULT '{}',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL
 );
 
 -- CreateTable
@@ -30,9 +30,21 @@ CREATE TABLE "User" (
     "avatarUrl" TEXT,
     "isPlatformAdmin" BOOLEAN NOT NULL DEFAULT false,
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "lastLoginAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "lastLoginAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "Branch" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "organizationId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "code" TEXT,
+    "address" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "Branch_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -43,7 +55,7 @@ CREATE TABLE "Membership" (
     "roleKey" TEXT NOT NULL DEFAULT 'company_admin',
     "branchId" TEXT,
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Membership_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Membership_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Membership_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch" ("id") ON DELETE SET NULL ON UPDATE CASCADE
@@ -56,9 +68,9 @@ CREATE TABLE "RefreshToken" (
     "tokenHash" TEXT NOT NULL,
     "userAgent" TEXT,
     "ip" TEXT,
-    "expiresAt" DATETIME NOT NULL,
-    "revokedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP NOT NULL,
+    "revokedAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -71,8 +83,8 @@ CREATE TABLE "Role" (
     "description" TEXT,
     "permissions" TEXT NOT NULL DEFAULT '{}',
     "isSystem" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Role_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -84,22 +96,10 @@ CREATE TABLE "ApiKey" (
     "prefix" TEXT NOT NULL,
     "keyHash" TEXT NOT NULL,
     "scopes" TEXT NOT NULL DEFAULT '[]',
-    "lastUsedAt" DATETIME,
-    "revokedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastUsedAt" TIMESTAMP,
+    "revokedAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "ApiKey_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
-);
-
--- CreateTable
-CREATE TABLE "Branch" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "organizationId" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "code" TEXT,
-    "address" TEXT,
-    "active" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Branch_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateTable
@@ -128,9 +128,9 @@ CREATE TABLE "Record" (
     "meta" TEXT NOT NULL DEFAULT '{}',
     "createdById" TEXT,
     "updatedById" TEXT,
-    "deletedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "deletedAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Record_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Record_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "Branch" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Record_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
@@ -150,8 +150,8 @@ CREATE TABLE "Task" (
     "relatedModule" TEXT,
     "relatedRecordId" TEXT,
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Task_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Task_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -167,7 +167,7 @@ CREATE TABLE "CustomField" (
     "options" TEXT NOT NULL DEFAULT '[]',
     "required" BOOLEAN NOT NULL DEFAULT false,
     "position" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "CustomField_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -184,7 +184,7 @@ CREATE TABLE "AuditLog" (
     "meta" TEXT NOT NULL DEFAULT '{}',
     "ip" TEXT,
     "userAgent" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "AuditLog_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "AuditLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -199,8 +199,8 @@ CREATE TABLE "Notification" (
     "moduleId" TEXT,
     "recordId" TEXT,
     "level" TEXT NOT NULL DEFAULT 'info',
-    "readAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "readAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Notification_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Notification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
@@ -217,8 +217,8 @@ CREATE TABLE "Conversation" (
     "subject" TEXT NOT NULL DEFAULT '',
     "status" TEXT NOT NULL DEFAULT 'Open',
     "assignedTo" TEXT,
-    "lastMessageAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "lastMessageAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Conversation_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -233,7 +233,7 @@ CREATE TABLE "Message" (
     "sentById" TEXT,
     "sentByName" TEXT NOT NULL DEFAULT '',
     "meta" TEXT NOT NULL DEFAULT '{}',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Message_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -244,7 +244,7 @@ CREATE TABLE "MessageTemplate" (
     "channel" TEXT NOT NULL DEFAULT 'Shared inbox',
     "name" TEXT NOT NULL,
     "body" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "MessageTemplate_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -261,7 +261,7 @@ CREATE TABLE "CallLog" (
     "recordId" TEXT,
     "ownerName" TEXT NOT NULL DEFAULT '',
     "calledById" TEXT,
-    "calledAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "calledAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "CallLog_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -276,8 +276,8 @@ CREATE TABLE "ConsentRecord" (
     "whatsapp" BOOLEAN NOT NULL DEFAULT false,
     "calls" BOOLEAN NOT NULL DEFAULT false,
     "source" TEXT NOT NULL DEFAULT 'Direct',
-    "capturedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "capturedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "ConsentRecord_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -293,10 +293,10 @@ CREATE TABLE "Workflow" (
     "graph" TEXT NOT NULL DEFAULT '',
     "status" TEXT NOT NULL DEFAULT 'Active',
     "runCount" INTEGER NOT NULL DEFAULT 0,
-    "lastRunAt" DATETIME,
+    "lastRunAt" TIMESTAMP,
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Workflow_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -307,8 +307,8 @@ CREATE TABLE "WorkflowRun" (
     "status" TEXT NOT NULL DEFAULT 'success',
     "trigger" TEXT NOT NULL DEFAULT '',
     "log" TEXT NOT NULL DEFAULT '',
-    "startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "finishedAt" DATETIME,
+    "startedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "finishedAt" TIMESTAMP,
     CONSTRAINT "WorkflowRun_workflowId_fkey" FOREIGN KEY ("workflowId") REFERENCES "Workflow" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -322,9 +322,9 @@ CREATE TABLE "IntegrationConnection" (
     "status" TEXT NOT NULL DEFAULT 'Not connected',
     "description" TEXT NOT NULL DEFAULT '',
     "config" TEXT NOT NULL DEFAULT '{}',
-    "connectedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "connectedAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "IntegrationConnection_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -336,7 +336,7 @@ CREATE TABLE "Webhook" (
     "events" TEXT NOT NULL DEFAULT '[]',
     "secret" TEXT NOT NULL,
     "active" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Webhook_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -348,7 +348,7 @@ CREATE TABLE "WebhookDelivery" (
     "status" TEXT NOT NULL DEFAULT 'pending',
     "responseCode" INTEGER,
     "payload" TEXT NOT NULL DEFAULT '{}',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "WebhookDelivery_webhookId_fkey" FOREIGN KEY ("webhookId") REFERENCES "Webhook" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -360,7 +360,7 @@ CREATE TABLE "SavedReport" (
     "moduleId" TEXT NOT NULL DEFAULT 'reports',
     "filters" TEXT NOT NULL DEFAULT '{}',
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "SavedReport_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "SavedReport_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -374,7 +374,7 @@ CREATE TABLE "AiMessage" (
     "role" TEXT NOT NULL,
     "content" TEXT NOT NULL,
     "model" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "AiMessage_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "AiMessage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -400,11 +400,11 @@ CREATE TABLE "Subscription" (
     "status" TEXT NOT NULL DEFAULT 'active',
     "billingCycle" TEXT NOT NULL DEFAULT 'Yearly',
     "seats" INTEGER NOT NULL DEFAULT 5,
-    "currentPeriodStart" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "currentPeriodEnd" DATETIME,
+    "currentPeriodStart" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "currentPeriodEnd" TIMESTAMP,
     "cancelAtPeriodEnd" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Subscription_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Subscription_planKey_fkey" FOREIGN KEY ("planKey") REFERENCES "Plan" ("key") ON DELETE RESTRICT ON UPDATE CASCADE
 );
@@ -416,7 +416,7 @@ CREATE TABLE "UsageRecord" (
     "metric" TEXT NOT NULL,
     "value" INTEGER NOT NULL DEFAULT 0,
     "period" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "UsageRecord_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -431,7 +431,7 @@ CREATE TABLE "Attachment" (
     "mimeType" TEXT NOT NULL DEFAULT 'application/octet-stream',
     "size" INTEGER NOT NULL DEFAULT 0,
     "uploadedById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Attachment_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "Attachment_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
@@ -451,8 +451,8 @@ CREATE TABLE "EmailOutbox" (
     "userId" TEXT,
     "relatedModule" TEXT,
     "relatedReference" TEXT NOT NULL DEFAULT '',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "sentAt" DATETIME,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sentAt" TIMESTAMP,
     CONSTRAINT "EmailOutbox_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -469,7 +469,7 @@ CREATE TABLE "Payment" (
     "amount" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'INR',
     "method" TEXT NOT NULL DEFAULT 'Razorpay',
-    "paidOn" DATETIME,
+    "paidOn" TIMESTAMP,
     "createdById" TEXT,
     "status" TEXT NOT NULL DEFAULT 'created',
     "provider" TEXT NOT NULL DEFAULT 'razorpay',
@@ -477,8 +477,8 @@ CREATE TABLE "Payment" (
     "providerPaymentId" TEXT,
     "signature" TEXT,
     "checkoutUrl" TEXT,
-    "paidAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "paidAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Payment_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -493,12 +493,12 @@ CREATE TABLE "Payable" (
     "amount" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'INR',
     "gstRate" REAL NOT NULL DEFAULT 0,
-    "dueDate" DATETIME,
+    "dueDate" TIMESTAMP,
     "status" TEXT NOT NULL DEFAULT 'due',
     "notes" TEXT NOT NULL DEFAULT '',
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "Payable_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -512,14 +512,14 @@ CREATE TABLE "Expense" (
     "amount" REAL NOT NULL DEFAULT 0,
     "currency" TEXT NOT NULL DEFAULT 'INR',
     "gstRate" REAL NOT NULL DEFAULT 0,
-    "spentOn" DATETIME,
+    "spentOn" TIMESTAMP,
     "method" TEXT NOT NULL DEFAULT 'Bank transfer',
     "referenceNo" TEXT NOT NULL DEFAULT '',
     "notes" TEXT NOT NULL DEFAULT '',
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
-    "deletedAt" DATETIME,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
+    "deletedAt" TIMESTAMP,
     CONSTRAINT "Expense_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -544,9 +544,9 @@ CREATE TABLE "HotelRate" (
     "notes" TEXT NOT NULL DEFAULT '',
     "active" BOOLEAN NOT NULL DEFAULT true,
     "createdById" TEXT,
-    "deletedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL,
+    "deletedAt" TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP NOT NULL,
     CONSTRAINT "HotelRate_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
@@ -556,12 +556,12 @@ CREATE TABLE "PayablePayment" (
     "organizationId" TEXT NOT NULL,
     "payableId" TEXT NOT NULL,
     "amount" REAL NOT NULL DEFAULT 0,
-    "paidOn" DATETIME,
+    "paidOn" TIMESTAMP,
     "method" TEXT NOT NULL DEFAULT 'Bank transfer',
     "referenceNo" TEXT NOT NULL DEFAULT '',
     "note" TEXT NOT NULL DEFAULT '',
     "createdById" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "PayablePayment_payableId_fkey" FOREIGN KEY ("payableId") REFERENCES "Payable" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 

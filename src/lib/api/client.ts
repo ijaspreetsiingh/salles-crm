@@ -15,9 +15,6 @@ export const API_BASE_URL = (env["VITE_API_URL"] ?? "http://localhost:4000/api/v
   "",
 );
 
-const ACCESS_KEY = "traveldesk.accessToken";
-const REFRESH_KEY = "traveldesk.refreshToken";
-
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -72,29 +69,53 @@ export function errorMessage(error: unknown, fallback = "Something went wrong"):
 
 const storage = (): Storage | null => (typeof window === "undefined" ? null : window.localStorage);
 
+/**
+ * Access tokens are held in memory only.
+ *
+ * The server already issues an httpOnly `access_token` cookie and rotates it
+ * with an httpOnly refresh cookie, so a page refresh recovers the session
+ * without any script ever being able to read the token. Older builds wrote the
+ * token to localStorage; those keys are removed the first time this module
+ * loads so an XSS bug cannot replay a stale token.
+ */
+const LEGACY_ACCESS_KEY = "traveldesk.accessToken";
+const LEGACY_REFRESH_KEY = "traveldesk.refreshToken";
+
+let memoryAccessToken: string | null = null;
+
+function clearLegacyTokens(): void {
+  const store = storage();
+  if (!store) return;
+  store.removeItem(LEGACY_ACCESS_KEY);
+  store.removeItem(LEGACY_REFRESH_KEY);
+}
+
 export const tokenStore = {
   get access(): string | null {
-    return storage()?.getItem(ACCESS_KEY) ?? null;
+    return memoryAccessToken;
   },
   get refresh(): string | null {
-    return storage()?.getItem(REFRESH_KEY) ?? null;
+    // The refresh token lives in an httpOnly cookie; JavaScript must not see it.
+    return null;
   },
-  set(access: string | null, refresh?: string | null) {
-    const store = storage();
-    if (!store) return;
-    if (access) store.setItem(ACCESS_KEY, access);
-    else store.removeItem(ACCESS_KEY);
-    if (refresh !== undefined) {
-      if (refresh) store.setItem(REFRESH_KEY, refresh);
-      else store.removeItem(REFRESH_KEY);
-    }
+  set(access: string | null, _refresh?: string | null) {
+    memoryAccessToken = access || null;
+    clearLegacyTokens();
   },
   clear() {
-    const store = storage();
-    if (!store) return;
-    store.removeItem(ACCESS_KEY);
-    store.removeItem(REFRESH_KEY);
+    memoryAccessToken = null;
+    clearLegacyTokens();
   },
+};
+
+// Run once on import (browser only).
+clearLegacyTokens();
+
+/** CSRF cookie is intentionally readable — that is how double-submit works. */
+const readCookie = (name: string): string | null => {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match && match[1] ? decodeURIComponent(match[1]) : null;
 };
 
 type Query = Record<string, string | number | boolean | undefined | null>;
@@ -123,21 +144,19 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 /** Exchanges the stored refresh token for a new token pair. */
 async function refreshSession(): Promise<boolean> {
-  const refreshToken = tokenStore.refresh;
-  if (!refreshToken) return false;
   try {
     const response = await fetch(buildUrl("/auth/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      credentials: "include",
+      body: JSON.stringify({}),
     });
     if (!response.ok) return false;
     const payload = (await response.json().catch(() => null)) as {
       data?: { accessToken?: string; refreshToken?: string };
     } | null;
     const data = payload?.data;
-    if (!data?.accessToken) return false;
-    tokenStore.set(data.accessToken, data.refreshToken ?? refreshToken);
+    if (data?.accessToken) tokenStore.set(data.accessToken, data.refreshToken ?? undefined);
     return true;
   } catch {
     return false;
@@ -154,9 +173,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     const token = tokenStore.access;
     if (useAuth && token) headers["Authorization"] = `Bearer ${token}`;
+    const csrf = readCookie("csrf_token");
+    if (csrf && method !== "GET") headers["X-CSRF-Token"] = csrf;
     const init: RequestInit = {
       method,
       headers,
+      credentials: "include",
       signal: options.signal ?? null,
     };
     if (options.body !== undefined) init.body = JSON.stringify(options.body);
@@ -165,7 +187,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   let response = await withRetry(send, useAuth);
 
-  if (response.status === 401 && useAuth && tokenStore.refresh) {
+  if (response.status === 401 && useAuth) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
@@ -213,11 +235,13 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     const headers: Record<string, string> = { Accept: "application/json" };
     const token = tokenStore.access;
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    return fetch(buildUrl(path), { method: "POST", headers, body: form });
+    const csrf = readCookie("csrf_token");
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+    return fetch(buildUrl(path), { method: "POST", headers, body: form, credentials: "include" });
   };
 
   let response = await withRetry(send, useAuth);
-  if (response.status === 401 && tokenStore.refresh) {
+  if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
@@ -258,11 +282,11 @@ export async function apiDownload(path: string, query?: Query): Promise<string> 
     const headers: Record<string, string> = { Accept: "text/csv, text/plain, */*" };
     const token = tokenStore.access;
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    return fetch(buildUrl(path, query), { method: "GET", headers });
+    return fetch(buildUrl(path, query), { method: "GET", headers, credentials: "include" });
   };
 
   let response = await withRetry(send, useAuth);
-  if (response.status === 401 && tokenStore.refresh) {
+  if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
@@ -276,17 +300,17 @@ export async function apiDownload(path: string, query?: Query): Promise<string> 
 }
 
 /** Fetches a binary response body (file downloads) with the bearer token attached. */
-export async function apiBlob(path: string): Promise<Blob> {
+export async function apiBlob(path: string, query?: Query): Promise<Blob> {
   const useAuth = true;
   const send = () => {
     const headers: Record<string, string> = { Accept: "*/*" };
     const token = tokenStore.access;
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    return fetch(buildUrl(path), { method: "GET", headers });
+    return fetch(buildUrl(path, query), { method: "GET", headers, credentials: "include" });
   };
 
   let response = await withRetry(send, useAuth);
-  if (response.status === 401 && tokenStore.refresh) {
+  if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {

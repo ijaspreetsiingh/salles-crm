@@ -124,9 +124,7 @@ router.patch(
       where: { id: existing.id },
       data: {
         ...rest,
-        ...(statuses
-          ? { audience: JSON.stringify({ statuses }) }
-          : {}),
+        ...(statuses ? { audience: JSON.stringify({ statuses }) } : {}),
         ...(rest.name ? { name: rest.name.trim() } : {}),
       },
     });
@@ -192,7 +190,6 @@ router.post(
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!campaign) throw new NotFoundError("Campaign");
-    if (campaign.status === "sending") throw new BadRequestError("This campaign is already sending");
     if (!campaign.body.trim()) throw new BadRequestError("Write the message before sending it");
 
     const filters = JSON.parse(campaign.audience || "{}") as { statuses?: string[] };
@@ -210,10 +207,18 @@ router.post(
       );
     }
 
-    await prisma.campaign.update({
-      where: { id: campaign.id },
+    /*
+     * Claim the campaign before doing any work. Two people pressing "Send" at
+     * the same moment — or one person double-clicking — would otherwise both
+     * read "draft", both start the background send, and mail the same list
+     * twice. This single UPDATE is atomic in Postgres: the second caller sees
+     * zero rows and is told to wait.
+     */
+    const claimed = await prisma.campaign.updateMany({
+      where: { id: campaign.id, organizationId: req.auth!.organizationId, status: { not: "sending" } },
       data: { status: "sending", total: preview.eligible.length, sent: 0, failed: 0 },
     });
+    if (claimed.count === 0) throw new BadRequestError("This campaign is already sending");
 
     void sendCampaign({
       organizationId: req.auth!.organizationId,

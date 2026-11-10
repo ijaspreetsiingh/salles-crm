@@ -160,9 +160,13 @@ export const guides: Record<string, ModuleGuide> = {
       ],
     },
     [
-      { label: "All campaigns", hint: "Live, paused and finished." },
-      { label: "Live", statuses: ["Active"], hint: "Currently running." },
-      { label: "Drafts", statuses: ["Draft"], hint: "Not published yet." },
+      {
+        label: "Campaigns",
+        hint: "Write the message, pick the audience, send it and watch the delivery log.",
+      },
+      { label: "Segments", hint: "The groups of customers your offers are aimed at." },
+      { label: "Referrals & coupons", hint: "Who brought whom, and what it cost you." },
+      { label: "Attribution", hint: "Which offer actually produced a booking." },
     ],
   ),
   bookings: g(
@@ -295,7 +299,7 @@ export const guides: Record<string, ModuleGuide> = {
     ],
   ),
   groups: g(
-    "Group trips, conferences and events, with one rooming list and one budget.",
+    "Group trips, conferences and events, with one traveller list and one budget.",
     "ledger",
     "Add a group",
     {
@@ -304,14 +308,22 @@ export const guides: Record<string, ModuleGuide> = {
         "A group brings many travellers, many rooms and one budget. Keep it in one place.",
       steps: [
         "Add the group and the dates",
-        "Add delegates and their rooms",
-        "Track the budget against actuals",
+        "Add the delegates, or paste the whole list",
+        "Assign rooms and take the rooming list",
       ],
     },
     [
       { label: "All groups", hint: "Every group trip." },
-      { label: "Delegates", hint: "Who is travelling." },
-      { label: "Room blocks", hint: "Rooms held per hotel." },
+      {
+        label: "Filling up",
+        statuses: ["Planning", "Open for sale"],
+        hint: "Still selling seats.",
+      },
+      {
+        label: "Locked in",
+        statuses: ["Confirmed", "Departed"],
+        hint: "Confirmed and travelling.",
+      },
     ],
   ),
   operations: g(
@@ -419,6 +431,8 @@ export const guides: Record<string, ModuleGuide> = {
       },
       { label: "Overdue", statuses: ["Overdue"], hint: "Past the due date." },
       { label: "Paid", statuses: ["Paid"], hint: "Settled." },
+      { label: "Payables", hint: "Money you owe suppliers." },
+      { label: "Tax & GST", hint: "Output tax, input credit and the net payable." },
     ],
   ),
   assistant: g(

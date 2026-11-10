@@ -48,7 +48,10 @@ export function PlatformPortal() {
 
   const refresh = useCallback(async () => {
     try {
-      const [orgList, planList] = await Promise.all([fetchPlatformOrganizations(), fetchPlatformPlans()]);
+      const [orgList, planList] = await Promise.all([
+        fetchPlatformOrganizations(),
+        fetchPlatformPlans(),
+      ]);
       setOrgs(orgList);
       setPlans(planList);
       setDenied(false);
@@ -66,7 +69,9 @@ export function PlatformPortal() {
   useEffect(() => {
     if (!user?.isPlatformAdmin) return;
     void refresh();
-    fetchPlans().then(setBuyPlans).catch(() => setBuyPlans([]));
+    fetchPlans()
+      .then(setBuyPlans)
+      .catch(() => setBuyPlans([]));
     document.title = "Platform admin — Traveldesk";
   }, [user?.isPlatformAdmin, refresh]);
 
@@ -93,7 +98,10 @@ export function PlatformPortal() {
   }
 
   const priceByKey = new Map(buyPlans.map((p) => [p.key, p.priceMonthly]));
-  const monthlyRevenue = orgs.reduce((sum, org) => sum + (priceByKey.get(org.planKey ?? "") ?? 0), 0);
+  const monthlyRevenue = orgs.reduce(
+    (sum, org) => sum + (priceByKey.get(org.planKey ?? "") ?? 0),
+    0,
+  );
   const teamTotal = orgs.reduce((sum, org) => sum + org.members, 0);
   const byPlan = orgs.reduce<Record<string, number>>((acc, org) => {
     const key = org.planKey ?? "no plan";
@@ -117,7 +125,10 @@ export function PlatformPortal() {
         priceMonthly: price,
         priceYearly: Math.round(price * 10),
         currency: "INR",
-        features: draftPlan.features.split(",").map((f) => f.trim()).filter(Boolean),
+        features: draftPlan.features
+          .split(",")
+          .map((f) => f.trim())
+          .filter(Boolean),
         popular: false,
         position: plans.length + 1,
       });
@@ -250,7 +261,9 @@ export function PlatformPortal() {
             <div className="portal-cols">
               <section className="portal-card">
                 <h2>Companies by plan</h2>
-                {Object.entries(byPlan).length === 0 && <p className="portal-empty">No companies yet.</p>}
+                {Object.entries(byPlan).length === 0 && (
+                  <p className="portal-empty">No companies yet.</p>
+                )}
                 {Object.entries(byPlan).map(([planKey, count]) => {
                   const plan = plans.find((p) => p.key === planKey);
                   return (
@@ -269,16 +282,23 @@ export function PlatformPortal() {
                     <span>
                       <b>{org.name}</b>
                       <small style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>
-                        {org.members} members · {new Date(org.createdAt).toLocaleDateString("en-IN")}
+                        {org.members} members ·{" "}
+                        {new Date(org.createdAt).toLocaleDateString("en-IN")}
                       </small>
                     </span>
-                    <span className={`badge ${org.planKey ? "badge-sun" : ""}`}>{org.planKey ?? "no plan"}</span>
+                    <span className={`badge ${org.planKey ? "badge-sun" : ""}`}>
+                      {org.planKey ?? "no plan"}
+                    </span>
                   </div>
                 ))}
               </section>
             </div>
 
-            {loadError && <p className="landing-pricing__note" role="alert">{loadError}</p>}
+            {loadError && (
+              <p className="landing-pricing__note" role="alert">
+                {loadError}
+              </p>
+            )}
           </>
         )}
 
@@ -306,18 +326,24 @@ export function PlatformPortal() {
                       <tr key={org.id}>
                         <td>
                           <b>{org.name}</b>
-                          <small style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>{org.slug}</small>
+                          <small style={{ display: "block", fontSize: 11, color: "var(--faint)" }}>
+                            {org.slug}
+                          </small>
                         </td>
                         <td>{org.members}</td>
                         <td>{new Date(org.createdAt).toLocaleDateString("en-IN")}</td>
                         <td>
-                          <span className={`badge ${org.planKey ? "badge-sun" : ""}`}>{org.planKey ?? "no plan"}</span>
+                          <span className={`badge ${org.planKey ? "badge-sun" : ""}`}>
+                            {org.planKey ?? "no plan"}
+                          </span>
                         </td>
                         <td>
                           <div className="portal-plan-row">
                             <select
                               value={draft[org.id] ?? org.planKey ?? ""}
-                              onChange={(e) => setDraft((prev) => ({ ...prev, [org.id]: e.target.value }))}
+                              onChange={(e) =>
+                                setDraft((prev) => ({ ...prev, [org.id]: e.target.value }))
+                              }
                             >
                               <option value="" disabled>
                                 Choose…
@@ -328,7 +354,11 @@ export function PlatformPortal() {
                                 </option>
                               ))}
                             </select>
-                            <Button size="sm" disabled={busy || !draft[org.id]} onClick={() => void applyPlan(org)}>
+                            <Button
+                              size="sm"
+                              disabled={busy || !draft[org.id]}
+                              onClick={() => void applyPlan(org)}
+                            >
                               Save
                             </Button>
                           </div>
@@ -337,7 +367,11 @@ export function PlatformPortal() {
                     ))}
                   </tbody>
                 </table>
-                {orgs.length === 0 && <p className="portal-empty">No companies yet — the list fills as people sign up.</p>}
+                {orgs.length === 0 && (
+                  <p className="portal-empty">
+                    No companies yet — the list fills as people sign up.
+                  </p>
+                )}
               </div>
             </section>
           </>
@@ -371,11 +405,20 @@ export function PlatformPortal() {
                           {plan.popular && <span className="badge badge-sun">popular</span>}
                         </td>
                         <td>{plan.key}</td>
-                        <td>{plan.currency} {plan.priceMonthly.toLocaleString("en-IN")}</td>
-                        <td>{plan.currency} {plan.priceYearly.toLocaleString("en-IN")}</td>
+                        <td>
+                          {plan.currency} {plan.priceMonthly.toLocaleString("en-IN")}
+                        </td>
+                        <td>
+                          {plan.currency} {plan.priceYearly.toLocaleString("en-IN")}
+                        </td>
                         <td>{(plan.features ?? []).length}</td>
                         <td>
-                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void retirePlan(plan)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy}
+                            onClick={() => void retirePlan(plan)}
+                          >
                             <Trash2 size={14} /> Delete
                           </Button>
                         </td>
@@ -391,19 +434,37 @@ export function PlatformPortal() {
                   <div className="portal-create__fields">
                     <label>
                       <span>Key (no spaces)</span>
-                      <input value={draftPlan.key} onChange={(e) => setDraftPlan({ ...draftPlan, key: e.target.value })} placeholder="premium" />
+                      <input
+                        value={draftPlan.key}
+                        onChange={(e) => setDraftPlan({ ...draftPlan, key: e.target.value })}
+                        placeholder="premium"
+                      />
                     </label>
                     <label>
                       <span>Plan name</span>
-                      <input value={draftPlan.name} onChange={(e) => setDraftPlan({ ...draftPlan, name: e.target.value })} placeholder="Premium" />
+                      <input
+                        value={draftPlan.name}
+                        onChange={(e) => setDraftPlan({ ...draftPlan, name: e.target.value })}
+                        placeholder="Premium"
+                      />
                     </label>
                     <label>
                       <span>Monthly price (₹)</span>
-                      <input type="number" min={0} value={draftPlan.price} onChange={(e) => setDraftPlan({ ...draftPlan, price: e.target.value })} placeholder="2999" />
+                      <input
+                        type="number"
+                        min={0}
+                        value={draftPlan.price}
+                        onChange={(e) => setDraftPlan({ ...draftPlan, price: e.target.value })}
+                        placeholder="2999"
+                      />
                     </label>
                     <label className="portal-create__wide">
                       <span>Perks (comma separated)</span>
-                      <input value={draftPlan.features} onChange={(e) => setDraftPlan({ ...draftPlan, features: e.target.value })} placeholder="25 seats, 5 branches, AI assistant" />
+                      <input
+                        value={draftPlan.features}
+                        onChange={(e) => setDraftPlan({ ...draftPlan, features: e.target.value })}
+                        placeholder="25 seats, 5 branches, AI assistant"
+                      />
                     </label>
                     <Button disabled={busy} onClick={() => void createPlan()}>
                       <Plus size={15} /> Create plan

@@ -3,17 +3,14 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
+import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { env } from "../config/env";
-import {
-  buildItinerary,
-  callModel,
-  deterministicReply,
-  workspaceSnapshot,
-} from "../services/ai";
+import { buildItinerary, callModel, deterministicReply, workspaceSnapshot } from "../services/ai";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("assistant", "view"));
 
 const chatSchema = z.object({
   message: z.string().min(1).max(4000),
@@ -27,7 +24,13 @@ const itinerarySchema = z.object({
   interests: z.string().max(200).optional(),
 });
 
-const toDto = (m: { id: string; role: string; content: string; model: string | null; createdAt: Date }) => ({
+const toDto = (m: {
+  id: string;
+  role: string;
+  content: string;
+  model: string | null;
+  createdAt: Date;
+}) => ({
   id: m.id,
   role: m.role,
   content: m.content,
@@ -50,7 +53,13 @@ router.post(
     });
 
     await prisma.aiMessage.create({
-      data: { organizationId: auth.organizationId, userId: auth.userId, conversationId, role: "user", content: message },
+      data: {
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        conversationId,
+        role: "user",
+        content: message,
+      },
     });
 
     const snap = await workspaceSnapshot(auth.organizationId);
@@ -112,7 +121,10 @@ router.delete(
   "/conversation/:conversationId",
   asyncHandler(async (req, res) => {
     const result = await prisma.aiMessage.deleteMany({
-      where: { organizationId: req.auth!.organizationId, conversationId: req.params.conversationId },
+      where: {
+        organizationId: req.auth!.organizationId,
+        conversationId: req.params.conversationId,
+      },
     });
     return ok(res, { cleared: result.count });
   }),
@@ -127,8 +139,14 @@ router.post(
     const draft = buildItinerary(body);
 
     const live = await callModel([
-      { role: "system", content: "You are a senior travel designer. Produce a polished day-by-day itinerary." },
-      { role: "user", content: `Create a short itinerary. Destination: ${body.destination}, nights: ${body.nights}, travellers: ${body.travellers}, interests: ${body.interests ?? "general"}.` },
+      {
+        role: "system",
+        content: "You are a senior travel designer. Produce a polished day-by-day itinerary.",
+      },
+      {
+        role: "user",
+        content: `Create a short itinerary. Destination: ${body.destination}, nights: ${body.nights}, travellers: ${body.travellers}, interests: ${body.interests ?? "general"}.`,
+      },
     ]);
 
     return ok(res, {

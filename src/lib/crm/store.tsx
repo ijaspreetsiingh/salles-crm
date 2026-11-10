@@ -10,8 +10,6 @@ import {
 import {
   defaultSettings,
   modules,
-  seedRows,
-  seedTasks,
   type CustomField,
   type Employee,
   type RecordRow,
@@ -19,7 +17,9 @@ import {
   type Task,
 } from "./catalog";
 import * as api from "@/lib/api/crm";
+import { applyModuleStatuses } from "./statuses";
 import { bulkRecords, updateSubscription } from "@/lib/api/modules";
+import { restoreTrashed } from "@/lib/api/trash";
 import { ApiError, errorMessage, tokenStore } from "@/lib/api/client";
 import { toast } from "sonner";
 
@@ -56,6 +56,7 @@ export type SessionUser = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  emailVerified: boolean;
   /** True when this account also manages the platform (/admin portal). */
   isPlatformAdmin: boolean;
 };
@@ -64,6 +65,14 @@ type Store = {
   status: AuthStatus;
   /** Shown on the sign-in screen when the API could not be reached. */
   bootError: string | null;
+  /**
+   * Signed in, but the role demands a second factor and it is not set up yet.
+   *
+   * The API answers every other route with 403 `two_factor_setup_required`, so
+   * the shell must not pretend the workspace failed to load — it shows the
+   * enrolment screen instead.
+   */
+  twoFactorSetupRequired: boolean;
   user: SessionUser | null;
   organizationName: string;
   /** Public URL slug — used for the hosted lead form + website widget. */
@@ -97,7 +106,11 @@ type Store = {
   audit: AuditEntry[];
   fields: Record<string, CustomField[]>;
   settings: Settings;
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+    second?: { totp?: string; recoveryCode?: string },
+  ) => Promise<{ twoFactorSetupRequired: boolean }>;
   register: (
     organizationName: string,
     name: string,
@@ -114,6 +127,10 @@ type Store = {
   /** Creates a record and resolves with the saved row (server reference). */
   createRecord: (module: string, row: RecordRow) => Promise<RecordRow | null>;
   update: (module: string, row: RecordRow) => void;
+  /** Updates a record and resolves only once the server has kept the change. */
+  updateRecord: (module: string, row: RecordRow) => Promise<RecordRow | null>;
+  /** Re-reads one module after a side effect (a payment changing a status). */
+  refreshModuleRecords: (moduleId: string) => Promise<void>;
   remove: (module: string, rowId: string) => void;
   /**
    * Applies one change to many records at once and re-reads the list.
@@ -178,6 +195,8 @@ function buildSettings(
     financialYear: org.financialYear ?? "April – March",
     taxRegime: String((org.settings ?? {})["taxRegime"] ?? defaultSettings.taxRegime),
     taxRate: Number((org.settings ?? {})["taxRate"] ?? defaultSettings.taxRate),
+    tcsPercent: Number((org.settings ?? {})["tcsPercent"] ?? defaultSettings.tcsPercent),
+    tcsNote: String((org.settings ?? {})["tcsNote"] ?? defaultSettings.tcsNote),
     invoicePrefix: String((org.settings ?? {})["invoicePrefix"] ?? defaultSettings.invoicePrefix),
     fxRates: {
       ...defaultSettings.fxRates,
@@ -207,9 +226,19 @@ const nextAuditId = () => `AUD-${Date.now().toString(36)}-${(auditCounter++).toS
 
 const emailLooksValid = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
+/**
+ * The API's way of saying "enrol an authenticator before anything else".
+ * Company admins, branch managers and finance get this when enforcement is on
+ * and they have not set one up yet.
+ */
+const isTwoFactorSetupRequired = (error: unknown) =>
+  error instanceof ApiError && error.code === "two_factor_setup_required";
+
 export function CRMProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [bootError, setBootError] = useState<string | null>(null);
+  /** See `Store.twoFactorSetupRequired`. */
+  const [twoFactorSetupRequired, setTwoFactorSetupRequired] = useState(false);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [organizationName, setOrganizationName] = useState(defaultSettings.orgName);
   const [organizationSlug, setOrganizationSlug] = useState("");
@@ -221,7 +250,9 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const [myBranch, setMyBranch] = useState("");
   const [records, setRecords] = useState<Record<string, RecordRow[]>>({});
   const [modulePages, setModulePages] = useState<Record<string, ModulePageState>>({});
-  const [tasks, setTasks] = useState<Task[]>(() => seedTasks());
+  // Tasks start empty: they arrive from the API with the rest of the
+  // workspace, so an empty account never flashes sample tasks.
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [attention, setAttention] = useState<api.AttentionDto | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [fields, setFields] = useState<Record<string, CustomField[]>>({});
@@ -242,6 +273,10 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const pendingOrgPatch = useRef<Record<string, unknown>>({});
   const orgPatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    void import("@/lib/monitoring").then((m) => m.initMonitoring());
+  }, []);
+
   useEffect(
     () => () => {
       if (orgPatchTimer.current) clearTimeout(orgPatchTimer.current);
@@ -261,6 +296,15 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
   /** Loads the whole signed-in workspace: profile, records, tasks, fields, audit. */
   const loadWorkspace = useCallback(async () => {
+    // The module catalogue carries the workflow statuses the API enforces.
+    // Loading it first means every form offers exactly what the server will
+    // accept — a mismatch here is how "create" used to fail silently.
+    const catalogue = await api
+      .fetchWorkspaceModules()
+      .then(applyModuleStatuses)
+      .catch(() => undefined);
+    void catalogue;
+
     const [me, customFields, taskList, organization, branches, members, attentionToday] =
       await Promise.all([
         api.fetchMe(),
@@ -304,6 +348,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       email: me.user.email,
       phone: me.user.phone ?? null,
       avatarUrl: me.user.avatarUrl ?? null,
+      emailVerified: me.user.emailVerified === true,
       isPlatformAdmin: me.user.isPlatformAdmin === true,
     });
     setRoleLabel(api.ROLE_LABEL_BY_KEY[me.membership.roleKey] ?? "Workspace admin");
@@ -318,14 +363,14 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setFields(nextFields);
     setAudit(auditList.map(mapAudit));
     setSettings(buildSettings(organization, branches, members));
+    setTwoFactorSetupRequired(false);
     setStatus("ready");
   }, [ingestRecords]);
 
   useEffect(() => {
-    if (!tokenStore.access) {
-      setStatus("unauthenticated");
-      return;
-    }
+    void api.fetchCsrf().catch(() => {
+      /* CSRF is best-effort; the cookie may already be present. */
+    });
     let cancelled = false;
     void (async () => {
       try {
@@ -337,6 +382,16 @@ export function CRMProvider({ children }: { children: ReactNode }) {
           setStatus("unauthenticated");
           return;
         }
+        /*
+         * An enforced-but-unenrolled admin is signed in and healthy; the only
+         * thing missing is the authenticator app. Sending them to the login
+         * screen would loop — they have no way to enrol from there.
+         */
+        if (isTwoFactorSetupRequired(error)) {
+          setTwoFactorSetupRequired(true);
+          setStatus("ready");
+          return;
+        }
         setBootError(errorMessage(error, "Could not reach the Traveldesk API"));
         setStatus("unauthenticated");
       }
@@ -346,13 +401,30 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     };
   }, [loadWorkspace]);
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      const session = await api.login(email, password);
-      tokenStore.set(session.accessToken, session.refreshToken);
+  /**
+   * Loads the workspace after a successful sign-in or registration.
+   * Returns true when the person still has to enrol a second factor — in that
+   * case the shell shows the enrolment wall instead of the workspace.
+   */
+  const loadWorkspaceAfterAuth = useCallback(async (): Promise<boolean> => {
+    try {
       await loadWorkspace();
+      return false;
+    } catch (error) {
+      if (!isTwoFactorSetupRequired(error)) throw error;
+      setTwoFactorSetupRequired(true);
+      setStatus("ready");
+      return true;
+    }
+  }, [loadWorkspace]);
+
+  const login = useCallback(
+    async (email: string, password: string, second?: { totp?: string; recoveryCode?: string }) => {
+      const session = await api.login(email, password, second);
+      const gated = await loadWorkspaceAfterAuth();
+      return { twoFactorSetupRequired: gated || Boolean(session.twoFactorSetupRequired) };
     },
-    [loadWorkspace],
+    [loadWorkspaceAfterAuth],
   );
 
   const register = useCallback(
@@ -364,16 +436,15 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       phone?: string,
       planKey?: string,
     ) => {
-      const session = await api.register({
+      await api.register({
         organizationName,
         name,
         email,
         password,
         ...(phone ? { phone } : {}),
       });
-      tokenStore.set(session.accessToken, session.refreshToken);
-      await loadWorkspace();
-      if (planKey) {
+      const gated = await loadWorkspaceAfterAuth();
+      if (planKey && !gated) {
         try {
           await updateSubscription({ planKey });
         } catch {
@@ -381,12 +452,11 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [loadWorkspace],
+    [loadWorkspaceAfterAuth],
   );
 
   const logout = useCallback(async () => {
     await api.logout();
-    tokenStore.clear();
     recordIds.current = new Map();
     branchIds.current = new Map();
     memberIds.current = new Map();
@@ -396,11 +466,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setOrganizationName(defaultSettings.orgName);
     setRecords({});
     setModulePages({});
-    setTasks(seedTasks());
+    setTasks([]);
     setAttention(null);
     setFields({});
     setAudit([]);
     setSettings(defaultSettings);
+    setTwoFactorSetupRequired(false);
     setStatus("unauthenticated");
   }, []);
 
@@ -546,7 +617,29 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (Object.keys(payload).length === 0) return;
       void api
         .patchOrganization(payload)
-        .catch((error) => toast.error(errorMessage(error, "Could not save organisation settings")));
+        .then((org) => {
+          // Sync the authoritative server state back so the UI never drifts.
+          const branches = api.fetchBranches().catch(() => []);
+          const members = api.fetchMembers().catch(() => []);
+          void Promise.all([branches, members]).then(([b, m]) => {
+            setSettings(buildSettings(org, b ?? [], m ?? []));
+          });
+        })
+        .catch((error) => {
+          toast.error(errorMessage(error, "Could not save organisation settings"));
+          // Rollback: re-fetch the real server state so the UI matches the database.
+          void api
+            .fetchOrganization()
+            .then((org) => {
+              void Promise.all([
+                api.fetchBranches().catch(() => []),
+                api.fetchMembers().catch(() => []),
+              ]).then(([b, m]) => setSettings(buildSettings(org, b ?? [], m ?? [])));
+            })
+            .catch(() => {
+              /* network down — keep the optimistic state, user will see it on reconnect */
+            });
+        });
     }, 600);
   }, []);
 
@@ -566,6 +659,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (
         next.taxRegime !== prev.taxRegime ||
         next.taxRate !== prev.taxRate ||
+        next.tcsPercent !== prev.tcsPercent ||
+        next.tcsNote !== prev.tcsNote ||
         next.invoicePrefix !== prev.invoicePrefix ||
         JSON.stringify(next.fxRates) !== JSON.stringify(prev.fxRates) ||
         JSON.stringify(next.security) !== JSON.stringify(prev.security)
@@ -573,6 +668,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         orgBody["settings"] = {
           taxRegime: next.taxRegime,
           taxRate: next.taxRate,
+          tcsPercent: next.tcsPercent,
+          tcsNote: next.tcsNote,
           invoicePrefix: next.invoicePrefix,
           fxRates: next.fxRates,
           security: next.security,
@@ -654,16 +751,16 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   /* ----- Records ----- */
 
   const getRows = useCallback(
-    (id: string, tab?: string): RecordRow[] =>
-      records[id] ?? (status === "ready" ? [] : seedRows(id, tab)),
-    [records, status],
+    (id: string, _tab?: string): RecordRow[] => records[id] ?? [],
+    [records],
   );
 
   const save = useCallback(
     (module: string, row: RecordRow) => {
       if (status !== "ready") {
-        setRecords((prev) => ({ ...prev, [module]: [row, ...(prev[module] ?? seedRows(module))] }));
-        pushAudit("Created", module, row.id, row.name);
+        // Never write into a local pretend list: the record would look saved
+        // and disappear on reload.
+        toast.error("Not connected — this record was not saved");
         return;
       }
       void (async () => {
@@ -685,9 +782,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
   const createRecord = useCallback(
     (module: string, row: RecordRow): Promise<RecordRow | null> => {
       if (status !== "ready") {
-        setRecords((prev) => ({ ...prev, [module]: [row, ...(prev[module] ?? seedRows(module))] }));
-        pushAudit("Created", module, row.id, row.name);
-        return Promise.resolve(row);
+        toast.error("Not connected — this record was not saved");
+        return Promise.resolve(null);
       }
       return (async () => {
         try {
@@ -711,7 +807,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (status !== "ready") {
         setRecords((prev) => ({
           ...prev,
-          [module]: (prev[module] ?? seedRows(module)).map((r) => (r.id === row.id ? row : r)),
+          [module]: (prev[module] ?? []).map((r) => (r.id === row.id ? row : r)),
         }));
         pushAudit("Updated", module, row.id, row.name);
         return;
@@ -727,7 +823,12 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       }
       void (async () => {
         try {
-          const dto = await api.updateRecord(module, serverId, api.toRecordBody(row));
+          const dto = await api.updateRecord(
+            module,
+            serverId,
+            api.toRecordBody(row),
+            row.updatedAt,
+          );
           const mapped = api.toRecordRow(dto);
           setRecords((prev) => ({
             ...prev,
@@ -743,18 +844,62 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     [status, pushAudit, refreshAudit, refreshModule],
   );
 
+  /**
+   * Update that resolves with the saved row.
+   *
+   * The dialog stays open (and the button stays busy) until the server has
+   * answered, so "Saved" is never shown for a change that was rejected.
+   */
+  const updateRecord = useCallback(
+    (module: string, row: RecordRow): Promise<RecordRow | null> => {
+      if (status !== "ready") {
+        toast.error("Not connected — this change was not saved");
+        return Promise.resolve(null);
+      }
+      const serverId = recordIds.current.get(recordKey(module, row.id));
+      if (!serverId) {
+        toast.error("This record is still syncing — try again in a moment");
+        return Promise.resolve(null);
+      }
+      return (async () => {
+        try {
+          const dto = await api.updateRecord(
+            module,
+            serverId,
+            api.toRecordBody(row),
+            row.updatedAt,
+          );
+          const mapped = api.toRecordRow(dto);
+          setRecords((prev) => ({
+            ...prev,
+            [module]: (prev[module] ?? []).map((r) => (r.id === row.id ? mapped : r)),
+          }));
+          void refreshAudit();
+          return mapped;
+        } catch (error) {
+          toast.error(errorMessage(error, `Could not update the ${module} record`));
+          // A conflict means this screen is stale; pull the current version so
+          // the next save carries the right stamp.
+          if (error instanceof ApiError && error.status === 409) void refreshModule(module);
+          return null;
+        }
+      })();
+    },
+    [status, refreshAudit, refreshModule],
+  );
+
   const remove = useCallback(
     (module: string, rowId: string) => {
       if (status !== "ready") {
-        const label =
-          (records[module] ?? seedRows(module)).find((r) => r.id === rowId)?.name ?? rowId;
+        const label = (records[module] ?? []).find((r) => r.id === rowId)?.name ?? rowId;
         setRecords((prev) => ({
           ...prev,
-          [module]: (prev[module] ?? seedRows(module)).filter((r) => r.id !== rowId),
+          [module]: (prev[module] ?? []).filter((r) => r.id !== rowId),
         }));
         pushAudit("Deleted", module, rowId, label);
         return;
       }
+      const label = (records[module] ?? []).find((r) => r.id === rowId)?.name ?? "Record";
       const serverId = recordIds.current.get(recordKey(module, rowId));
       setRecords((prev) => ({
         ...prev,
@@ -763,7 +908,27 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (!serverId) return;
       void api
         .deleteRecord(module, serverId)
-        .then(() => void refreshAudit())
+        .then(() => {
+          void refreshAudit();
+          // Deleting is soft, so the honest message is "it moved", not "it is
+          // gone" — and there is one click back if the wrong row was hit.
+          toast.success(`${label} moved to the recycle bin`, {
+            duration: 8000,
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void restoreTrashed(serverId)
+                  .then(() => {
+                    toast.success(`${label} restored`);
+                    void refreshModule(module);
+                  })
+                  .catch((error) =>
+                    toast.error(errorMessage(error, "Could not restore the record")),
+                  );
+              },
+            },
+          });
+        })
         .catch((error) => {
           toast.error(errorMessage(error, "Could not delete the record"));
           void refreshModule(module);
@@ -807,7 +972,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (status !== "ready") {
         // Demo workspace — the same edit, applied in memory.
         setRecords((prev) => {
-          const rows = prev[moduleId] ?? seedRows(moduleId);
+          const rows = prev[moduleId] ?? [];
           const next =
             action === "delete"
               ? rows.filter((row) => !references.includes(row.id))
@@ -856,9 +1021,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       if (status !== "ready") {
         setRecords((prev) => ({
           ...prev,
-          [moduleId]: (prev[moduleId] ?? seedRows(moduleId)).filter(
-            (row) => !merges.includes(row.id),
-          ),
+          [moduleId]: (prev[moduleId] ?? []).filter((row) => !merges.includes(row.id)),
         }));
         pushAudit("Updated", moduleId, "", `${merges.length} records merged into ${keep}`);
         return null;
@@ -979,7 +1142,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       return;
     }
     setRecords({});
-    setTasks(seedTasks());
+    setTasks([]);
     setFields({});
     setAudit([]);
     setSettings(defaultSettings);
@@ -990,6 +1153,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       value={{
         status,
         bootError,
+        twoFactorSetupRequired,
         user,
         organizationName,
         organizationSlug,
@@ -1013,6 +1177,8 @@ export function CRMProvider({ children }: { children: ReactNode }) {
         getRows,
         save,
         createRecord,
+        updateRecord,
+        refreshModuleRecords: refreshModule,
         update,
         remove,
         bulkUpdate,

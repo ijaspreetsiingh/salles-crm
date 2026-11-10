@@ -3,13 +3,14 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requireRole } from "../middlewares/rbac";
+import { requireModulePermission, requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import { recordAudit } from "../services/audit";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("settings", "view"));
 
 const domainSchema = z.object({
   customDomain: z.string().min(3).max(200).optional().nullable(),
@@ -74,7 +75,14 @@ router.get(
     const { domain } = req.params;
     const organization = await prisma.organization.findUnique({
       where: { customDomain: domain },
-      select: { id: true, name: true, slug: true, customDomain: true, plan: true, planStatus: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        customDomain: true,
+        plan: true,
+        planStatus: true,
+      },
     });
     if (!organization) throw new NotFoundError("Domain not found");
     return ok(res, organization);

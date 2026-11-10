@@ -161,7 +161,7 @@ router.patch(
         ...body,
         receivedAt:
           body.status === "received" || body.status === "verified"
-            ? existing.receivedAt ?? new Date()
+            ? (existing.receivedAt ?? new Date())
             : body.status === "pending"
               ? null
               : undefined,

@@ -313,7 +313,11 @@ export function buildChainRecords(modules: ModuleDef[]): ChainRecord[] {
       amount: Math.round(story.value * 0.38),
       status: story.stage === 4 ? "Vouchered" : "Confirmed",
       notes: "Breakfast included. Free cancellation until 7 days before arrival.",
-      extra: { nights: story.travellers + 4, rooms: Math.ceil(story.travellers / 2), ratePlan: "BB" },
+      extra: {
+        nights: story.travellers + 4,
+        rooms: Math.ceil(story.travellers / 2),
+        ratePlan: "BB",
+      },
     });
 
     // 7 — the transfer
@@ -369,7 +373,94 @@ export function buildChainRecords(modules: ModuleDef[]): ChainRecord[] {
     });
   }
 
+  // 11 — a corporate offsite with delegates already on the list, so the
+  // Groups & events module is never a blank page on a fresh install.
+  out.push({
+    destination: "Lonavala, Maharashtra",
+    email: "events@techcorp.example.com",
+    phone: "+91 98200 44551",
+    source: "Referral",
+    ownerName: "Emily Chen",
+    branchName: "Mumbai",
+    moduleId: "groups",
+    reference: nextReference(mod("groups")),
+    name: "TechCorp annual offsite — Lonavala",
+    detail: "Corporate offsite · 42 delegates · 3 nights",
+    dateOffset: 18,
+    amount: 630000,
+    status: "Open for sale",
+    notes: "Rooms held at two hotels; banquet on day two. Transport via private bus.",
+    extra: {
+      groupType: "Corporate offsite",
+      pax: 42,
+      costPerPax: 15000,
+      return: iso(21),
+      roomBlocks: 20,
+    },
+  });
+
+  // 12 — one still being planned, to show the earlier stage.
+  out.push({
+    destination: "Rajasthan",
+    email: "pilgrimage@seva.example.com",
+    phone: "+91 98111 22334",
+    source: "Website",
+    ownerName: "Rahul Verma",
+    branchName: "Delhi",
+    moduleId: "groups",
+    reference: nextReference(mod("groups")),
+    name: "Rajasthan heritage circuit — 31 pax",
+    detail: "Leisure group · 31 delegates · 6 nights",
+    dateOffset: 45,
+    amount: 992000,
+    status: "Planning",
+    notes: "Waiting on hotel contracts before opening for sale.",
+    extra: {
+      groupType: "Leisure group",
+      pax: 31,
+      costPerPax: 32000,
+      return: iso(51),
+      roomBlocks: 0,
+    },
+  });
+
   return out;
+}
+
+/**
+ * Delegates for the seeded group trips.
+ *
+ * One corporate offsite with a real rooming situation — pairs that share,
+ * a few without passports yet, someone with a dietary need — so the
+ * manifest and the rooming list have something honest to print.
+ */
+type SeededDelegate = {
+  name: string;
+  phone: string;
+  passport: string;
+  nationality: string;
+  roomType: string;
+  roomNumber: string;
+  sharingWith: string;
+  bedPreference: string;
+  dietary: string;
+  emergencyContact: string;
+  status: string;
+};
+
+export function buildGroupMembers(): Array<SeededDelegate & { groupName: string }> {
+  const group = "TechCorp annual offsite — Lonavala";
+  const rows: SeededDelegate[] = [
+    { name: "Arun Kumar", phone: "+91 98200 10001", passport: "Z1234567", nationality: "Indian", roomType: "Single", roomNumber: "101", sharingWith: "", bedPreference: "", dietary: "", emergencyContact: "Sunita Kumar · +91 98200 10009", status: "Confirmed" },
+    { name: "Priya Menon", phone: "+91 98200 10002", passport: "Z1234568", nationality: "Indian", roomType: "Twin", roomNumber: "102", sharingWith: "Kavya Rao", bedPreference: "Lower bed", dietary: "No onion, no garlic", emergencyContact: "Ravi Menon · +91 98200 10010", status: "Confirmed" },
+    { name: "Kavya Rao", phone: "+91 98200 10003", passport: "Z1234569", nationality: "Indian", roomType: "Twin", roomNumber: "102", sharingWith: "Priya Menon", bedPreference: "Upper bed", dietary: "", emergencyContact: "Deepa Rao · +91 98200 10011", status: "Confirmed" },
+    { name: "Imran Shaikh", phone: "+91 98200 10004", passport: "", nationality: "Indian", roomType: "Double", roomNumber: "", sharingWith: "", bedPreference: "", dietary: "Jain food", emergencyContact: "Fatima Shaikh · +91 98200 10012", status: "Pending" },
+    { name: "Neha Kulkarni", phone: "+91 98200 10005", passport: "Z1234571", nationality: "Indian", roomType: "Double", roomNumber: "", sharingWith: "", bedPreference: "", dietary: "", emergencyContact: "Sameer Kulkarni · +91 98200 10013", status: "Confirmed" },
+    { name: "Vikram Sethi", phone: "+91 98200 10006", passport: "Z1234572", nationality: "Indian", roomType: "Single", roomNumber: "103", sharingWith: "", bedPreference: "", dietary: "Diabetic — no dessert", emergencyContact: "Meera Sethi · +91 98200 10014", status: "Confirmed" },
+    { name: "Ananya Bose", phone: "+91 98200 10007", passport: "", nationality: "Indian", roomType: "Twin", roomNumber: "", sharingWith: "", bedPreference: "Window seat", dietary: "Vegetarian", emergencyContact: "Amit Bose · +91 98200 10015", status: "Pending" },
+    { name: "Rahul Deshpande", phone: "+91 98200 10008", passport: "Z1234574", nationality: "Indian", roomType: "Twin", roomNumber: "", sharingWith: "", bedPreference: "", dietary: "", emergencyContact: "Manisha Deshpande · +91 98200 10016", status: "Confirmed" },
+  ];
+  return rows.map((row) => ({ ...row, groupName: group }));
 }
 
 /** Tasks that belong to the chains above, so "my day" is never empty. */

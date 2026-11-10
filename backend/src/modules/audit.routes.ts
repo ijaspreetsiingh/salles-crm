@@ -14,7 +14,10 @@ router.use(requireAuth, requireRole("company_admin", "branch_manager", "finance"
 router.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { moduleId, action, actor, from, to, search } = req.query as Record<string, string | undefined>;
+    const { moduleId, action, actor, from, to, search } = req.query as Record<
+      string,
+      string | undefined
+    >;
     const where: Prisma.AuditLogWhereInput = { organizationId: req.auth!.organizationId };
 
     if (moduleId) where.moduleId = moduleId;
@@ -30,7 +33,12 @@ router.get(
 
     const p = getPagination(req.query as Record<string, unknown>, 50);
     const [items, total] = await Promise.all([
-      prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: p.skip, take: p.take }),
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: p.skip,
+        take: p.take,
+      }),
       prisma.auditLog.count({ where }),
     ]);
 

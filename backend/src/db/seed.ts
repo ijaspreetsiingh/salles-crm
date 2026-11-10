@@ -2,9 +2,10 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../lib/password";
 import { ROLE_DEFS } from "../domain/rbac";
+import { INTERNAL_ORG_SLUG } from "../domain/tenancy";
 import { MODULES } from "../domain/modules";
 import { sha256, stringifyJson } from "../lib/utils";
-import { env } from "../config/env";
+import { env, isProd } from "../config/env";
 import {
   BRANCH_SEED,
   buildModuleRecords,
@@ -21,20 +22,29 @@ import {
   TEMPLATE_SEED,
   WORKFLOW_SEED,
 } from "./seed-data";
-import { buildChainConversations, buildChainRecords, buildChainTasks } from "./seed-chains";
+import {
+  buildChainConversations,
+  buildChainRecords,
+  buildChainTasks,
+  buildGroupMembers,
+} from "./seed-chains";
 
 const ORG_SLUG = "horizon-travel";
 
 /**
  * The platform super admin — the person who owns this SaaS, manages tenants
- * and plans on /platform. Safe to call on every boot: it only creates what
- * is missing and never resets an existing account.
+ * and plans on /platform.
+ *
+ * They belong to Traveldesk's *own* internal workspace, never to a customer
+ * company: a customer's team list, seat count and branch scope must never
+ * contain the vendor's staff. Safe to call on every boot — it only creates
+ * what is missing, and it removes the old bad membership some databases still
+ * carry in the demo organisation.
  */
-async function ensureSuperAdmin(organizationId: string) {
+async function ensurePlatformAdmin(demoOrganizationId: string) {
   const email = env.SEED_SUPER_ADMIN_EMAIL.toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email } });
   const user =
-    existing ??
+    (await prisma.user.findUnique({ where: { email } })) ??
     (await prisma.user.create({
       data: {
         email,
@@ -43,14 +53,34 @@ async function ensureSuperAdmin(organizationId: string) {
         active: true,
       },
     }));
-  if (!existing) console.log(`✓ Platform super admin created — login: ${email}`);
+
+  // Housekeeping: the super admin must not be a member of a customer company.
+  const stale = await prisma.membership.deleteMany({
+    where: { userId: user.id, organizationId: demoOrganizationId },
+  });
+  if (stale.count > 0) {
+    console.log("✓ Removed the platform admin from the demo organisation's team");
+  }
+
+  // The vendor keeps one internal workspace so the account can sign in and
+  // reach /platform without borrowing a customer's session.
+  const internal = await prisma.organization.upsert({
+    where: { slug: INTERNAL_ORG_SLUG },
+    update: {},
+    create: {
+      name: "Traveldesk",
+      slug: INTERNAL_ORG_SLUG,
+      supportEmail: email,
+      settings: stringifyJson({ defaultTaxRate: 18 }),
+    },
+  });
   await prisma.membership.upsert({
-    where: { userId_organizationId: { userId: user.id, organizationId } },
-    update: { active: true },
+    where: { userId_organizationId: { userId: user.id, organizationId: internal.id } },
+    update: { active: true, roleKey: "company_admin" },
     create: {
       userId: user.id,
-      organizationId,
-      roleKey: "admin",
+      organizationId: internal.id,
+      roleKey: "company_admin",
       active: true,
     },
   });
@@ -84,21 +114,29 @@ async function seedPlans() {
 }
 
 export async function seed(options: { reset?: boolean } = {}): Promise<void> {
+  /*
+   * A production boot must never create a fake travel agency, its customers,
+   * its invoices or a shared-password staff team. Demo data is opt-in there,
+   * explicitly, with SEED_DEMO=true.
+   */
+  if (isProd && !env.SEED_DEMO) {
+    throw new Error(
+      "Refusing to seed demo data in production. Set SEED_DEMO=true only if you really want the demo workspace.",
+    );
+  }
+
   await seedPlans();
 
   const existing = await prisma.organization.findUnique({ where: { slug: ORG_SLUG } });
   if (existing) {
     if (!options.reset) {
-      await ensureSuperAdmin(existing.id);
+      await ensurePlatformAdmin(existing.id);
       console.log(`✓ Demo organisation "${ORG_SEED.name}" already seeded — skipping.`);
       return;
     }
     // Wipe the tenant so the demo can be rebuilt with fresh, connected data.
     console.log("→ Resetting the demo organisation …");
-    const seedEmails = [
-      env.SEED_OWNER_EMAIL,
-      ...EMPLOYEE_SEED.map((e) => e.email),
-    ].filter(Boolean);
+    const seedEmails = [env.SEED_OWNER_EMAIL, ...EMPLOYEE_SEED.map((e) => e.email)].filter(Boolean);
     await prisma.organization.delete({ where: { id: existing.id } });
     // Users are not owned by the organisation row, so clear the demo accounts
     // explicitly before recreating them.
@@ -157,12 +195,19 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
   const userMap = new Map<string, string>();
   for (const [index, employee] of EMPLOYEE_SEED.entries()) {
     const email = index === 0 ? env.SEED_OWNER_EMAIL : employee.email;
+    /*
+     * Only the owner account gets the documented demo password. Every other
+     * demo colleague gets a random one, so a demo credential that leaks can
+     * never be replayed against a manager or finance seat.
+     */
+    const password =
+      index === 0 ? ownerPassword : `${randomBytes(18).toString("base64url")}Aa1!`;
     const user = await prisma.user.create({
       data: {
         email,
         name: employee.name,
         phone: `+91 98${index}00 12${index}45`,
-        passwordHash: await hashPassword(ownerPassword),
+        passwordHash: await hashPassword(password),
         active: employee.active,
       },
     });
@@ -204,6 +249,23 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
     meta: stringifyJson({}),
   }));
   await prisma.record.createMany({ data: [...records, ...chainRecords] });
+
+  // Delegates for the seeded group trips — the traveller list is what makes
+  // the rooming list and the manifest real rather than empty documents.
+  const groupRecords = await prisma.record.findMany({
+    where: { organizationId: organization.id, moduleId: "groups", deletedAt: null },
+    select: { id: true, name: true },
+  });
+  const groupIds = new Map(groupRecords.map((row) => [row.name, row.id]));
+  const delegateRows = buildGroupMembers().flatMap((row) => {
+    const groupRecordId = groupIds.get(row.groupName);
+    if (!groupRecordId) return [];
+    const { groupName: _groupName, ...delegate } = row;
+    return [{ organizationId: organization.id, groupRecordId, ...delegate }];
+  });
+  if (delegateRows.length) {
+    await prisma.groupMember.createMany({ data: delegateRows });
+  }
 
   // Tasks
   await prisma.task.createMany({
@@ -270,7 +332,12 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
   // Message templates
   for (const template of TEMPLATE_SEED) {
     await prisma.messageTemplate.create({
-      data: { organizationId: organization.id, channel: template.channel, name: template.name, body: template.body },
+      data: {
+        organizationId: organization.id,
+        channel: template.channel,
+        name: template.name,
+        body: template.body,
+      },
     });
   }
 
@@ -291,7 +358,12 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
     });
     await prisma.message.createMany({
       data: [
-        { conversationId: conversation.id, direction: "in", channel: "Shared inbox", body: MESSAGE_SEED[0]! },
+        {
+          conversationId: conversation.id,
+          direction: "in",
+          channel: "Shared inbox",
+          body: MESSAGE_SEED[0]!,
+        },
         {
           conversationId: conversation.id,
           direction: "out",
@@ -299,7 +371,12 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
           body: MESSAGE_SEED[1]!,
           sentByName: "Sarah Wilson",
         },
-        { conversationId: conversation.id, direction: "in", channel: "Shared inbox", body: MESSAGE_SEED[2]! },
+        {
+          conversationId: conversation.id,
+          direction: "in",
+          channel: "Shared inbox",
+          body: MESSAGE_SEED[2]!,
+        },
       ],
     });
   }
@@ -331,7 +408,7 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
   }
 
   // Subscription + usage for the SaaS screens
-  await ensureSuperAdmin(organization.id);
+  await ensurePlatformAdmin(organization.id);
   await prisma.subscription.create({
     data: {
       organizationId: organization.id,
@@ -348,7 +425,12 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
     data: [
       { organizationId: organization.id, metric: "seats", value: EMPLOYEE_SEED.length, period },
       { organizationId: organization.id, metric: "branches", value: BRANCH_SEED.length, period },
-      { organizationId: organization.id, metric: "bookings", value: records.filter((r) => r.moduleId === "bookings").length, period },
+      {
+        organizationId: organization.id,
+        metric: "bookings",
+        value: records.filter((r) => r.moduleId === "bookings").length,
+        period,
+      },
     ],
   });
 
@@ -360,16 +442,21 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
       name: "Default API key",
       prefix: rawKey.slice(0, 12),
       keyHash: sha256(rawKey),
-      scopes: stringifyJson(["*"]),
+      scopes: stringifyJson(["read"]),
     },
   });
 
   console.log("✓ Seed complete");
   console.log(`  Organisation : ${ORG_SEED.name} (${organization.id})`);
-  console.log(`  Modules      : ${MODULES.length} catalogued, ${RECORD_MODULES.length} with records`);
+  console.log(
+    `  Modules      : ${MODULES.length} catalogued, ${RECORD_MODULES.length} with records`,
+  );
   console.log(`  Records      : ${records.length}`);
-  console.log(`  Login        : ${env.SEED_OWNER_EMAIL} / ${env.SEED_OWNER_PASSWORD}`);
-  console.log(`  API key      : ${rawKey}  (store it now — shown only once)`);
+  if (!isProd) {
+    // Never print credentials into production logs.
+    console.log(`  Login        : ${env.SEED_OWNER_EMAIL} / ${env.SEED_OWNER_PASSWORD}`);
+    console.log(`  API key      : ${rawKey}  (store it now — shown only once)`);
+  }
 }
 
 if (require.main === module) {

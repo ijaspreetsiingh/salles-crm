@@ -129,14 +129,18 @@ describe("priceForTravellers", () => {
 
 describe("margin and honesty", () => {
   it("never invents a margin without a supplier cost", () => {
-    const plan = readPackagePlan(row({ packagePlan: JSON.stringify({ slabs: [{ pax: 2, rate: 48000 }] }) }));
+    const plan = readPackagePlan(
+      row({ packagePlan: JSON.stringify({ slabs: [{ pax: 2, rate: 48000 }] }) }),
+    );
     expect(packageMargin(plan).amount).toBeNull();
     expect(packageMargin(plan).percent).toBeNull();
   });
 
   it("computes the margin from the recorded cost", () => {
     const plan = readPackagePlan(
-      row({ packagePlan: JSON.stringify({ slabs: [{ pax: 2, rate: 48000 }], costPerPerson: 38000 }) }),
+      row({
+        packagePlan: JSON.stringify({ slabs: [{ pax: 2, rate: 48000 }], costPerPerson: 38000 }),
+      }),
     );
     expect(packageMargin(plan).amount).toBe(10000);
     expect(packageMargin(plan).percent).toBe(20.8);
@@ -147,7 +151,10 @@ describe("margin and honesty", () => {
       row({
         packagePlan: JSON.stringify({
           days: [{ title: "a" }, { title: "b" }, { title: "c" }],
-          slabs: [{ pax: 2, rate: 48000 }, { pax: 4, rate: 44000 }],
+          slabs: [
+            { pax: 2, rate: 48000 },
+            { pax: 4, rate: 44000 },
+          ],
         }),
       }),
     );

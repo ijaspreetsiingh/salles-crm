@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  BedDouble,
-  Check,
-  Pencil,
-  Plus,
-  Search,
-  Trash2,
-  TrendingUp,
-} from "lucide-react";
+import { BedDouble, Check, Pencil, Plus, Search, Trash2, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { money } from "@/lib/crm/catalog";
@@ -242,10 +234,7 @@ export function HotelRates() {
         />
       </Field>
       <Field label="Basis">
-        <select
-          value={draft.basis}
-          onChange={(e) => setDraft({ ...draft, basis: e.target.value })}
-        >
+        <select value={draft.basis} onChange={(e) => setDraft({ ...draft, basis: e.target.value })}>
           {RATE_BASIS.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -303,7 +292,10 @@ export function HotelRates() {
           <span className="text-xs text-muted">
             Margin{" "}
             <strong className="text-foreground">
-              {money(Number(draft.sellingPrice) - Number(draft.costPrice), draft.currency || currency)}
+              {money(
+                Number(draft.sellingPrice) - Number(draft.costPrice),
+                draft.currency || currency,
+              )}
             </strong>
             {Number(draft.sellingPrice) > 0
               ? ` · ${Math.round(((Number(draft.sellingPrice) - Number(draft.costPrice)) / Number(draft.sellingPrice)) * 1000) / 10}%`

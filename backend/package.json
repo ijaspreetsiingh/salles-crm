@@ -23,20 +23,27 @@
     "db:sqlite": "node scripts/db-provider.mjs sqlite && echo 'Now set DATABASE_URL to file:./data/traveldesk.db and run: npm run prisma:push'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:baseline": "prisma migrate resolve --applied 0_init",
+    "db:drift": "prisma migrate diff --from-url \"file:./data/traveldesk.db\" --to-schema-datamodel prisma/schema.prisma --exit-code"
   },
   "prisma": {
     "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@socket.io/redis-adapter": "^8.3.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
     "@types/qrcode": "^1.5.6",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
@@ -46,7 +53,13 @@
     "pdfkit": "^0.20.2",
     "pino": "^9.5.0",
     "pino-http": "^10.3.0",
+    "prisma": "^5.22.0",
     "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "razorpay": "2.9.4",
+    "redis": "^6.3.1",
+    "socket.io": "4.8.1",
+    "web-push": "3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -58,7 +71,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20.17.10",
     "@types/supertest": "^6.0.2",
-    "prisma": "^5.22.0",
+    "@types/web-push": "^3.6.4",
     "supertest": "^7.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

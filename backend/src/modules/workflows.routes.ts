@@ -3,14 +3,17 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
+import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { createNotification } from "../services/notifications";
 import { recordAudit } from "../services/audit";
+import { parseGraph, runWorkflowGraph } from "../services/workflow-graph";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("automation", "view"));
 
 const workflowSchema = z.object({
   name: z.string().min(2).max(120),
@@ -18,6 +21,8 @@ const workflowSchema = z.object({
   trigger: z.string().min(2).max(120),
   condition: z.string().max(160).default("All records"),
   action: z.string().min(2).max(160),
+  /** Canvas graph as JSON: { nodes: [...], edges: [...] }. */
+  graph: z.string().max(200_000).optional(),
   status: z.enum(["Active", "Paused"]).default("Active"),
 });
 
@@ -28,6 +33,7 @@ const workflowDto = (w: {
   trigger: string;
   condition: string;
   action: string;
+  graph?: string;
   status: string;
   runCount: number;
   lastRunAt: Date | null;
@@ -39,6 +45,7 @@ const workflowDto = (w: {
   trigger: w.trigger,
   condition: w.condition,
   action: w.action,
+  graph: w.graph ?? "",
   status: w.status,
   runCount: w.runCount,
   lastRunAt: w.lastRunAt?.toISOString() ?? null,
@@ -160,9 +167,53 @@ router.post(
     if (!workflow) throw new NotFoundError("Workflow");
     if (workflow.status !== "Active") {
       const run = await prisma.workflowRun.create({
-        data: { workflowId: workflow.id, status: "skipped", trigger: workflow.trigger, log: "Workflow is paused", finishedAt: new Date() },
+        data: {
+          workflowId: workflow.id,
+          status: "skipped",
+          trigger: workflow.trigger,
+          log: "Workflow is paused",
+          finishedAt: new Date(),
+        },
       });
       return ok(res, { status: run.status, log: run.log });
+    }
+
+    // A workflow drawn on the canvas runs its graph, node by node.
+    const graph = parseGraph(workflow.graph);
+    if (graph) {
+      const dryRun = String(req.query.dryRun ?? "") === "1";
+      const result = await runWorkflowGraph({
+        organizationId,
+        moduleId: workflow.moduleId,
+        userId: req.auth!.userId,
+        userName: req.auth!.name,
+        graph,
+        dryRun,
+      });
+      if (!dryRun) {
+        await prisma.workflowRun.create({
+          data: {
+            workflowId: workflow.id,
+            status: result.status === "success" ? "success" : result.status,
+            trigger: workflow.trigger,
+            log: result.log,
+            finishedAt: new Date(),
+          },
+        });
+        await prisma.workflow.update({
+          where: { id: workflow.id },
+          data: { runCount: { increment: 1 }, lastRunAt: new Date() },
+        });
+      }
+      await recordAudit({
+        organizationId,
+        action: "WorkflowRun",
+        moduleId: "automation",
+        recordId: workflow.id,
+        label: `${dryRun ? "Tested" : "Ran"} "${workflow.name}" on the canvas`,
+        req,
+      });
+      return ok(res, result);
     }
 
     const log: string[] = [];
@@ -254,7 +305,14 @@ router.get(
       orderBy: { startedAt: "desc" },
       take: 50,
     });
-    return ok(res, runs.map((r) => ({ ...r, startedAt: r.startedAt.toISOString(), finishedAt: r.finishedAt?.toISOString() ?? null })));
+    return ok(
+      res,
+      runs.map((r) => ({
+        ...r,
+        startedAt: r.startedAt.toISOString(),
+        finishedAt: r.finishedAt?.toISOString() ?? null,
+      })),
+    );
   }),
 );
 

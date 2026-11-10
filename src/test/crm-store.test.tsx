@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 
@@ -6,54 +6,53 @@ import { CRMProvider, useCRM } from "@/lib/crm/store";
 
 const wrapper = ({ children }: { children: ReactNode }) => <CRMProvider>{children}</CRMProvider>;
 
+/**
+ * The store is API-backed: it never keeps a local pretend list of records.
+ * These tests hold it to that promise — a disconnected workspace shows no
+ * invented records, and a save while disconnected is refused instead of
+ * silently disappearing on the next reload.
+ */
 describe("CRM store", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
 
-  it("seeds records, tasks and settings", () => {
+  it("starts disconnected with no invented records", async () => {
     const { result } = renderHook(() => useCRM(), { wrapper });
-    expect(result.current.getRows("leads")).toHaveLength(8);
-    expect(result.current.tasks.length).toBeGreaterThanOrEqual(6);
-    expect(result.current.settings.employees.length).toBeGreaterThan(0);
-    expect(result.current.settings.branches.length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(result.current.status).toBe("unauthenticated"), { timeout: 3000 });
+    expect(result.current.user).toBeNull();
+    expect(result.current.getRows("leads")).toHaveLength(0);
+
+    act(() =>
+      result.current.save("leads", {
+        id: "LD-TEST1",
+        name: "Test lead",
+        detail: "2 travellers",
+        destination: "Bali, Indonesia",
+        owner: "Sarah Wilson",
+        branch: "Mumbai",
+        date: "2026-10-20",
+        amount: 1000,
+        status: "New",
+        email: "t@example.com",
+        phone: "+91 1",
+        source: "Website",
+        notes: "",
+      }),
+    );
+
+    // Nothing was written, and nothing pretends it was.
+    expect(result.current.getRows("leads")).toHaveLength(0);
   });
 
-  it("creates, updates and deletes records with audit entries", () => {
+  it("keeps the organisation defaults available before sign-in", async () => {
     const { result } = renderHook(() => useCRM(), { wrapper });
-    const row = {
-      id: "LD-TEST1",
-      name: "Test lead",
-      detail: "2 travellers",
-      destination: "Bali, Indonesia",
-      owner: "Sarah Wilson",
-      branch: "Mumbai",
-      date: "2026-10-20",
-      amount: 1000,
-      status: "New",
-      email: "t@example.com",
-      phone: "+91 1",
-      source: "Website",
-      notes: "",
-    };
 
-    act(() => result.current.save("leads", row));
-    expect(result.current.getRows("leads")[0]!.id).toBe("LD-TEST1");
-    expect(result.current.audit[0]).toMatchObject({
-      action: "Created",
-      recordId: "LD-TEST1",
-      module: "leads",
-    });
-
-    act(() => result.current.update("leads", { ...row, status: "Qualified" }));
-    expect(result.current.getRows("leads").find((r) => r.id === "LD-TEST1")?.status).toBe(
-      "Qualified",
-    );
-    expect(result.current.audit[0]!.action).toBe("Updated");
-
-    act(() => result.current.remove("leads", "LD-TEST1"));
-    expect(result.current.getRows("leads").find((r) => r.id === "LD-TEST1")).toBeUndefined();
-    expect(result.current.audit[0]!.action).toBe("Deleted");
+    await waitFor(() => expect(result.current.status).not.toBe("loading"), { timeout: 3000 });
+    expect(result.current.settings.currency).toBe("INR");
+    expect(result.current.settings.branches.length).toBeGreaterThan(0);
+    expect(result.current.settings.employees.length).toBeGreaterThan(0);
   });
 
   it("adds and toggles tasks", () => {
@@ -96,15 +95,5 @@ describe("CRM store", () => {
     act(() => result.current.updateSettings({ currency: "USD", branches: ["Mumbai", "Goa"] }));
     expect(result.current.settings.currency).toBe("USD");
     expect(result.current.settings.branches).toContain("Goa");
-  });
-
-  it("starts unauthenticated and falls back to catalogue data without a session", () => {
-    const { result } = renderHook(() => useCRM(), { wrapper });
-
-    expect(result.current.status).toBe("unauthenticated");
-    expect(result.current.user).toBeNull();
-    // Catalogue rows keep the workspace renderable before sign-in.
-    expect(result.current.getRows("leads").length).toBeGreaterThan(0);
-    expect(result.current.tasks.length).toBeGreaterThan(0);
   });
 });

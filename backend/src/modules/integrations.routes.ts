@@ -3,15 +3,17 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requireRole } from "../middlewares/rbac";
+import { requireModulePermission, requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { parseJson, randomToken, stringifyJson } from "../lib/utils";
+import { maskValue, redactSecrets } from "../lib/redact";
 import { recordAudit } from "../services/audit";
-import { logger } from "../lib/logger";
+import { assertSafeWebhookUrl, deliverWebhook } from "../services/webhooks";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("integrations", "view"));
 
 const connectSchema = z.object({
   environment: z.enum(["Sandbox", "Production"]).default("Sandbox"),
@@ -34,13 +36,23 @@ router.get(
     });
     return ok(
       res,
-      connections.map((c) => ({ ...c, config: parseJson<Record<string, unknown>>(c.config, {}) })),
+      connections.map((c) => ({
+        ...c,
+        /*
+         * The connected provider's API key/secret is write-only. The UI only
+         * needs to know whether a value is stored, so every credential-like
+         * key is masked before it leaves the server.
+         */
+        config: redactSecrets(parseJson<Record<string, unknown>>(c.config, {})),
+      })),
     );
   }),
 );
 
 const findConnection = async (organizationId: string, id: string) => {
-  const connection = await prisma.integrationConnection.findFirst({ where: { id, organizationId } });
+  const connection = await prisma.integrationConnection.findFirst({
+    where: { id, organizationId },
+  });
   if (!connection) throw new NotFoundError("Integration");
   return connection;
 };
@@ -72,7 +84,10 @@ router.post(
       req,
     });
 
-    return ok(res, { ...updated, config: body.config });
+    return ok(res, {
+      ...updated,
+      config: redactSecrets(parseJson<Record<string, unknown>>(updated.config, {})),
+    });
   }),
 );
 
@@ -95,7 +110,10 @@ router.post(
       req,
     });
 
-    return ok(res, updated);
+    return ok(res, {
+      ...updated,
+      config: redactSecrets(parseJson<Record<string, unknown>>(updated.config, {})),
+    });
   }),
 );
 
@@ -109,7 +127,10 @@ router.patch(
       where: { id: connection.id },
       data: req.body,
     });
-    return ok(res, updated);
+    return ok(res, {
+      ...updated,
+      config: redactSecrets(parseJson<Record<string, unknown>>(updated.config, {})),
+    });
   }),
 );
 
@@ -122,6 +143,10 @@ router.get(
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { deliveries: true } } },
     });
+    // The signing secret is shown in full only to the role that can create and
+    // revoke webhooks; everyone else sees that one exists.
+    const canSeeSecret =
+      req.auth!.roleKey === "company_admin" || req.auth!.roleKey === "platform_admin";
     return ok(
       res,
       webhooks.map((w) => ({
@@ -129,7 +154,7 @@ router.get(
         url: w.url,
         events: parseJson<string[]>(w.events, []),
         active: w.active,
-        secret: w.secret,
+        secret: canSeeSecret ? w.secret : maskValue(w.secret),
         deliveries: w._count.deliveries,
         createdAt: w.createdAt.toISOString(),
       })),
@@ -143,16 +168,23 @@ router.post(
   validate(webhookSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof webhookSchema>;
+    // Any workspace admin can type this URL, so it must never reach a private
+    // network, a cloud metadata endpoint or a localhost service.
+    const safeUrl = await assertSafeWebhookUrl(body.url);
     const webhook = await prisma.webhook.create({
       data: {
         organizationId: req.auth!.organizationId,
-        url: body.url,
+        url: safeUrl.toString(),
         events: stringifyJson(body.events),
         secret: `whsec_${randomToken(16)}`,
         active: body.active,
       },
     });
-    return created(res, { ...webhook, events: body.events, createdAt: webhook.createdAt.toISOString() });
+    return created(res, {
+      ...webhook,
+      events: body.events,
+      createdAt: webhook.createdAt.toISOString(),
+    });
   }),
 );
 
@@ -182,7 +214,10 @@ router.get(
       orderBy: { createdAt: "desc" },
       take: 50,
     });
-    return ok(res, deliveries.map((d) => ({ ...d, createdAt: d.createdAt.toISOString() })));
+    return ok(
+      res,
+      deliveries.map((d) => ({ ...d, createdAt: d.createdAt.toISOString() })),
+    );
   }),
 );
 
@@ -199,31 +234,108 @@ router.post(
     });
     if (!webhook) throw new NotFoundError("Webhook");
 
-    const payload = { event: "webhook.test", organizationId: req.auth!.organizationId, sentAt: new Date().toISOString() };
-    let status = "failed";
-    let responseCode: number | null = null;
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(webhook.url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Traveldesk-Signature": webhook.secret },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      responseCode = response.status;
-      status = response.ok ? "success" : "failed";
-    } catch (error) {
-      logger.warn({ err: error, webhookId: webhook.id }, "Webhook test delivery failed");
-    }
+    const payload = {
+      event: "webhook.test",
+      organizationId: req.auth!.organizationId,
+      sentAt: new Date().toISOString(),
+    };
+    const body = stringifyJson(payload);
+    const result = await deliverWebhook(webhook.url, webhook.secret, body);
 
     const delivery = await prisma.webhookDelivery.create({
-      data: { webhookId: webhook.id, event: "webhook.test", status, responseCode, payload: stringifyJson(payload) },
+      data: {
+        webhookId: webhook.id,
+        event: "webhook.test",
+        status: result.ok ? "success" : "failed",
+        responseCode: result.status,
+        payload: body,
+      },
     });
 
     return ok(res, { ...delivery, createdAt: delivery.createdAt.toISOString() });
+  }),
+);
+
+/**
+ * Every webhook delivery in the workspace, newest first — the log an
+ * integrator actually needs when a partner says "we never got the event".
+ */
+router.get(
+  "/deliveries",
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const take = Math.min(Math.max(Number(req.query.take ?? 50) || 50, 1), 200);
+    const webhooks = await prisma.webhook.findMany({
+      where: { organizationId },
+      select: { id: true, url: true, active: true },
+    });
+    const byId = new Map(webhooks.map((w) => [w.id, w]));
+
+    const deliveries = await prisma.webhookDelivery.findMany({
+      where: { webhookId: { in: webhooks.map((w) => w.id) } },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
+
+    return ok(
+      res,
+      deliveries.map((delivery) => ({
+        id: delivery.id,
+        webhookId: delivery.webhookId,
+        url: byId.get(delivery.webhookId)?.url ?? "",
+        active: byId.get(delivery.webhookId)?.active ?? false,
+        event: delivery.event,
+        status: delivery.status,
+        responseCode: delivery.responseCode,
+        payload: delivery.payload,
+        createdAt: delivery.createdAt.toISOString(),
+      })),
+    );
+  }),
+);
+
+/** Re-sends a past delivery exactly as it was sent. */
+router.post(
+  "/deliveries/:id/retry",
+  requireRole("company_admin", "branch_manager"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    // Scope the read through the tenant's own webhooks — a delivery id from
+    // another organisation must look exactly like a missing one.
+    const delivery = await prisma.webhookDelivery.findFirst({
+      where: {
+        id: req.params.id,
+        webhook: { organizationId },
+      },
+    });
+    if (!delivery) throw new NotFoundError("Delivery");
+
+    const webhook = await prisma.webhook.findFirst({
+      where: { id: delivery.webhookId, organizationId },
+    });
+    if (!webhook) throw new NotFoundError("Webhook");
+
+    const body = delivery.payload || "{}";
+    const result = await deliverWebhook(webhook.url, webhook.secret, body, {
+      "X-Traveldesk-Retry": "1",
+    });
+
+    const retried = await prisma.webhookDelivery.create({
+      data: {
+        webhookId: webhook.id,
+        event: delivery.event,
+        status: result.ok ? "success" : "failed",
+        responseCode: result.status,
+        payload: body,
+      },
+    });
+
+    return ok(res, {
+      id: retried.id,
+      status: retried.status,
+      responseCode: retried.responseCode,
+      createdAt: retried.createdAt.toISOString(),
+    });
   }),
 );
 

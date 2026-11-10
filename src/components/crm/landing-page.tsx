@@ -182,9 +182,16 @@ export function LandingPage() {
           <div className="landing-pricing__head">
             <IndianRupee size={20} />
             <h2>Simple plans. Simple pricing.</h2>
-            <p>Every plan includes the full product. Bigger plans just give you more people, branches and bookings.</p>
+            <p>
+              Every plan includes the full product. Bigger plans just give you more people, branches
+              and bookings.
+            </p>
           </div>
-          {plansError && <p className="landing-pricing__note" role="status">{plansError}</p>}
+          {plansError && (
+            <p className="landing-pricing__note" role="status">
+              {plansError}
+            </p>
+          )}
           <div className={`landing-pricing__grid ${plans.length ? "" : "is-empty"}`}>
             {plans.map((plan) => (
               <div key={plan.key} className={`landing-plan ${plan.popular ? "is-popular" : ""}`}>

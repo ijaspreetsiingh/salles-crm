@@ -4,9 +4,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission } from "../middlewares/rbac";
+import { requireModulePermission, requirePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { toCsv } from "../lib/csv";
 import { stringifyJson } from "../lib/utils";
@@ -15,6 +15,8 @@ import { hasPermission } from "../domain/rbac";
 import {
   applyBranchScope,
   buildRecordWhere,
+  invoiceNumberPrefix,
+  nextInvoiceNumber,
   nextReference,
   normalizeExtra,
   resolveOwnerBranch,
@@ -25,6 +27,9 @@ import { createNotification } from "../services/notifications";
 import { importRecords } from "../services/import";
 import { buildAttention } from "../services/attention";
 import { findDuplicateGroups, mergeRecords } from "../services/duplicates";
+import { fireWorkflows } from "../services/automation";
+import { dispatchWebhookEvent } from "../services/webhook-dispatch";
+import { num } from "../lib/money";
 
 const router = Router();
 router.use(requireAuth);
@@ -39,7 +44,10 @@ const recordBodySchema = z.object({
   date: z
     .string()
     .max(40)
-    .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), "Invalid date")
+    .refine(
+      (v) => v === undefined || v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v) || !Number.isNaN(Date.parse(v)),
+      "Invalid date (use YYYY-MM-DD)",
+    )
     .optional(),
   amount: z.coerce.number().min(0).max(1_000_000_000).optional(),
   currency: z
@@ -59,6 +67,12 @@ const recordBodySchema = z.object({
   tab: z.string().max(80).optional(),
   extra: z.record(z.unknown()).optional(),
   meta: z.record(z.unknown()).optional(),
+  /**
+   * Optimistic locking. The client sends the `updatedAt` it rendered; if the
+   * row has moved since, the write is refused instead of silently overwriting
+   * a colleague's edit. Optional so API clients and imports stay unaffected.
+   */
+  expectedUpdatedAt: z.string().max(40).optional(),
 });
 
 /**
@@ -85,9 +99,33 @@ const statusOf = (moduleId: string, value?: string) => {
   return value ?? module.statuses[0] ?? "Pending";
 };
 
+/**
+ * Statuses older versions wrote into every module.
+ *
+ * They are still accepted so an existing record can be edited (and moved onto
+ * the module's real workflow) instead of becoming unsaveable.
+ */
+const LEGACY_STATUSES = new Set([
+  "Active",
+  "Pending",
+  "Confirmed",
+  "In progress",
+  "On hold",
+  "Cancelled",
+  "Closed",
+  "Resolved",
+  "Draft",
+  "Sent",
+  "Paid",
+]);
+
 const assertValidStatus = (module: { statuses: string[] }, value?: string) => {
-  if (value !== undefined && !module.statuses.includes(value)) {
-    throw new BadRequestError(`"${value}" is not a valid status for this module`);
+  if (value !== undefined && !module.statuses.includes(value) && !LEGACY_STATUSES.has(value)) {
+    // Say what is allowed as well as what was wrong, so a client that offers a
+    // stale list can be fixed from the error alone.
+    throw new BadRequestError(
+      `"${value}" is not a valid status for this module. Allowed: ${module.statuses.join(", ")}`,
+    );
   }
 };
 
@@ -114,23 +152,46 @@ const CONTEXT_PER_MODULE = 300;
  */
 router.get(
   "/all-records",
-  requirePermission("view"),
+  // This is the cross-module sign-in cache: every role reads it, so the check
+  // is "can you read the workspace at all", not one module's list.
+  requireModulePermission("reports", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
+    const permitted = req.auth!.permissions.modules;
     const allowedModules =
-      req.auth!.permissions.modules === "*" ? null : req.auth!.permissions.modules;
-    const records = await prisma.record.findMany({
-      where: applyBranchScope({ organizationId, deletedAt: null }, req.auth!),
-      orderBy: { createdAt: "desc" },
-      take: 5000,
-    });
+      permitted === "*"
+        ? MODULES.map((module) => module.id)
+        : MODULES.map((module) => module.id).filter((id) => permitted.includes(id));
+
+    /*
+     * Every module is asked for its own most recent slice, in parallel.
+     *
+     * The earlier version ran one capped query (`take: 5000`) across all
+     * modules and grouped the result. In a busy workspace a single module could
+     * fill that ceiling, so a customer's drawer would show 300 leads and zero
+     * bookings simply because the bookings were older than the cutoff — the
+     * screen looked complete while it was quietly missing context. One indexed
+     * query per module costs the same single HTTP round trip and guarantees
+     * each module contributes its own latest records.
+     */
+    const slices = await Promise.all(
+      allowedModules.map(async (moduleId) => {
+        const where = applyBranchScope(
+          { organizationId, deletedAt: null, moduleId } as Prisma.RecordWhereInput,
+          req.auth!,
+        );
+        const rows = await prisma.record.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          take: CONTEXT_PER_MODULE,
+        });
+        return [moduleId, rows.map(toRecordDto)] as const;
+      }),
+    );
 
     const grouped: Record<string, ReturnType<typeof toRecordDto>[]> = {};
-    for (const record of records) {
-      if (allowedModules && !allowedModules.includes(record.moduleId)) continue;
-      const bucket = (grouped[record.moduleId] ??= []);
-      if (bucket.length >= CONTEXT_PER_MODULE) continue;
-      bucket.push(toRecordDto(record));
+    for (const [moduleId, rows] of slices) {
+      if (rows.length > 0) grouped[moduleId] = rows;
     }
     return ok(res, grouped);
   }),
@@ -149,7 +210,7 @@ router.get(
  */
 router.get(
   "/attention",
-  requirePermission("view"),
+  requireModulePermission("reports", "view"),
   asyncHandler(async (req, res) => {
     const scope = req.query.scope === "team" ? "team" : "mine";
     const branch = typeof req.query.branch === "string" ? req.query.branch : undefined;
@@ -340,13 +401,13 @@ router.get(
       total,
       active,
       awaiting,
-      contractValue: value._sum.amount ?? 0,
-      collected: collected?._sum.amount ?? 0,
+      contractValue: num(value._sum.amount),
+      collected: num(collected?._sum.amount),
       variant: isFinance ? "finance" : "default",
       breakdown: byStatus.map((row) => ({
         status: row.status,
         count: row._count._all,
-        amount: row._sum.amount ?? 0,
+        amount: num(row._sum.amount),
       })),
     });
   }),
@@ -357,9 +418,17 @@ router.get(
   "/:module/records/:id",
   requirePermission("view"),
   asyncHandler(async (req, res) => {
+    // The record must actually belong to the module in the URL: otherwise a
+    // role that can edit "leads" could read any other module's record by
+    // swapping the id into a leads URL.
     const record = await prisma.record.findFirst({
       where: applyBranchScope(
-        { id: req.params.id, organizationId: req.auth!.organizationId, deletedAt: null },
+        {
+          id: req.params.id,
+          moduleId: req.params.module,
+          organizationId: req.auth!.organizationId,
+          deletedAt: null,
+        },
         req.auth!,
       ),
     });
@@ -388,11 +457,17 @@ router.post(
 
     // Two records created in the same second can race for the same reference —
     // retry with the next free one instead of failing the save.
+    // Invoices are numbered per financial year instead of from a running
+    // module counter, so the series stays audit-ready.
+    const invoicePrefix = module.id === "finance" ? await invoiceNumberPrefix(organizationId) : "";
+    const recordDate = body.date ?? new Date().toISOString().slice(0, 10);
     let record = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const reference =
         body.reference ??
-        (await nextReference(organizationId, module)) + (attempt ? `-${attempt + 1}` : "");
+        (module.id === "finance"
+          ? await nextInvoiceNumber(organizationId, recordDate, invoicePrefix)
+          : (await nextReference(organizationId, module)) + (attempt ? `-${attempt + 1}` : ""));
       try {
         record = await prisma.record.create({
           data: {
@@ -451,6 +526,25 @@ router.post(
       }),
     ]);
 
+    // Live automation: "when a new enquiry arrives, WhatsApp the desk".
+    void fireWorkflows({
+      organizationId,
+      moduleId: module.id,
+      recordId: record.id,
+      event: "record.created",
+      status: record.status,
+      userId: req.auth!.userId,
+      userName: req.auth!.name,
+    });
+
+    // And the same event to the workspace's own webhook subscribers.
+    void dispatchWebhookEvent({
+      organizationId,
+      event: "record.created",
+      dedupeKey: `record.created:${record.id}`,
+      data: toRecordDto(record) as unknown as Record<string, unknown>,
+    });
+
     return created(res, toRecordDto(record));
   }),
 );
@@ -466,7 +560,13 @@ router.patch(
 
     const existing = await prisma.record.findFirst({
       where: applyBranchScope(
-        { id: req.params.id, organizationId: req.auth!.organizationId, deletedAt: null },
+        {
+          id: req.params.id,
+          // Same rule as the read above: URL module and record module match.
+          moduleId: module.id,
+          organizationId: req.auth!.organizationId,
+          deletedAt: null,
+        },
         req.auth!,
       ),
     });
@@ -474,6 +574,22 @@ router.patch(
 
     const body = req.body as Partial<z.infer<typeof recordBodySchema>>;
     assertValidStatus(module, body.status);
+
+    /*
+     * Two people editing the same booking is normal in a busy agency. Without
+     * this check the second save wins and the first one disappears without a
+     * word — including money fields. A conflict is a 409 with a sentence the
+     * screen can show; the person reloads and redoes the one field they meant.
+     */
+    if (body.expectedUpdatedAt) {
+      const seen = existing.updatedAt.toISOString();
+      if (seen !== body.expectedUpdatedAt) {
+        throw new ConflictError(
+          "Someone else changed this record while you were editing. Reload to see their version, then make your change again.",
+        );
+      }
+    }
+
     const resolved =
       body.owner !== undefined || body.branch !== undefined
         ? await resolveOwnerBranch(
@@ -519,6 +635,41 @@ router.patch(
       req,
     });
 
+    // A status move is what most automations listen for (booking confirmed,
+    // invoice overdue). Fired only when the status really changed, so saving
+    // the same form twice does not send the customer two messages.
+    if (body.status !== undefined && body.status !== existing.status) {
+      void fireWorkflows({
+        organizationId: req.auth!.organizationId,
+        moduleId: module.id,
+        recordId: record.id,
+        event: "record.status_changed",
+        status: record.status,
+        previousStatus: existing.status,
+        userId: req.auth!.userId,
+        userName: req.auth!.name,
+      });
+    }
+
+    const payload = toRecordDto(record) as unknown as Record<string, unknown>;
+    // The updated row's own timestamp is the idempotency key: saving the same
+    // form twice within one write produces one event, not two.
+    void dispatchWebhookEvent({
+      organizationId: req.auth!.organizationId,
+      event: "record.updated",
+      dedupeKey: `record.updated:${record.id}:${record.updatedAt.toISOString()}`,
+      data: { ...payload, previousStatus: existing.status },
+    });
+
+    if (module.id === "bookings" && record.status === "Confirmed" && existing.status !== "Confirmed") {
+      void dispatchWebhookEvent({
+        organizationId: req.auth!.organizationId,
+        event: "booking.confirmed",
+        dedupeKey: `booking.confirmed:${record.id}:${record.updatedAt.toISOString()}`,
+        data: { ...payload, previousStatus: existing.status },
+      });
+    }
+
     return ok(res, toRecordDto(record));
   }),
 );
@@ -533,7 +684,12 @@ router.delete(
 
     const existing = await prisma.record.findFirst({
       where: applyBranchScope(
-        { id: req.params.id, organizationId: req.auth!.organizationId, deletedAt: null },
+        {
+          id: req.params.id,
+          moduleId: module.id,
+          organizationId: req.auth!.organizationId,
+          deletedAt: null,
+        },
         req.auth!,
       ),
     });
@@ -553,6 +709,18 @@ router.delete(
       req,
     });
 
+    void dispatchWebhookEvent({
+      organizationId: req.auth!.organizationId,
+      event: "record.deleted",
+      dedupeKey: `record.deleted:${existing.id}:${Date.now()}`,
+      data: {
+        id: existing.id,
+        moduleId: module.id,
+        reference: existing.reference,
+        name: existing.name,
+      },
+    });
+
     return ok(res, { deleted: true });
   }),
 );
@@ -566,11 +734,15 @@ router.post(
     if (!module) throw new NotFoundError("Module");
 
     const existing = await prisma.record.findFirst({
-      where: {
-        id: req.params.id,
-        organizationId: req.auth!.organizationId,
-        deletedAt: { not: null },
-      },
+      where: applyBranchScope(
+        {
+          id: req.params.id,
+          moduleId: module.id,
+          organizationId: req.auth!.organizationId,
+          deletedAt: { not: null },
+        },
+        req.auth!,
+      ),
     });
     if (!existing) throw new NotFoundError("Deleted record");
 
@@ -589,6 +761,177 @@ router.post(
     });
 
     return ok(res, toRecordDto(record));
+  }),
+);
+
+/**
+ * The recycle bin: everything deleted in the workspace, newest first.
+ *
+ * A delete in this product is a soft delete, but until the bin existed that
+ * only helped the database — a person who deleted the wrong customer had no
+ * way back. The module is sent back with each row so the client can restore it
+ * without guessing which list it came from.
+ */
+router.get(
+  "/trash",
+  // The bin lives in Settings, so that is the permission that opens it.
+  requireModulePermission("settings", "view"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const take = Math.min(Math.max(Number(req.query.take ?? 100) || 100, 1), 500);
+    const q = String(req.query.q ?? "").trim();
+    const moduleFilter = String(req.query.module ?? "").trim();
+
+    // The bin must never become a back door around the module permissions:
+    // the caller only sees modules their role is allowed to view, and an
+    // explicit filter for a hidden module is refused outright.
+    const visibleModules: string[] = MODULES.filter((m) =>
+      hasPermission(req.auth!.permissions, m.id, "view"),
+    ).map((m) => m.id);
+    if (moduleFilter && !visibleModules.includes(moduleFilter)) {
+      throw new ForbiddenError(`Your role cannot view records in "${moduleFilter}"`);
+    }
+
+    const where: Prisma.RecordWhereInput = {
+      organizationId,
+      deletedAt: { not: null },
+      moduleId: moduleFilter ? moduleFilter : { in: visibleModules },
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { reference: { contains: q } },
+              { email: { contains: q } },
+              { phone: { contains: q } },
+            ],
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      prisma.record.findMany({
+        where: applyBranchScope(where, req.auth!),
+        orderBy: { deletedAt: "desc" },
+        take,
+      }),
+      prisma.record.count({ where: applyBranchScope(where, req.auth!) }),
+    ]);
+
+    return ok(res, {
+      total,
+      items: rows.map((row) => ({
+        ...toRecordDto(row),
+        moduleName: MODULES.find((m) => m.id === row.moduleId)?.name ?? row.moduleId,
+        deletedAt: row.deletedAt?.toISOString() ?? null,
+      })),
+    });
+  }),
+);
+
+/** Restores one deleted record by id — the bin does not need to know its module. */
+router.post(
+  "/trash/:id/restore",
+  requireModulePermission("settings", "view"),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.record.findFirst({
+      where: applyBranchScope(
+        {
+          id: req.params.id,
+          organizationId: req.auth!.organizationId,
+          deletedAt: { not: null },
+        },
+        req.auth!,
+      ),
+    });
+    if (!existing) throw new NotFoundError("Deleted record");
+    // Restoring is an edit in the record's own module — the bin has no
+    // :module param, so the permission is checked against the record itself.
+    if (!hasPermission(req.auth!.permissions, existing.moduleId, "edit")) {
+      throw new ForbiddenError(`Your role cannot edit records in "${existing.moduleId}"`);
+    }
+
+    const record = await prisma.record.update({
+      where: { id: existing.id },
+      data: { deletedAt: null, updatedById: req.auth!.userId },
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Restored",
+      moduleId: record.moduleId,
+      recordId: record.id,
+      label: `${record.reference} restored from the recycle bin`,
+      req,
+    });
+
+    return ok(res, toRecordDto(record));
+  }),
+);
+
+/** Permanently removes one deleted record. Irreversible, so it needs delete rights. */
+router.delete(
+  "/trash/:id",
+  requireModulePermission("settings", "delete"),
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.record.findFirst({
+      where: applyBranchScope(
+        {
+          id: req.params.id,
+          organizationId: req.auth!.organizationId,
+          deletedAt: { not: null },
+        },
+        req.auth!,
+      ),
+      select: { id: true, moduleId: true, reference: true },
+    });
+    if (!existing) throw new NotFoundError("Deleted record");
+    // Permanent deletion is a delete in the record's own module.
+    if (!hasPermission(req.auth!.permissions, existing.moduleId, "delete")) {
+      throw new ForbiddenError(`Your role cannot delete records in "${existing.moduleId}"`);
+    }
+
+    await prisma.record.delete({ where: { id: existing.id } });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Deleted",
+      moduleId: existing.moduleId,
+      recordId: existing.id,
+      label: `${existing.reference} permanently deleted`,
+      req,
+    });
+    return ok(res, { purged: true });
+  }),
+);
+
+/** Empties the bin for the whole workspace. */
+router.post(
+  "/trash/empty",
+  requireModulePermission("settings", "delete"),
+  asyncHandler(async (req, res) => {
+    // Emptying the bin purges across modules, so it may only touch modules
+    // this role is allowed to delete in — never a silent wipe of someone
+    // else's records.
+    const deletableModules = MODULES.filter((m) =>
+      hasPermission(req.auth!.permissions, m.id, "delete"),
+    ).map((m) => m.id);
+    const result = await prisma.record.deleteMany({
+      where: applyBranchScope(
+        {
+          organizationId: req.auth!.organizationId,
+          deletedAt: { not: null },
+          moduleId: { in: deletableModules },
+        },
+        req.auth!,
+      ),
+    });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Deleted",
+      moduleId: "settings",
+      label: `Recycle bin emptied (${result.count} records)`,
+      req,
+    });
+    return ok(res, { purged: result.count });
   }),
 );
 

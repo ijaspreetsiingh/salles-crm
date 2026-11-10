@@ -9,6 +9,8 @@ export type AuthContext = {
   email: string;
   name: string;
   permissions: PermissionSet;
+  /** True once the person has enrolled an authenticator app. */
+  twoFactorEnabled?: boolean;
   /** Present when the request is authenticated with an API key instead of a JWT. */
   apiKeyId?: string;
 };

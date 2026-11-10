@@ -1,16 +1,32 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, Compass, Loader2, LockKeyhole, Mail, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Compass,
+  Loader2,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LandingPage } from "@/components/crm/landing-page";
 import { PlatformPortal } from "@/components/crm/platform-portal";
-import { errorMessage } from "@/lib/api/client";
+import { ApiError, errorMessage } from "@/lib/api/client";
 import { fetchPlans, type PlanDto } from "@/lib/api/modules";
+import { TwoFactorPanel } from "@/components/crm/two-factor";
 import { useCRM } from "@/lib/crm/store";
 import { toast } from "sonner";
 
 const DEMO_EMAIL = "owner@horizontravel.in";
 const DEMO_PASSWORD = "Traveldesk@123";
+
+/**
+ * Demo sign-in is a development aid, never a production default. It only
+ * appears in a dev build or when VITE_DEMO_LOGIN=true is set explicitly, so a
+ * real customer never sees a password pre-filled in the form.
+ */
+const DEMO_ENABLED = import.meta.env.DEV || import.meta.env["VITE_DEMO_LOGIN"] === "true";
 
 /** The vendor's internal workspace slug — see backend `domain/tenancy.ts`. */
 const INTERNAL_ORG_SLUG = "traveldesk-hq";
@@ -18,8 +34,9 @@ const INTERNAL_ORG_SLUG = "traveldesk-hq";
 /**
  * The sign-in screen.
  *
- * One card, one job. Everything is pre-filled for the demo, and the copy
- * says what the product does in a sentence rather than a paragraph.
+ * One card, one job. In a development build the demo account is pre-filled;
+ * a production build ships empty fields. The copy says what the product does
+ * in a sentence rather than a paragraph.
  */
 /**
  * The public marketing page for guests. The full component lives in
@@ -46,6 +63,65 @@ function RedirectHome() {
 }
 
 /**
+ * The wall an admin or finance user meets until they enrol an authenticator.
+ *
+ * They are signed in, so sending them back to the sign-in card would loop:
+ * passwords do not satisfy this check. The way forward is one screen, and the
+ * panel on it is the same one Settings → Profile uses.
+ */
+function TwoFactorSetupScreen() {
+  const { reload, logout, user } = useCRM();
+  const [busy, setBusy] = useState(false);
+
+  const signOut = async () => {
+    setBusy(true);
+    try {
+      await logout();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="login-screen">
+      <div className="mesh" aria-hidden="true">
+        <i className="mesh__a" />
+        <i className="mesh__b" />
+        <i className="mesh__c" />
+      </div>
+      <main className="login-main">
+        <div className="login-card">
+          <div className="login-brand">
+            <span className="login-brand__mark">
+              <Compass size={20} />
+            </span>
+            <span className="login-brand__word">
+              travel<span>desk</span>
+            </span>
+          </div>
+          <h1 className="login-title">One more step</h1>
+          <p className="login-sub">
+            {user ? `${user.name}, your` : "Your"} role can move money and change who has access, so
+            a code from your phone is required on top of your password. It takes a minute.
+          </p>
+          <TwoFactorPanel enabled onEnabled={() => void reload()} />
+          <p className="login-foot">
+            <button
+              type="button"
+              className="login-alt"
+              onClick={() => void signOut()}
+              disabled={busy}
+            >
+              Sign out instead
+            </button>
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/**
  * Decides what visitors see:
  *  - signed out: marketing on "/" (and "/landing"), the sign-in card on
  *    "/login", sign-up on "/signup", and the sign-in card anywhere else.
@@ -53,7 +129,7 @@ function RedirectHome() {
  *    platform portal, its own dashboard next to the travel CRM.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
-  const { status, user, organizationSlug } = useCRM();
+  const { status, user, organizationSlug, twoFactorSetupRequired } = useCRM();
   const path = typeof window !== "undefined" ? window.location.pathname : "";
 
   if (status === "loading") return <BootScreen />;
@@ -78,6 +154,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   // "/platform" also opens the portal, so old bookmarks keep working.
   if (path === "/admin" || path === "/platform") return <PlatformPortal />;
+  // Signed in but not yet enrolled: nothing else in the app will answer, so
+  // say so once, here, instead of letting every screen show a 403.
+  if (twoFactorSetupRequired) return <TwoFactorSetupScreen />;
   return <>{children}</>;
 }
 
@@ -106,23 +185,56 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
 
   useEffect(() => {
     if (mode !== "signup") return;
-    fetchPlans().then((data) => {
-      setPlans(data);
-      if (data.length && !data.some((p) => p.key === plan)) setPlan(data[0]?.key ?? plan);
-    }).catch(() => setPlans([]));
+    fetchPlans()
+      .then((data) => {
+        setPlans(data);
+        if (data.length && !data.some((p) => p.key === plan)) setPlan(data[0]?.key ?? plan);
+      })
+      .catch(() => setPlans([]));
   }, [mode]);
-  const [email, setEmail] = useState(DEMO_EMAIL);
-  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [email, setEmail] = useState(DEMO_ENABLED ? DEMO_EMAIL : "");
+  const [password, setPassword] = useState(DEMO_ENABLED ? DEMO_PASSWORD : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * The server answers `two_factor_required` only after the password is known
+   * to be correct, so the code field appears exactly when the account has an
+   * authenticator app — never before, and never as a hint to an attacker.
+   */
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState("");
+  const [recoveryMode, setRecoveryMode] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      const trimmed = code.trim();
+      await login(email.trim(), password, {
+        ...(needsCode && trimmed
+          ? recoveryMode
+            ? { recoveryCode: trimmed }
+            : { totp: trimmed }
+          : {}),
+      });
+      /*
+       * Nothing else to do here. If the role must enrol a second factor, the
+       * shell swaps this screen for the enrolment wall on the next render;
+       * if it is merely recommended (enforcement off in development), the
+       * Profile tab says so.
+       */
     } catch (err) {
+      if (err instanceof ApiError && err.code === "two_factor_required") {
+        setNeedsCode(true);
+        setCode("");
+        setError(
+          recoveryMode
+            ? "That recovery code did not work. Each code works once — try another."
+            : "Enter the 6-digit code from your authenticator app.",
+        );
+        return;
+      }
       const message = errorMessage(
         err,
         "We could not sign you in. Check your details and try again.",
@@ -139,9 +251,19 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
     setBusy(true);
     setError(null);
     try {
-      await register(orgName.trim(), personName.trim(), signupEmail.trim(), signupPassword, undefined, plan);
+      await register(
+        orgName.trim(),
+        personName.trim(),
+        signupEmail.trim(),
+        signupPassword,
+        undefined,
+        plan,
+      );
     } catch (err) {
-      const message = errorMessage(err, "We could not create your workspace. Check your details and try again.");
+      const message = errorMessage(
+        err,
+        "We could not create your workspace. Check your details and try again.",
+      );
       setError(message);
       toast.error(message);
     } finally {
@@ -175,15 +297,25 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
           </div>
 
           <div className="login-tabs">
-            <button type="button" className={mode === "signin" ? "is-active" : ""} onClick={() => setMode("signin")}>
+            <button
+              type="button"
+              className={mode === "signin" ? "is-active" : ""}
+              onClick={() => setMode("signin")}
+            >
               Sign in
             </button>
-            <button type="button" className={mode === "signup" ? "is-active" : ""} onClick={() => setMode("signup")}>
+            <button
+              type="button"
+              className={mode === "signup" ? "is-active" : ""}
+              onClick={() => setMode("signup")}
+            >
               Create workspace
             </button>
           </div>
 
-          <h1 className="login-title">{mode === "signin" ? "Welcome back" : "Create your workspace"}</h1>
+          <h1 className="login-title">
+            {mode === "signin" ? "Welcome back" : "Create your workspace"}
+          </h1>
           <p className="login-sub">
             Sign in to your travel business workspace. Everything you need — enquiries, trips,
             invoices and travellers — in one place.
@@ -196,55 +328,88 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
           )}
 
           {mode === "signin" && (
-          <form onSubmit={submit} className="login-form">
-            <label className="login-field">
-              <span>Work email</span>
-              <div className="login-input">
-                <Mail size={16} className="login-input__icon" />
-                <input
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                />
-              </div>
-            </label>
+            <form onSubmit={submit} className="login-form">
+              <label className="login-field">
+                <span>Work email</span>
+                <div className="login-input">
+                  <Mail size={16} className="login-input__icon" />
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@company.com"
+                  />
+                </div>
+              </label>
 
-            <label className="login-field">
-              <span>Password</span>
-              <div className="login-input">
-                <LockKeyhole size={16} className="login-input__icon" />
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </div>
-            </label>
+              <label className="login-field">
+                <span>Password</span>
+                <div className="login-input">
+                  <LockKeyhole size={16} className="login-input__icon" />
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </label>
 
-            {error && (
-              <p className="login-error-text" role="alert">
-                {error}
-              </p>
-            )}
-
-            <Button type="submit" size="lg" className="login-submit" disabled={busy}>
-              {busy ? (
-                <>
-                  <Loader2 className="animate-spin" /> Signing in…
-                </>
-              ) : (
-                <>
-                  Sign in <ArrowRight />
-                </>
+              {needsCode && (
+                <label className="login-field">
+                  <span>{recoveryMode ? "Recovery code" : "Authentication code"}</span>
+                  <div className="login-input">
+                    <ShieldCheck size={16} className="login-input__icon" />
+                    <input
+                      inputMode={recoveryMode ? "text" : "numeric"}
+                      autoComplete="one-time-code"
+                      autoFocus
+                      required
+                      maxLength={recoveryMode ? 24 : 6}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      placeholder={recoveryMode ? "XXXX-XXXX" : "123456"}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="login-alt"
+                    onClick={() => {
+                      setRecoveryMode((prev) => !prev);
+                      setCode("");
+                      setError(null);
+                    }}
+                  >
+                    {recoveryMode
+                      ? "Use my authenticator app instead"
+                      : "Lost your phone? Use a recovery code"}
+                  </button>
+                </label>
               )}
-            </Button>
-          </form>
+
+              {error && (
+                <p className="login-error-text" role="alert">
+                  {error}
+                </p>
+              )}
+
+              <Button type="submit" size="lg" className="login-submit" disabled={busy}>
+                {busy ? (
+                  <>
+                    <Loader2 className="animate-spin" />{" "}
+                    {needsCode ? "Checking code…" : "Signing in…"}
+                  </>
+                ) : (
+                  <>
+                    {needsCode ? "Verify and sign in" : "Sign in"} <ArrowRight />
+                  </>
+                )}
+              </Button>
+            </form>
           )}
 
           {mode === "signup" && (
@@ -252,38 +417,64 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
               <label className="login-field">
                 <span>Organisation name</span>
                 <div className="login-input">
-                  <input required value={orgName} onChange={(e) => setOrgName(e.target.value)} placeholder="Horizon Travel" />
+                  <input
+                    required
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="Horizon Travel"
+                  />
                 </div>
               </label>
               <label className="login-field">
                 <span>Your name</span>
                 <div className="login-input">
-                  <input required value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Jane Doe" />
+                  <input
+                    required
+                    value={personName}
+                    onChange={(e) => setPersonName(e.target.value)}
+                    placeholder="Jane Doe"
+                  />
                 </div>
               </label>
               <label className="login-field">
                 <span>Work email</span>
                 <div className="login-input">
                   <Mail size={16} className="login-input__icon" />
-                  <input type="email" required value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} placeholder="you@company.com" />
+                  <input
+                    type="email"
+                    required
+                    value={signupEmail}
+                    onChange={(e) => setSignupEmail(e.target.value)}
+                    placeholder="you@company.com"
+                  />
                 </div>
               </label>
               <label className="login-field">
                 <span>Password</span>
                 <div className="login-input">
                   <LockKeyhole size={16} className="login-input__icon" />
-                  <input type="password" required minLength={8} value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="At least 8 characters" />
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                  />
                 </div>
               </label>
               <label className="login-field">
                 <span>Plan</span>
                 <div className="login-input">
                   <select value={plan} onChange={(e) => setPlan(e.target.value)}>
-                    {(plans.length ? plans : ([
-                      { key: "starter", name: "Starter" },
-                      { key: "growth", name: "Growth" },
-                      { key: "enterprise", name: "Enterprise" },
-                    ] as PlanDto[])).map((p) => (
+                    {(plans.length
+                      ? plans
+                      : ([
+                          { key: "starter", name: "Starter" },
+                          { key: "growth", name: "Growth" },
+                          { key: "enterprise", name: "Enterprise" },
+                        ] as PlanDto[])
+                    ).map((p) => (
                       <option key={p.key} value={p.key}>
                         {p.name}
                       </option>
@@ -291,24 +482,36 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
                   </select>
                 </div>
               </label>
-              {error && <p className="login-error-text" role="alert">{error}</p>}
+              {error && (
+                <p className="login-error-text" role="alert">
+                  {error}
+                </p>
+              )}
               <Button type="submit" size="lg" className="login-submit" disabled={busy}>
-                {busy ? (<><Loader2 className="animate-spin" /> Creating...</>) : (<>Create workspace <ArrowRight /></>)}
+                {busy ? (
+                  <>
+                    <Loader2 className="animate-spin" /> Creating...
+                  </>
+                ) : (
+                  <>
+                    Create workspace <ArrowRight />
+                  </>
+                )}
               </Button>
             </form>
           )}
 
-          {mode === "signin" && (
-          <button type="button" className="login-demo" onClick={useDemo}>
-            <span className="login-demo__icon">
-              <Sparkles size={15} />
-            </span>
-            <span className="login-demo__text">
-              <b>Just looking around?</b>
-              <small>Fill in the demo account and press Sign in.</small>
-            </span>
-            <span className="login-demo__cta">Use demo</span>
-          </button>
+          {mode === "signin" && DEMO_ENABLED && (
+            <button type="button" className="login-demo" onClick={useDemo}>
+              <span className="login-demo__icon">
+                <Sparkles size={15} />
+              </span>
+              <span className="login-demo__text">
+                <b>Just looking around?</b>
+                <small>Fill in the demo account and press Sign in.</small>
+              </span>
+              <span className="login-demo__cta">Use demo</span>
+            </button>
           )}
 
           <p className="login-foot">

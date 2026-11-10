@@ -30,7 +30,7 @@ ENV PORT=4000
 ENV DATABASE_URL="file:/app/data/traveldesk.db"
 ENV UPLOAD_DIR="/app/data/uploads"
 
-RUN apk add --no-cache openssl wget
+RUN apk add --no-cache openssl wget postgresql-client
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

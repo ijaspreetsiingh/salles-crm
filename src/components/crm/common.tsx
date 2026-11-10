@@ -19,6 +19,7 @@ import {
   Receipt,
   PlaneTakeoff,
   UserCheck,
+  Users,
   Download,
   ExternalLink,
   Share2,
@@ -38,8 +39,13 @@ import { getSchema, type ColumnDef, type FieldDef } from "@/lib/crm/schema";
 import { useCRM } from "@/lib/crm/store";
 import { JourneyRail } from "./journey";
 import { StatusHint } from "./help";
+import { hasItinerary, hasLineItems, hasPayments } from "./document-builder";
+import { RecordForm } from "./record-form";
+import { cn } from "@/lib/utils";
 import { errorMessage, apiBlob } from "@/lib/api/client";
 import { useApiQuery } from "@/lib/api/hooks";
+import { fetchLedger, fetchReceipt, removePayment } from "@/lib/api/payments";
+import { QuickPaymentForm } from "./quick-payment";
 import {
   deleteAttachment,
   fetchAttachments,
@@ -361,21 +367,6 @@ export function CellValue({
  * Record dialog — create / edit / inspect a single record
  * ------------------------------------------------------------------ */
 
-const recordPrefix = (module: Module) =>
-  (
-    ({
-      leads: "LD",
-      bookings: "BK",
-      quotations: "QT",
-      finance: "INV",
-      visa: "VSA",
-      support: "TKT",
-    }) as Record<string, string>
-  )[module.id] ?? module.id.slice(0, 3).toUpperCase();
-
-const nextRecordId = (module: Module) =>
-  `${recordPrefix(module)}-${Date.now().toString(36).toUpperCase().slice(-6)}`;
-
 /** Pre-fill data when one module hands a record to the next step in the journey. */
 export function workflowDataFor(
   targetModuleId: string,
@@ -397,20 +388,124 @@ export function workflowDataFor(
     data.detail = `Invoice for booking ${row.id}`;
     data.amount = row.amount;
     data.status = "Draft";
+    data.extra = { bookingId: row.id };
   }
   if (targetModuleId === "bookings" && sourceModuleId === "leads") {
     data.detail = `Booking from lead ${row.id}`;
     data.status = "Pending";
   }
+  if (targetModuleId === "bookings" && sourceModuleId === "quotations") {
+    data.detail = `Booking from quotation ${row.id}`;
+    data.status = "Pending";
+    data.extra = { quotationId: row.id };
+  }
   if (targetModuleId === "quotations" && sourceModuleId === "leads") {
     data.detail = `Quotation for ${row.name}`;
     data.status = "Draft";
   }
+  if (targetModuleId === "quotations" && sourceModuleId === "packages") {
+    data.extra = { packageRef: row.id };
+  }
   if (targetModuleId === "visa" && sourceModuleId === "bookings") {
     data.detail = `Visa application for ${row.name}`;
     data.status = "Pending";
+    data.extra = { bookingId: row.id };
   }
   return data;
+}
+
+/**
+ * "Convert to customer": the two choices a person has when an enquiry turns
+ * into a real customer — link to one that already exists, or make a new one
+ * from this record. Shared by the record dialog and the side drawer so both
+ * offer the same decision.
+ */
+export function CustomerLinkPicker({
+  customers,
+  currentRef,
+  onPick,
+  onCreateNew,
+  onCancel,
+}: {
+  customers: RecordRow[];
+  /** The customer already linked on this record, if any. */
+  currentRef?: string;
+  onPick: (customer: RecordRow) => void;
+  onCreateNew: () => void;
+  onCancel?: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const matches = customers.filter(
+    (customer) =>
+      !needle ||
+      `${customer.name} ${customer.email} ${customer.phone} ${customer.id}`
+        .toLowerCase()
+        .includes(needle),
+  );
+
+  return (
+    <div className="record-sheet__create">
+      <p className="record-sheet__hint">
+        Link this record to a customer you already have — nothing is copied, so their profile stays
+        in one place. No customer yet? Make one from this record instead.
+      </p>
+      <label className="record-sheet__field">
+        Find a customer
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name, email or phone"
+          aria-label="Search customers"
+        />
+      </label>
+      {matches.length === 0 ? (
+        <p className="record-sheet__empty">
+          No customer matches “{query.trim()}”. Create a new one instead.
+        </p>
+      ) : (
+        <ul className="record-sheet__task-list">
+          {matches.map((customer) => (
+            <li key={customer.id}>
+              {/* Wrapped so the row button isn't hit by the list's 26px icon-button rule. */}
+              <span className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  className="record-sheet__profile-btn"
+                  onClick={() => onPick(customer)}
+                >
+                  <span className="min-w-0 flex-1 text-left">
+                    <strong>{customer.name}</strong>
+                    <small>
+                      {customer.id}
+                      {customer.email ? ` · ${customer.email}` : ""}
+                      {customer.destination ? ` · ${customer.destination}` : ""}
+                      {currentRef === customer.id ? " · linked already" : ""}
+                    </small>
+                  </span>
+                  {currentRef === customer.id ? (
+                    <Check size={14} aria-label="Currently linked" />
+                  ) : (
+                    <ArrowUpRight size={14} />
+                  )}
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="record-sheet__actions">
+        <button type="button" onClick={onCreateNew}>
+          <Plus size={14} /> Create new customer
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Icon + copy shown above each detail section, so sections read at a glance. */
@@ -429,7 +524,17 @@ export function RecordDialog({
   create?: boolean;
   initialData?: Partial<RecordRow>;
 }) {
-  const { save, update, remove, fields, settings, audit, status: authStatus, getRows } = useCRM();
+  const {
+    save,
+    update,
+    remove,
+    fields,
+    settings,
+    audit,
+    status: authStatus,
+    getRows,
+    refreshModuleRecords,
+  } = useCRM();
   const [editing, setEditing] = useState(create);
   const [detailTab, setDetailTab] = useState("Overview");
   const [note, setNote] = useState("");
@@ -441,12 +546,16 @@ export function RecordDialog({
     module: Module;
     data: Partial<RecordRow>;
   } | null>(null);
+  /** The "Convert to customer" screen: pick an existing one or make a new one. */
+  const [linking, setLinking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const currency = settings.currency;
   const customFields = fields[module.id] ?? [];
   const activeEmployees = settings.employees.filter((e) => e.active);
   const recordAudit = audit.filter((a) => a.module === module.id && a.recordId === row?.id);
   const schema = getSchema(module.id);
+
+  const isDocument = hasLineItems(module.id) || hasItinerary(module.id) || hasPayments(module.id);
 
   // The journey: every related record for this one, in travel order.
   const journey = useMemo(() => {
@@ -464,201 +573,28 @@ export function RecordDialog({
   );
   const files = attachments ?? [];
 
-  const optionsFor = (field: FieldDef): string[] => {
-    if (Array.isArray(field.options)) return field.options;
-    if (field.options === "statuses") return schema.statuses;
-    if (field.options === "owners") return activeEmployees.map((e) => e.name);
-    if (field.options === "branches") return settings.branches;
-    if (field.options === "sources")
-      return schema.sources ?? ["Website", "WhatsApp", "Referral", "B2B agent"];
-    return [];
-  };
+  const moneyModule = module.id === "finance" || module.id === "bookings";
+  const { data: ledger, reload: reloadLedger } = useApiQuery(
+    () =>
+      row && moneyModule
+        ? fetchLedger(module.id, row.id)
+        : Promise.resolve({ items: [], totals: null }),
+    [module.id, row?.id],
+    authStatus === "ready" && Boolean(row) && moneyModule,
+  );
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const fd = new FormData(event.currentTarget);
-    const base: RecordRow = row ?? {
-      id: nextRecordId(module),
-      name: initialData?.name ?? "",
-      detail: initialData?.detail ?? "",
-      destination: initialData?.destination ?? "",
-      owner: initialData?.owner ?? activeEmployees[0]?.name ?? "",
-      branch: initialData?.branch ?? settings.branches[0] ?? "",
-      date: initialData?.date ?? new Date().toISOString().slice(0, 10),
-      amount: initialData?.amount ?? 0,
-      currency: initialData?.currency ?? "",
-      status: initialData?.status ?? schema.statuses[0] ?? "New",
-      email: initialData?.email ?? "",
-      phone: initialData?.phone ?? "",
-      source: initialData?.source ?? "",
-      notes: initialData?.notes ?? "",
-      extra: initialData?.extra ?? {},
-    };
-    const next: RecordRow = { ...base };
-    const core = next as unknown as Record<string, string | number>;
-    const extras: Record<string, string | number> = { ...(base.extra ?? {}) };
-
-    schema.fields.forEach((field) => {
-      const raw = String(fd.get(`f:${field.key}`) ?? "").trim();
-      if (field.key.startsWith("extra:")) {
-        const key = field.key.slice(6);
-        if (raw === "") delete extras[key];
-        else extras[key] = field.type === "number" ? Number(raw) : raw;
-        return;
-      }
-      core[field.key] = field.type === "number" ? Number(raw) || 0 : raw;
-    });
-
-    customFields.forEach((f) => {
-      const raw = String(fd.get(`cf:${f.id}`) ?? "").trim();
-      if (raw === "") delete extras[f.id];
-      else extras[f.id] = f.type === "number" ? Number(raw) : raw;
-    });
-
-    const currencyRaw = String(fd.get("f:currency") ?? "").trim();
-    if (currencyRaw) next.currency = currencyRaw;
-
-    const relatedIds = modules
-      .flatMap((m) => getRows(m.id))
-      .filter(
-        (candidate) =>
-          candidate.id !== next.id &&
-          candidate.name.trim().toLowerCase() === next.name.trim().toLowerCase() &&
-          (!next.destination ||
-            !candidate.destination ||
-            candidate.destination.trim().toLowerCase() === next.destination.trim().toLowerCase()),
-      )
-      .map((candidate) => candidate.id);
-    if (relatedIds.length > 0) (extras as Record<string, unknown>)["relatedRefs"] = relatedIds;
-    else delete (extras as Record<string, unknown>)["relatedRefs"];
-
-    if (Object.keys(extras).length > 0) next.extra = extras;
-    else delete next.extra;
-
-    const emailLooksValid = (value: string) => /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
-    for (const field of schema.fields) {
-      const raw = String(fd.get(`f:${field.key}`) ?? "").trim();
-      if (field.required && raw === "") {
-        toast.error(`Please add ${field.label.toLowerCase()} before saving`);
-        return;
-      }
-      if (field.type === "email" && raw && !emailLooksValid(raw)) {
-        toast.error(`Please enter a valid email for ${field.label.toLowerCase()}`);
-        return;
-      }
-      if (field.type === "number" && raw && Number(raw) < 0) {
-        toast.error(`${field.label} cannot be negative`);
-        return;
-      }
+  const downloadReceipt = async (id: string, receiptNo: string | null) => {
+    try {
+      const blob = await fetchReceipt(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `receipt-${receiptNo ?? id}.pdf`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not download the receipt"));
     }
-
-    if (!next.name.trim()) {
-      toast.error("Please add a name before saving");
-      return;
-    }
-
-    if (
-      create &&
-      getRows(module.id).some(
-        (existing) => existing.name.trim().toLowerCase() === next.name.trim().toLowerCase(),
-      )
-    ) {
-      toast.warning(`A ${module.noun} named "${next.name.trim()}" already exists. Saving anyway.`);
-    }
-
-    if (create) save(module.id, next);
-    else update(module.id, next);
-    toast.success(`${module.noun} ${create ? "created" : "updated"}`);
-
-    // Travo-style next step: guide user to the natural next action in the journey
-    const nextStep: Record<string, { target: string; label: string; icon: ReactNode }> = {
-      leads: {
-        target: "quotations",
-        label: "Create quotation for this enquiry",
-        icon: <FileText size={14} />,
-      },
-      quotations: {
-        target: "bookings",
-        label: "Convert to booking",
-        icon: <PlaneTakeoff size={14} />,
-      },
-      bookings: { target: "finance", label: "Create invoice", icon: <Receipt size={14} /> },
-    };
-    const ns = nextStep[module.id];
-
-    if (create && ns) {
-      setWorkflowTarget({
-        module: modules.find((m) => m.id === ns.target) ?? module,
-        data: workflowDataFor(ns.target, module.id, next),
-      });
-      return;
-    }
-
-    onClose();
-  };
-
-  const renderInput = (field: FieldDef) => {
-    const value = row
-      ? readField(row, field.key)
-      : (initialData?.[field.key as keyof RecordRow] ??
-        (field.key.startsWith("extra:") ? initialData?.extra?.[field.key.slice(6)] : ""));
-    const options = optionsFor(field);
-    if (field.type === "select") {
-      return (
-        <select name={`f:${field.key}`} defaultValue={String(value || options[0] || "")}>
-          {options.map((option) => (
-            <option key={option}>{option}</option>
-          ))}
-        </select>
-      );
-    }
-    if (field.type === "textarea") {
-      return (
-        <textarea
-          name={`f:${field.key}`}
-          defaultValue={String(value)}
-          placeholder={field.placeholder}
-        />
-      );
-    }
-    const inputType =
-      field.type === "number" ? "number" : field.type === "date" ? "date" : (field.type as string);
-    if (field.key === "amount") {
-      // Multi-currency: the amount field carries its own currency select so a
-      // booking can be quoted in USD/EUR/AED and the invoice stays honest.
-      return (
-        <span className="amount-with-currency">
-          <input
-            name={`f:${field.key}`}
-            type={inputType}
-            defaultValue={String(value)}
-            placeholder={field.placeholder}
-            required={field.required}
-            min={0}
-            step="any"
-          />
-          <select
-            name="f:currency"
-            defaultValue={row?.currency || settings.currency}
-            className="currency-select"
-          >
-            {["INR", "USD", "EUR", "GBP", "AED", "SGD"].map((code) => (
-              <option key={code}>{code}</option>
-            ))}
-          </select>
-        </span>
-      );
-    }
-    return (
-      <input
-        name={`f:${field.key}`}
-        type={inputType}
-        defaultValue={String(value)}
-        placeholder={field.placeholder}
-        required={field.required}
-        min={field.type === "number" ? 0 : undefined}
-      />
-    );
   };
 
   const handleAction = (targetModuleId: string) => {
@@ -735,7 +671,7 @@ export function RecordDialog({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="record-dialog">
+      <DialogContent className={cn("record-dialog", isDocument && "record-dialog--wide")}>
         <DialogHeader>
           <div className="eyebrow">{create ? "New record" : row?.id}</div>
           <DialogTitle>{create ? `Create ${module.noun}` : row?.name}</DialogTitle>
@@ -746,51 +682,55 @@ export function RecordDialog({
           </DialogDescription>
         </DialogHeader>
         {editing ? (
-          <form onSubmit={handleSubmit} className="create-form">
-            {schema.sections.map((section) => {
-              const sectionFields = schema.fields.filter((f) => f.group === section);
-              const extraFields = section === "Notes" ? customFields : [];
-              if (sectionFields.length === 0 && extraFields.length === 0) return null;
-              return (
-                <section key={section} className="form-section-card">
-                  <div className="form-section-head">
-                    <span className="form-section-label">{section}</span>
-                  </div>
-                  <div className="form-grid">
-                    {sectionFields.map((field) => (
-                      <label key={field.key} className={field.wide ? "full-width" : undefined}>
-                        <span className="field-label">{field.label}</span>
-                        {field.required && <span className="req">*</span>}
-                        {renderInput(field)}
-                        {field.hint && <p className="field-hint">{field.hint}</p>}
-                      </label>
-                    ))}
-                    {extraFields.map((f) => (
-                      <label key={f.id}>
-                        <span className="field-label">{f.label}</span>
-                        <span className="field-hint-inline">custom field</span>
-                        <input
-                          name={`cf:${f.id}`}
-                          type={
-                            f.type === "number" ? "number" : f.type === "date" ? "date" : "text"
-                          }
-                          defaultValue={row?.extra?.[f.id] ?? ""}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-            <div className="dialog-actions">
-              <Button variant="outline" type="button" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button variant="default" type="submit">
-                <Check /> Save {module.noun}
-              </Button>
-            </div>
-          </form>
+          <RecordForm
+            module={module}
+            row={row ?? null}
+            create={create}
+            initialData={initialData ?? undefined}
+            onClose={onClose}
+            onSaved={(saved, created) => {
+              // Guide the user to the natural next step in the journey.
+              const nextStep: Record<string, { target: string; label: string }> = {
+                leads: { target: "quotations", label: "Create quotation" },
+                quotations: { target: "bookings", label: "Convert to booking" },
+                bookings: { target: "finance", label: "Create invoice" },
+              };
+              const step = created ? nextStep[module.id] : undefined;
+              if (step && saved) {
+                setWorkflowTarget({
+                  module: modules.find((m) => m.id === step.target) ?? module,
+                  data: workflowDataFor(step.target, module.id, saved),
+                });
+                return;
+              }
+              onClose();
+            }}
+          />
+        ) : linking && row ? (
+          <CustomerLinkPicker
+            customers={getRows("customers")}
+            currentRef={String(row.extra?.["customerRef"] ?? "")}
+            onCancel={() => setLinking(false)}
+            onCreateNew={() => {
+              setLinking(false);
+              handleAction("customers");
+            }}
+            onPick={(customer) => {
+              // The mention in notes is what makes the link show up on the
+              // customer's profile — journeys read references from there.
+              const mention = `Linked to customer ${customer.id}`;
+              const notes = row.notes?.includes(mention)
+                ? row.notes
+                : [row.notes, mention].filter(Boolean).join("\n");
+              update(module.id, {
+                ...row,
+                notes,
+                extra: { ...(row.extra ?? {}), customerRef: customer.id },
+              });
+              setLinking(false);
+              toast.success(`Linked to ${customer.name} — open their profile to see this record`);
+            }}
+          />
         ) : (
           row && (
             <>
@@ -813,16 +753,7 @@ export function RecordDialog({
                   if (!step.moduleId) return;
                   setWorkflowTarget({
                     module: modules.find((m) => m.id === step.moduleId) ?? module,
-                    data: {
-                      name: row.name,
-                      email: row.email,
-                      phone: row.phone,
-                      destination: row.destination,
-                      amount: row.amount,
-                      owner: row.owner,
-                      branch: row.branch,
-                      notes: `Created from ${module.noun} ${row.id}`,
-                    },
+                    data: workflowDataFor(step.moduleId, module.id, row),
                   });
                 }}
               />
@@ -849,6 +780,9 @@ export function RecordDialog({
                     <div className="workflow-actions">
                       {module.id === "leads" && (
                         <>
+                          <Button variant="outline" size="sm" onClick={() => setLinking(true)}>
+                            <Users size={14} /> Convert to Customer
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -923,6 +857,88 @@ export function RecordDialog({
                       )}
                     </div>
                   </section>
+
+                  {moneyModule && (
+                    <section className="detail-section">
+                      <header>
+                        <Wallet size={15} />
+                        <h4>Payments &amp; receipts</h4>
+                      </header>
+                      {!ledger || ledger.items.length === 0 ? (
+                        <p className="detail-muted">
+                          No money recorded yet. Record the first payment below — every entry gets
+                          its own receipt number.
+                        </p>
+                      ) : (
+                        <ul className="payment-list">
+                          {ledger.items.map((entry) => (
+                            <li key={entry.id}>
+                              <div className="payment-list__main">
+                                <strong>{money(entry.amount, entry.currency)}</strong>
+                                <span className="payment-list__meta">
+                                  {entry.kind === "refund" ? "Refund" : "Received"} · {entry.method}{" "}
+                                  · {entry.paidOn}
+                                  {entry.referenceNo ? ` · ${entry.referenceNo}` : ""}
+                                  {entry.note ? ` · ${entry.note}` : ""}
+                                </span>
+                              </div>
+                              {entry.receiptNo && (
+                                <span className="payment-list__receipt">{entry.receiptNo}</span>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Download receipt"
+                                onClick={() => void downloadReceipt(entry.id, entry.receiptNo)}
+                              >
+                                <Download />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Remove this entry"
+                                onClick={async () => {
+                                  try {
+                                    await removePayment(entry.id);
+                                    reloadLedger();
+                                    toast.success("Payment removed — totals updated");
+                                  } catch (err) {
+                                    toast.error(errorMessage(err, "Could not remove the payment"));
+                                  }
+                                }}
+                              >
+                                <Trash2 />
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {ledger?.totals && (
+                        <div className="payment-list__totals">
+                          <span>
+                            Received{" "}
+                            <strong>{money(ledger.totals.net, row.currency || currency)}</strong>
+                          </span>
+                          <span>
+                            Balance{" "}
+                            <strong>
+                              {money(ledger.totals.balance, row.currency || currency)}
+                            </strong>
+                          </span>
+                        </div>
+                      )}
+                      <QuickPaymentForm
+                        moduleId={module.id as "finance" | "bookings"}
+                        reference={row.id}
+                        currency={row.currency || currency}
+                        balance={ledger?.totals?.balance}
+                        onSaved={() => {
+                          reloadLedger();
+                          void refreshModuleRecords(module.id);
+                        }}
+                      />
+                    </section>
+                  )}
 
                   {schema.detailSections.map((section, index) => {
                     const Icon = SECTION_ICON[index % SECTION_ICON.length] ?? FileText;

@@ -20,10 +20,12 @@ function SignupPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchPlans().then((data) => {
-      setPlans(data);
-      if (data.length && !data.some((p) => p.key === plan)) setPlan(data[0]?.key ?? plan);
-    }).catch(() => setPlans([]));
+    fetchPlans()
+      .then((data) => {
+        setPlans(data);
+        if (data.length && !data.some((p) => p.key === plan)) setPlan(data[0]?.key ?? plan);
+      })
+      .catch(() => setPlans([]));
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -46,44 +48,96 @@ function SignupPage() {
       <main className="login-main">
         <div className="login-card">
           <div className="login-brand">
-            <span className="login-brand__mark"><Compass size={20} /></span>
-            <span className="login-brand__word">travel<span>desk</span></span>
+            <span className="login-brand__mark">
+              <Compass size={20} />
+            </span>
+            <span className="login-brand__word">
+              travel<span>desk</span>
+            </span>
           </div>
           <h1 className="login-title">Create your workspace</h1>
           <p className="login-sub">Set up your travel business in one step.</p>
           <form onSubmit={submit} className="login-form">
             <label className="login-field">
               <span>Organisation name</span>
-              <div className="login-input"><input required value={orgName} onChange={(e) => setOrgName(e.target.value)} /></div>
+              <div className="login-input">
+                <input required value={orgName} onChange={(e) => setOrgName(e.target.value)} />
+              </div>
             </label>
             <label className="login-field">
               <span>Your name</span>
-              <div className="login-input"><input required value={personName} onChange={(e) => setPersonName(e.target.value)} /></div>
+              <div className="login-input">
+                <input
+                  required
+                  value={personName}
+                  onChange={(e) => setPersonName(e.target.value)}
+                />
+              </div>
             </label>
             <label className="login-field">
               <span>Work email</span>
-              <div className="login-input"><Mail size={16} className="login-input__icon" /><input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+              <div className="login-input">
+                <Mail size={16} className="login-input__icon" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
             </label>
             <label className="login-field">
               <span>Password</span>
-              <div className="login-input"><LockKeyhole size={16} className="login-input__icon" /><input type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} /></div>
+              <div className="login-input">
+                <LockKeyhole size={16} className="login-input__icon" />
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
             </label>
             <label className="login-field">
               <span>Plan</span>
               <div className="login-input">
                 <select value={plan} onChange={(e) => setPlan(e.target.value)}>
-                  {(plans.length ? plans : ([{ key: "starter", name: "Starter" }, { key: "growth", name: "Growth" }, { key: "enterprise", name: "Enterprise" }] as PlanDto[])).map((p) => (
-                    <option key={p.key} value={p.key}>{p.name}</option>
+                  {(plans.length
+                    ? plans
+                    : ([
+                        { key: "starter", name: "Starter" },
+                        { key: "growth", name: "Growth" },
+                        { key: "enterprise", name: "Enterprise" },
+                      ] as PlanDto[])
+                  ).map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.name}
+                    </option>
                   ))}
                 </select>
               </div>
             </label>
-            {error && <p className="login-error-text" role="alert">{error}</p>}
+            {error && (
+              <p className="login-error-text" role="alert">
+                {error}
+              </p>
+            )}
             <Button type="submit" size="lg" className="login-submit" disabled={busy}>
-              {busy ? (<><Loader2 className="animate-spin" /> Creating...</>) : (<>Create workspace <ArrowRight /></>)}
+              {busy ? (
+                <>
+                  <Loader2 className="animate-spin" /> Creating...
+                </>
+              ) : (
+                <>
+                  Create workspace <ArrowRight />
+                </>
+              )}
             </Button>
           </form>
-          <p className="login-foot"><Link to="/">Already have an account? Sign in</Link></p>
+          <p className="login-foot">
+            <Link to="/">Already have an account? Sign in</Link>
+          </p>
         </div>
       </main>
     </div>

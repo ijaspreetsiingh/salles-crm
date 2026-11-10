@@ -112,7 +112,7 @@ export const modules: Module[] = [
     id: "groups",
     name: "Groups & MICE",
     group: "Bookings & trips",
-    tabs: ["Group trips", "Delegates", "Room blocks", "Budgets", "Suppliers"],
+    tabs: ["Group trips", "Delegates", "Room blocks"],
     description: "Seamless coordination for groups, conferences and events.",
     noun: "group",
     navHidden: true,
@@ -248,12 +248,22 @@ export const modules: Module[] = [
       "Tax settings",
       "Email & WhatsApp",
       "Audit logs",
+      "Recycle bin",
       "Security",
       "Custom fields",
       "More modules",
     ],
     description: "Your organisation, your team and the way you work.",
     noun: "record",
+  },
+  {
+    id: "team-chat",
+    name: "Team chat",
+    group: "Working",
+    tabs: ["Channels", "Direct messages"],
+    description: "Slack-style internal messaging — channels, DMs, emoji reactions, @mentions.",
+    noun: "message",
+    navHidden: true,
   },
 ];
 
@@ -297,6 +307,11 @@ export type RecordRow = {
   notes: string;
   customerType?: "Corporate" | "VIP" | "Leisure";
   extra?: Record<string, string | number>;
+  /**
+   * The version this row was read at, sent back with a save so two people
+   * editing the same record cannot silently overwrite each other.
+   */
+  updatedAt?: string;
 };
 
 export type Task = {
@@ -344,6 +359,10 @@ export type Settings = {
   employees: Employee[];
   taxRegime: string;
   taxRate: number;
+  /** TCS under section 206C(1G) on package / foreign-remittance invoices. 0 = off. */
+  tcsPercent: number;
+  /** Printed under the TCS line on the invoice. */
+  tcsNote: string;
   invoicePrefix: string;
   /** INR value of 1 unit of each currency — used on tax invoices for FX truth. */
   fxRates: Record<string, number>;
@@ -368,6 +387,8 @@ export const defaultSettings: Settings = {
   financialYear: "April – March",
   taxRegime: "GST",
   taxRate: 18,
+  tcsPercent: 0,
+  tcsNote: "",
   invoicePrefix: "HT-INV-",
   fxRates: { USD: 84, EUR: 91, GBP: 108, AED: 23, SGD: 63 },
   security: { twoFactor: true, mask: true, quiet: false },
@@ -595,12 +616,16 @@ const currencyLocale: Record<string, string> = {
   THB: "th-TH",
 };
 
-export const money = (n: number, currency = "INR") =>
-  new Intl.NumberFormat(currencyLocale[currency] ?? "en-IN", {
+export const money = (n: number, currency = "INR") => {
+  // An empty or unknown currency code used to throw and blank the whole page.
+  const code =
+    typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : "INR";
+  return new Intl.NumberFormat(currencyLocale[code] ?? "en-IN", {
     style: "currency",
-    currency,
+    currency: code,
     maximumFractionDigits: 0,
-  }).format(n);
+  }).format(Number.isFinite(n) ? n : 0);
+};
 
 const csvCell = (value: string | number) => {
   const text = String(value ?? "");

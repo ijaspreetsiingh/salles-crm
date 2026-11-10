@@ -3,16 +3,29 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
+import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { parseJson, stringifyJson } from "../lib/utils";
 import { buildReport } from "../services/analytics";
+import { buildReportPdf, buildReportWorkbook } from "../services/report-export";
 import { recordAudit } from "../services/audit";
 
 const router = Router();
 router.use(requireAuth);
+// Reading a report is the "reports" module's own permission — without this
+// the router only required being signed in.
+router.use(requireModulePermission("reports", "view"));
 
-const REPORT_KEYS = ["sales", "bookings", "operations", "finance", "b2b", "marketing", "team"] as const;
+const REPORT_KEYS = [
+  "sales",
+  "bookings",
+  "operations",
+  "finance",
+  "b2b",
+  "marketing",
+  "team",
+] as const;
 type ReportKey = (typeof REPORT_KEYS)[number];
 
 const savedReportSchema = z.object({
@@ -35,7 +48,10 @@ router.get(
       where: { organizationId: req.auth!.organizationId },
       orderBy: { createdAt: "desc" },
     });
-    return ok(res, reports.map((r) => ({ ...r, filters: parseJson<Record<string, unknown>>(r.filters, {}) })));
+    return ok(
+      res,
+      reports.map((r) => ({ ...r, filters: parseJson<Record<string, unknown>>(r.filters, {}) })),
+    );
   }),
 );
 
@@ -69,10 +85,80 @@ router.delete(
   }),
 );
 
+/**
+ * Excel / PDF export of any report tab.
+ *
+ * Declared before `/:report` so the extension is never mistaken for a report
+ * name, and using the same filters the screen sent so the file matches it.
+ */
+const exportParams = z.object({
+  report: z.enum(["sales", "bookings", "operations", "finance", "b2b", "marketing", "team"]),
+});
+
+router.get(
+  "/:report/export.xlsx",
+  requireModulePermission("reports", "export"),
+  validate(exportParams, "params"),
+  asyncHandler(async (req, res) => {
+    const { filename, buffer } = await buildReportWorkbook({
+      organizationId: req.auth!.organizationId,
+      report: req.params.report,
+      filters: filtersFrom(req.query as Record<string, unknown>),
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Export",
+      moduleId: "reports",
+      label: `Report "${req.params.report}" exported to Excel`,
+      req,
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length);
+    return res.send(buffer);
+  }),
+);
+
+router.get(
+  "/:report/export.pdf",
+  requireModulePermission("reports", "export"),
+  validate(exportParams, "params"),
+  asyncHandler(async (req, res) => {
+    const { filename, buffer } = await buildReportPdf({
+      organizationId: req.auth!.organizationId,
+      report: req.params.report,
+      filters: filtersFrom(req.query as Record<string, unknown>),
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Export",
+      moduleId: "reports",
+      label: `Report "${req.params.report}" exported to PDF`,
+      req,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", buffer.length);
+    return res.send(buffer);
+  }),
+);
+
 /** Runs any report tab with the supplied filters. */
 router.get(
   "/:report",
-  validate(z.object({ report: z.enum(["sales", "bookings", "operations", "finance", "b2b", "marketing", "team"]) }), "params"),
+  validate(
+    z.object({
+      report: z.enum(["sales", "bookings", "operations", "finance", "b2b", "marketing", "team"]),
+    }),
+    "params",
+  ),
   asyncHandler(async (req, res) => {
     const report = req.params.report as ReportKey;
     const data = await buildReport(

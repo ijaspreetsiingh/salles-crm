@@ -128,11 +128,7 @@ export function readPackagePlan(row: RecordRow | null | undefined): PackagePlan 
     // Old packages kept inclusions in the one-line "Inclusions" field; once a
     // plan is stored, an empty list means the person removed them on purpose.
     inclusions:
-      inclusions.length > 0 || Object.keys(stored).length > 0
-        ? inclusions
-        : detail
-          ? [detail]
-          : [],
+      inclusions.length > 0 || Object.keys(stored).length > 0 ? inclusions : detail ? [detail] : [],
     exclusions,
     slabs: readSlabs(stored["slabs"]),
     childRate: num(stored["childRate"]),
@@ -183,11 +179,7 @@ export type PackagePrice = {
   total: number;
 };
 
-export function priceForTravellers(
-  plan: PackagePlan,
-  adults: number,
-  children = 0,
-): PackagePrice {
+export function priceForTravellers(plan: PackagePlan, adults: number, children = 0): PackagePrice {
   const party = Math.max(1, Math.round(adults || 1));
   const kids = Math.max(0, Math.round(children || 0));
   const slab = slabForAdults(plan.slabs, party);

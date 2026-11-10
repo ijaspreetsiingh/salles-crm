@@ -19,6 +19,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as LeadSlugRouteImport } from './routes/lead.$slug'
+import { Route as PortalTokenRouteImport } from './routes/portal.$token'
 import { Route as WorkspaceModuleRouteImport } from './routes/workspace.$module'
 
 const IndexRoute = IndexRouteImport.update({
@@ -71,6 +72,11 @@ const LeadSlugRoute = LeadSlugRouteImport.update({
   path: '/lead/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalTokenRoute = PortalTokenRouteImport.update({
+  id: '/portal/$token',
+  path: '/portal/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspaceModuleRoute = WorkspaceModuleRouteImport.update({
   id: '/workspace/$module',
   path: '/workspace/$module',
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesByTo {
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRoutesById {
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/tasks': typeof TasksRoute
   '/team': typeof TeamRoute
   '/lead/$slug': typeof LeadSlugRoute
+  '/portal/$token': typeof PortalTokenRoute
   '/workspace/$module': typeof WorkspaceModuleRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/lead/$slug'
+    | '/portal/$token'
     | '/workspace/$module'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/lead/$slug'
+    | '/portal/$token'
     | '/workspace/$module'
   id:
     | '__root__'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/team'
     | '/lead/$slug'
+    | '/portal/$token'
     | '/workspace/$module'
   fileRoutesById: FileRoutesById
 }
@@ -170,6 +182,7 @@ export interface RootRouteChildren {
   TasksRoute: typeof TasksRoute
   TeamRoute: typeof TeamRoute
   LeadSlugRoute: typeof LeadSlugRoute
+  PortalTokenRoute: typeof PortalTokenRoute
   WorkspaceModuleRoute: typeof WorkspaceModuleRoute
 }
 
@@ -245,6 +258,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/$token': {
+      id: '/portal/$token'
+      path: '/portal/$token'
+      fullPath: '/portal/$token'
+      preLoaderRoute: typeof PortalTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workspace/$module': {
       id: '/workspace/$module'
       path: '/workspace/$module'
@@ -266,6 +286,7 @@ const rootRouteChildren: RootRouteChildren = {
   TasksRoute: TasksRoute,
   TeamRoute: TeamRoute,
   LeadSlugRoute: LeadSlugRoute,
+  PortalTokenRoute: PortalTokenRoute,
   WorkspaceModuleRoute: WorkspaceModuleRoute,
 }
 export const routeTree = rootRouteImport

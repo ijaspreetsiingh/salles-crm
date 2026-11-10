@@ -55,8 +55,9 @@ export function WebsitePanel() {
           <div>
             <h3>Your hosted lead form</h3>
             <p>
-              One link turns visitors into tracked leads. Every submission becomes a <b>Website
-              source</b> lead in your Leads module and your inbox gets an email alert — automatically.
+              One link turns visitors into tracked leads. Every submission becomes a{" "}
+              <b>Website source</b> lead in your Leads module and your inbox gets an email alert —
+              automatically.
             </p>
           </div>
         </header>
@@ -76,7 +77,9 @@ export function WebsitePanel() {
 
         <div className="website-panel__row website-panel__row--embed">
           <div>
-            <small className="website-panel__hint">Paste this into your website (WordPress, Wix, Shopify — anywhere HTML works):</small>
+            <small className="website-panel__hint">
+              Paste this into your website (WordPress, Wix, Shopify — anywhere HTML works):
+            </small>
             <code>{embedCode}</code>
           </div>
           <Button variant="outline" size="sm" onClick={() => void copy(embedCode, "embed")}>
@@ -91,9 +94,9 @@ export function WebsitePanel() {
         <div>
           <strong>What happens when someone submits</strong>
           <p>
-            The enquiry appears in Leads as <b>New</b> with the traveller count, destination and notes
-            prefilled. Your admin inbox receives the details, and the customer sees a thank-you screen
-            with their reference number.
+            The enquiry appears in Leads as <b>New</b> with the traveller count, destination and
+            notes prefilled. Your admin inbox receives the details, and the customer sees a
+            thank-you screen with their reference number.
           </p>
         </div>
       </div>

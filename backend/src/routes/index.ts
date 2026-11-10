@@ -19,6 +19,11 @@ import integrationRoutes from "../modules/integrations.routes";
 import billingRoutes from "../modules/billing.routes";
 import platformRoutes from "../modules/platform.routes";
 import financeRoutes, { webhookRouter as razorpayWebhook } from "../modules/finance.routes";
+import paymentRoutes from "../modules/payments.routes";
+import payableRoutes from "../modules/payables.routes";
+import expenseRoutes from "../modules/expenses.routes";
+import hotelRateRoutes from "../modules/hotelRates.routes";
+import campaignRoutes from "../modules/campaigns.routes";
 import publicRoutes from "../modules/public.routes";
 import flightsRoutes from "../modules/flights.routes";
 import channelsRoutes from "../modules/channels.routes";
@@ -26,6 +31,22 @@ import commsRecordsRoutes from "../modules/comms-records.routes";
 import searchRoutes from "../modules/search.routes";
 import uploadRoutes from "../modules/uploads.routes";
 import apiKeyRoutes from "../modules/apiKeys.routes";
+import hotelAllotmentRoutes from "../modules/hotelAllotments.routes";
+import groupRoutes from "../modules/groups.routes";
+import visaRoutes from "../modules/visa.routes";
+import tallyExportRoutes from "../modules/tally-export.routes";
+import gstExportRoutes from "../modules/gst-export.routes";
+import agentRoutes from "../modules/agents.routes";
+import operationsRoutes from "../modules/operations.routes";
+import inboundRoutes from "../modules/inbound.routes";
+import packageRoutes from "../modules/packages.routes";
+import teamChatRoutes from "../modules/team-chat.routes";
+import hotelsRoutes from "../modules/hotels.routes";
+import pushRoutes from "../modules/push.routes";
+import pnrRoutes from "../modules/pnr.routes";
+import portalRoutes from "../modules/portal.routes";
+import reconciliationRoutes from "../modules/reconciliation.routes";
+import integrationsTestRoutes from "../modules/integrations-test.routes";
 
 /** Mounts every feature router under /api/v1. */
 export function buildRoutes(): Router {
@@ -43,8 +64,42 @@ export function buildRoutes(): Router {
 
   // Workspace & records
   router.use("/workspace", workspaceRoutes);
+  router.use("/packages", packageRoutes);
   router.use("/custom-fields", customFieldRoutes);
+  router.use("/payments", paymentRoutes);
+  router.use("/payables", payableRoutes);
+  router.use("/expenses", expenseRoutes);
+  router.use("/hotel-rates", hotelRateRoutes);
+  router.use("/hotel-allotments", hotelAllotmentRoutes);
+  router.use("/groups", groupRoutes);
+  router.use("/visa", visaRoutes);
+  router.use("/tally", tallyExportRoutes);
+  router.use("/gst", gstExportRoutes);
+  router.use("/agents", agentRoutes);
+  router.use("/operations", operationsRoutes);
+
+  // Inbound email / WhatsApp webhooks (no auth — the sender is a provider)
+  router.use("/inbound", inboundRoutes);
+  router.use("/campaigns", campaignRoutes);
   router.use("/tasks", taskRoutes);
+
+  // Team Chat
+  router.use("/team-chat", teamChatRoutes);
+
+  // Hotel search + contract rates
+  router.use("/hotels", hotelsRoutes);
+
+  // Browser push notifications (VAPID)
+  router.use("/push", pushRoutes);
+
+  // Flight PNR queue
+  router.use("/pnr", pnrRoutes);
+
+  // Customer self-service portal (public token-based + staff token generator)
+  router.use("/portal", portalRoutes);
+
+  // Payment reconciliation
+  router.use("/reconciliation", reconciliationRoutes);
 
   // Insights
   router.use("/dashboard", dashboardRoutes);
@@ -57,10 +112,11 @@ export function buildRoutes(): Router {
   // Engagement
   router.use("/assistant", assistantRoutes);
   router.use("/conversations", conversationRoutes);
-router.use("/comms", commsRecordsRoutes);
+  router.use("/comms", commsRecordsRoutes);
   router.use("/workflows", workflowRoutes);
   router.use("/integrations", integrationRoutes);
-router.use("/channels", channelsRoutes);
+  router.use("/integrations/test", integrationsTestRoutes);
+  router.use("/channels", channelsRoutes);
 
   // Commerce & files
   router.use("/billing", billingRoutes);
@@ -77,4 +133,3 @@ router.use("/channels", channelsRoutes);
 
   return router;
 }
-

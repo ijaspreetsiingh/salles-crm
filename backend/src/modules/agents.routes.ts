@@ -7,6 +7,7 @@ import { requirePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import { recordAudit } from "../services/audit";
+import { num } from "../lib/money";
 
 /**
  * The B2B channel: agents, their credit and what they earn.
@@ -113,7 +114,9 @@ router.get(
       const account = byRecord.get(record.id);
       const rows = account ? commissions.filter((c) => c.agentAccountId === account.id) : [];
       const sum = (status: string) =>
-        rows.filter((row) => row.status === status).reduce((total, row) => total + (row._sum.amount ?? 0), 0);
+        rows
+          .filter((row) => row.status === status)
+          .reduce((total, row) => total + num(row._sum.amount), 0);
       return {
         recordId: record.id,
         reference: record.reference,
@@ -139,7 +142,8 @@ router.get(
           (sum, item) => sum + item.commission.accrued + item.commission.approved,
           0,
         ),
-        kycPending: items.filter((item) => (item.account?.kycStatus ?? "pending") === "pending").length,
+        kycPending: items.filter((item) => (item.account?.kycStatus ?? "pending") === "pending")
+          .length,
       },
     });
   }),
@@ -171,8 +175,12 @@ router.get(
         createdAt: row.createdAt.toISOString(),
       })),
       summary: {
-        accrued: commissions.filter((c) => c.status === "Accrued").reduce((s, c) => s + c.amount, 0),
-        approved: commissions.filter((c) => c.status === "Approved").reduce((s, c) => s + c.amount, 0),
+        accrued: commissions
+          .filter((c) => c.status === "Accrued")
+          .reduce((s, c) => s + c.amount, 0),
+        approved: commissions
+          .filter((c) => c.status === "Approved")
+          .reduce((s, c) => s + c.amount, 0),
         paid: commissions.filter((c) => c.status === "Paid").reduce((s, c) => s + c.amount, 0),
       },
     });
@@ -219,10 +227,14 @@ router.post(
     const { amount, bookingReference } = req.body as { amount: number; bookingReference?: string };
 
     if (account.status !== "Active") {
-      throw new BadRequestError(`This agent is ${account.status.toLowerCase()} — bookings are blocked`);
+      throw new BadRequestError(
+        `This agent is ${account.status.toLowerCase()} — bookings are blocked`,
+      );
     }
     if (account.kycStatus !== "verified") {
-      throw new BadRequestError("KYC is not verified for this agent — clear it before extending credit");
+      throw new BadRequestError(
+        "KYC is not verified for this agent — clear it before extending credit",
+      );
     }
     if (account.creditLimit > 0 && account.creditUsed + amount > account.creditLimit) {
       const available = Math.max(0, account.creditLimit - account.creditUsed);
@@ -287,8 +299,7 @@ router.post(
     };
     const commissionType = account.commissionType;
     const rate = body.rate ?? account.commissionRate;
-    const amount =
-      commissionType === "percent" ? Math.round(body.saleAmount * rate) / 100 : rate;
+    const amount = commissionType === "percent" ? Math.round(body.saleAmount * rate) / 100 : rate;
 
     const row = await prisma.agentCommission.create({
       data: {
@@ -334,7 +345,11 @@ router.patch(
         paidOn: body.status === "Paid" ? new Date() : body.status ? null : undefined,
       },
     });
-    return ok(res, { ...row, paidOn: row.paidOn?.toISOString() ?? null, createdAt: row.createdAt.toISOString() });
+    return ok(res, {
+      ...row,
+      paidOn: row.paidOn?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    });
   }),
 );
 

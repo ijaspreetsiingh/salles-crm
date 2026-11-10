@@ -6,6 +6,8 @@ import { requireAuth } from "../middlewares/auth";
 import { requirePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { recordAudit } from "../services/audit";
+import { BadRequestError, NotFoundError } from "../lib/errors";
+import { refundRazorpayPayment } from "../services/payments";
 import {
   createLedgerPayment,
   deleteLedgerPayment,
@@ -27,7 +29,10 @@ const createSchema = z.object({
   kind: z.enum(["payment", "refund"]).optional(),
   referenceNo: z.string().max(120).optional(),
   note: z.string().max(400).optional(),
-  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  paidOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 /** The ledger for one document, plus its totals. */
@@ -123,6 +128,74 @@ router.post(
     });
 
     return created(res, result);
+  }),
+);
+
+/**
+ * Sends money back through Razorpay for a payment that arrived through
+ * Razorpay, then records the refund in the ledger. A cash/bank refund uses
+ * `POST /payments` with `kind: "refund"` instead.
+ */
+router.post(
+  "/:id/refund",
+  requirePermission("edit"),
+  validate(
+    z.object({
+      amount: z.number().positive().max(1_000_000_000).optional(),
+      reason: z.string().max(120).optional(),
+    }),
+  ),
+  asyncHandler(async (req, res) => {
+    const body = req.body as { amount?: number; reason?: string };
+    const payment = await prisma.payment.findFirst({
+      where: { id: req.params.id, organizationId: req.auth!.organizationId },
+    });
+    if (!payment) throw new NotFoundError("Payment");
+    if (payment.kind === "refund") throw new BadRequestError("This entry is already a refund");
+    if (payment.status !== "paid") {
+      throw new BadRequestError("Only a received payment can be refunded");
+    }
+    if (!payment.providerPaymentId) {
+      throw new BadRequestError(
+        "This payment has no Razorpay reference. Record a manual refund instead.",
+      );
+    }
+    if (body.amount && body.amount > payment.amount) {
+      throw new BadRequestError("A refund cannot be more than the amount received");
+    }
+
+    const refund = await refundRazorpayPayment({
+      organizationId: req.auth!.organizationId,
+      providerPaymentId: payment.providerPaymentId,
+      amount: body.amount,
+      reason: body.reason,
+    });
+
+    const entries = await createLedgerPayment({
+      organizationId: req.auth!.organizationId,
+      moduleId: payment.moduleId,
+      reference: payment.recordReference,
+      amount: body.amount ?? payment.amount,
+      currency: payment.currency,
+      method: "Razorpay",
+      kind: "refund",
+      referenceNo: refund.refundId,
+      note: body.reason?.slice(0, 400) ?? "Refunded through Razorpay",
+      createdById: req.auth!.userId,
+    });
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Refunded",
+      moduleId: payment.moduleId,
+      label: `Refund of ${payment.currency} ${(body.amount ?? payment.amount).toLocaleString(
+        "en-IN",
+      )} on ${payment.recordReference}`,
+      meta: { paymentId: payment.id, refundId: refund.refundId },
+      req,
+    });
+
+    return created(res, { refund, ...entries });
   }),
 );
 

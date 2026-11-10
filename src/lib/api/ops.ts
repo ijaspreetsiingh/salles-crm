@@ -118,8 +118,10 @@ export type GroupSummary = {
 export const fetchGroupMembers = (recordId: string) =>
   apiRequest<{ items: GroupMemberDto[]; summary: GroupSummary }>(`/groups/${recordId}/members`);
 
-export const addGroupMember = (recordId: string, body: Partial<GroupMemberDto> & { name: string }) =>
-  apiRequest<GroupMemberDto>(`/groups/${recordId}/members`, { method: "POST", body });
+export const addGroupMember = (
+  recordId: string,
+  body: Partial<GroupMemberDto> & { name: string },
+) => apiRequest<GroupMemberDto>(`/groups/${recordId}/members`, { method: "POST", body });
 
 export const importGroupMembers = (recordId: string, text: string, roomType?: string) =>
   apiRequest<{ added: number }>(`/groups/${recordId}/members/bulk`, {
@@ -140,11 +142,24 @@ export const autoAssignRooms = (recordId: string) =>
   });
 
 export type RoomingListDto = {
-  group: { id: string; reference: string; name: string; destination: string; date: string; status: string };
+  group: {
+    id: string;
+    reference: string;
+    name: string;
+    destination: string;
+    date: string;
+    status: string;
+  };
   rooms: Array<{
     roomNumber: string;
     roomType: string;
-    guests: Array<{ name: string; passport: string; dietary: string; bedPreference: string; age: string }>;
+    guests: Array<{
+      name: string;
+      passport: string;
+      dietary: string;
+      bedPreference: string;
+      age: string;
+    }>;
   }>;
   unassigned: string[];
 };
@@ -153,7 +168,14 @@ export const fetchRooming = (recordId: string) =>
   apiRequest<RoomingListDto>(`/groups/${recordId}/rooming`);
 
 export type ManifestDto = {
-  group?: { reference: string; name: string; destination: string; date: string; status: string; notes: string };
+  group?: {
+    reference: string;
+    name: string;
+    destination: string;
+    date: string;
+    status: string;
+    notes: string;
+  };
   departure?: {
     id: string;
     moduleId: string;
@@ -178,6 +200,7 @@ export type ManifestDto = {
     status: string;
     dietary: string;
     emergencyContact: string;
+    notes?: string;
   }>;
   counts: { total?: number; travellers?: number; confirmed?: number; withoutPassport: number };
 };
@@ -303,7 +326,14 @@ export const fetchAgents = () =>
 
 export const fetchAgent = (recordId: string) =>
   apiRequest<{
-    agent: { id: string; reference: string; name: string; status: string; email: string; phone: string };
+    agent: {
+      id: string;
+      reference: string;
+      name: string;
+      status: string;
+      email: string;
+      phone: string;
+    };
     account: AgentAccountDto;
     commissions: Array<{
       id: string;
@@ -336,7 +366,11 @@ export const settleAgent = (recordId: string, amount: number) =>
 export const createAgentCommission = (
   recordId: string,
   body: { saleAmount: number; rate?: number; bookingReference?: string; description?: string },
-) => apiRequest<{ id: string; amount: number }>(`/agents/${recordId}/commissions`, { method: "POST", body });
+) =>
+  apiRequest<{ id: string; amount: number }>(`/agents/${recordId}/commissions`, {
+    method: "POST",
+    body,
+  });
 
 export const updateAgentCommission = (id: string, status: string) =>
   apiRequest<{ id: string; status: string }>(`/agents/commissions/${id}`, {
@@ -368,10 +402,12 @@ export type DepartureDay = {
 };
 
 export const fetchDepartures = (from: string, to: string) =>
-  apiRequest<{ from: string; to: string; days: DepartureDay[]; totals: { departures: number; travellers: number } }>(
-    "/operations/departures",
-    { query: { from, to } },
-  );
+  apiRequest<{
+    from: string;
+    to: string;
+    days: DepartureDay[];
+    totals: { departures: number; travellers: number };
+  }>("/operations/departures", { query: { from, to } });
 
 export const fetchManifest = (recordId: string) =>
   apiRequest<ManifestDto>(`/operations/manifest/${recordId}`);

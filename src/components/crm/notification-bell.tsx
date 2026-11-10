@@ -39,16 +39,23 @@ export function NotificationBell({
 }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
 
-  const markRead = useCallback((id: string) => {
-    onMarkRead(id);
-  }, [onMarkRead]);
+  const markRead = useCallback(
+    (id: string) => {
+      onMarkRead(id);
+    },
+    [onMarkRead],
+  );
 
   const levelColor = (level?: string) => {
     switch (level) {
-      case "danger": return "text-destructive bg-destructive/10 border-destructive/20";
-      case "warning": return "text-amber-600 bg-amber-50 border-amber-100";
-      case "success": return "text-green-600 bg-green-50 border-green-100";
-      default: return "text-ink bg-ink/5 border-ink/10";
+      case "danger":
+        return "text-destructive bg-destructive/10 border-destructive/20";
+      case "warning":
+        return "text-amber-600 bg-amber-50 border-amber-100";
+      case "success":
+        return "text-green-600 bg-green-50 border-green-100";
+      default:
+        return "text-ink bg-ink/5 border-ink/10";
     }
   };
 
@@ -109,12 +116,15 @@ export function NotificationBell({
                       <h4 className={cn("text-sm font-semibold", !n.read && "text-foreground")}>
                         {n.title}
                       </h4>
-                      {!n.read && (
-                        <span className="text-xs font-medium text-muted">New</span>
-                      )}
+                      {!n.read && <span className="text-xs font-medium text-muted">New</span>}
                     </div>
                     {n.body && (
-                      <p className={cn("text-xs text-muted mt-0.5 line-clamp-2", !n.read && "text-foreground/80")}>
+                      <p
+                        className={cn(
+                          "text-xs text-muted mt-0.5 line-clamp-2",
+                          !n.read && "text-foreground/80",
+                        )}
+                      >
                         {n.body}
                       </p>
                     )}
@@ -126,7 +136,10 @@ export function NotificationBell({
                       )}
                       {n.createdAt && (
                         <span className="text-[10px] text-muted">
-                          {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(n.createdAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       )}
                       {!n.read && (

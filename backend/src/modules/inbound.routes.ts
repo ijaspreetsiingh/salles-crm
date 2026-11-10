@@ -3,8 +3,10 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { NotFoundError, ForbiddenError, BadRequestError } from "../lib/errors";
-import { env } from "../config/env";
+import { env, isProd } from "../config/env";
+import crypto from "node:crypto";
 import { htmlToText, recordInboundMessage } from "../services/inbox-inbound";
+import { emitToOrg } from "../lib/socket";
 
 /**
  * Inbound channel webhooks — no login, because the sender is Mailgun/Resend
@@ -63,7 +65,12 @@ const whatsappPayload = z
                 value: z
                   .object({
                     contacts: z
-                      .array(z.object({ profile: z.object({ name: z.string().optional() }).optional(), wa_id: z.string().optional() }))
+                      .array(
+                        z.object({
+                          profile: z.object({ name: z.string().optional() }).optional(),
+                          wa_id: z.string().optional(),
+                        }),
+                      )
                       .optional(),
                     messages: z
                       .array(
@@ -83,6 +90,16 @@ const whatsappPayload = z
                         }),
                       )
                       .optional(),
+                    statuses: z
+                      .array(
+                        z.object({
+                          id: z.string().optional(), // WhatsApp message ID
+                          recipient_id: z.string().optional(),
+                          status: z.string().optional(), // sent | delivered | read | failed
+                          timestamp: z.string().optional(),
+                        }),
+                      )
+                      .optional(),
                   })
                   .optional(),
               }),
@@ -94,17 +111,131 @@ const whatsappPayload = z
   })
   .passthrough();
 
+/**
+ * Proves a WhatsApp POST really came from Meta.
+ *
+ * Meta signs the raw body with the app secret (`X-Hub-Signature-256`). Without
+ * a configured secret there is no way to tell Meta apart from anyone who knows
+ * the organisation slug, so production refuses the request instead of writing
+ * attacker-controlled messages into the shared inbox.
+ */
+function verifyMetaSignature(
+  req: import("express").Request,
+  rawBody: string,
+): void {
+  if (!env.WHATSAPP_APP_SECRET) {
+    if (isProd) {
+      throw new ForbiddenError(
+        "WHATSAPP_APP_SECRET is not configured — refusing an unverifiable WhatsApp webhook",
+      );
+    }
+    return; // development convenience only
+  }
+
+  const header = req.header("x-hub-signature-256") ?? "";
+  const provided = header.startsWith("sha256=") ? header.slice(7) : "";
+  if (!provided) throw new ForbiddenError("Missing WhatsApp signature");
+
+  const expected = crypto
+    .createHmac("sha256", env.WHATSAPP_APP_SECRET)
+    .update(rawBody)
+    .digest("hex");
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (
+    expectedBuffer.length !== providedBuffer.length ||
+    !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+  ) {
+    throw new ForbiddenError("WhatsApp signature did not match");
+  }
+}
+
 router.post(
   "/whatsapp/:slug",
   asyncHandler(async (req, res) => {
     const organization = await organizationBySlug(req.params.slug);
+    const raw =
+      (req as unknown as { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
+    verifyMetaSignature(req, raw);
+
     const parsed = whatsappPayload.safeParse(req.body);
     if (!parsed.success) throw new BadRequestError("Not a WhatsApp Cloud API payload");
 
     let accepted = 0;
+    let statusUpdates = 0;
+
     for (const entry of parsed.data.entry ?? []) {
       for (const change of entry.changes ?? []) {
         const value = change.value;
+
+        // ── Delivery / read receipts ──────────────────────────────────────
+        // Meta sends status updates for messages we sent outbound.
+        // We find the Message row by its meta.providerRef and update delivery.
+        for (const statusEvent of value?.statuses ?? []) {
+          const { id: waMessageId, status, recipient_id } = statusEvent;
+          if (!waMessageId || !status) continue;
+
+          // Map Meta status → our delivery vocabulary
+          const delivery =
+            status === "read"
+              ? "read"
+              : status === "delivered"
+                ? "delivered"
+                : status === "sent"
+                  ? "sent"
+                  : status === "failed"
+                    ? "failed"
+                    : null;
+
+          if (!delivery) continue;
+
+          // Find the outbox entry by providerRef (the WA message ID we saved when sending)
+          const outboxEntry = await prisma.emailOutbox.findFirst({
+            where: { organizationId: organization.id, providerRef: waMessageId },
+          });
+
+          if (outboxEntry) {
+            await prisma.emailOutbox.update({
+              where: { id: outboxEntry.id },
+              data: { status: delivery === "failed" ? "failed" : "sent" },
+            });
+          }
+
+          // Find the Message row via relatedReference (conversationId stored there)
+          // We stored the WA message ID in meta JSON on the Message row
+          const message = await prisma.message.findFirst({
+            where: {
+              conversation: { organizationId: organization.id },
+              meta: { contains: waMessageId },
+            },
+            include: { conversation: { select: { id: true } } },
+          });
+
+          if (message) {
+            const currentMeta = (() => {
+              try {
+                return JSON.parse(message.meta) as Record<string, unknown>;
+              } catch {
+                return {};
+              }
+            })();
+            await prisma.message.update({
+              where: { id: message.id },
+              data: { meta: JSON.stringify({ ...currentMeta, delivery, waMessageId }) },
+            });
+
+            // Push delivery update to every open browser tab via socket.io
+            emitToOrg(organization.id, "message:delivery", {
+              messageId: message.id,
+              conversationId: message.conversation.id,
+              delivery,
+              waMessageId,
+            });
+            statusUpdates += 1;
+          }
+        }
+
+        // ── Inbound messages ──────────────────────────────────────────────
         const name = value?.contacts?.[0]?.profile?.name ?? "";
         for (const message of value?.messages ?? []) {
           const body =
@@ -127,8 +258,7 @@ router.post(
       }
     }
 
-    // Meta requires a 200 quickly; the work above is already done.
-    return ok(res, { accepted });
+    return ok(res, { accepted, statusUpdates });
   }),
 );
 
@@ -146,7 +276,9 @@ router.post(
  */
 const emailPayload = z
   .object({
-    from: z.union([z.string(), z.object({ email: z.string().optional(), name: z.string().optional() })]).optional(),
+    from: z
+      .union([z.string(), z.object({ email: z.string().optional(), name: z.string().optional() })])
+      .optional(),
     sender: z.string().optional(),
     "from-name": z.string().optional(),
     fromName: z.string().optional(),
@@ -173,6 +305,12 @@ router.post(
       if (provided !== env.INBOUND_EMAIL_SECRET) {
         throw new ForbiddenError("Inbound secret did not match");
       }
+    } else if (isProd) {
+      // The slug is public (it is in every lead-form URL), so it cannot be the
+      // only thing standing between the internet and the shared inbox.
+      throw new ForbiddenError(
+        "INBOUND_EMAIL_SECRET is not configured — refusing unauthenticated inbound email",
+      );
     }
 
     const parsed = emailPayload.safeParse(req.body);
@@ -181,13 +319,12 @@ router.post(
 
     const fromField = payload.from;
     const rawFrom =
-      typeof fromField === "string"
-        ? fromField
-        : fromField?.email ?? payload.sender ?? "";
+      typeof fromField === "string" ? fromField : (fromField?.email ?? payload.sender ?? "");
     // "Aarti Sharma <aarti@example.com>" → address + name.
     const angleMatch = rawFrom.match(/^(.*?)<([^>]+)>$/);
     const contactEmail = (angleMatch ? angleMatch[2] : rawFrom).trim().toLowerCase();
-    if (!contactEmail.includes("@")) throw new BadRequestError("Inbound email has no sender address");
+    if (!contactEmail.includes("@"))
+      throw new BadRequestError("Inbound email has no sender address");
 
     const contactName =
       (angleMatch ? angleMatch[1] : "").replace(/^"|"$/g, "").trim() ||
@@ -199,7 +336,9 @@ router.post(
       payload.text ??
       payload["body-plain"] ??
       payload["stripped-text"] ??
-      (payload.html || payload["body-html"] ? htmlToText(payload.html ?? payload["body-html"] ?? "") : "");
+      (payload.html || payload["body-html"]
+        ? htmlToText(payload.html ?? payload["body-html"] ?? "")
+        : "");
 
     const result = await recordInboundMessage({
       organizationId: organization.id,

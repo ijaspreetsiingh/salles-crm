@@ -30,6 +30,10 @@ export type SessionUserDto = {
   email: string;
   phone: string | null;
   avatarUrl: string | null;
+  /** Whether the email address has been verified. */
+  emailVerified?: boolean;
+  /** ISO timestamp of the last sign-in, or null when they never have. */
+  lastLoginAt?: string | null;
   /** True when this email is listed in the platform's PLATFORM_ADMIN_EMAILS. */
   isPlatformAdmin?: boolean;
 };
@@ -46,10 +50,14 @@ export type SessionDto = {
   membership: { organizationId: string; roleKey: string; branchId: string | null };
   organization?: OrganizationDto;
   permissions?: PermissionSetDto;
+  /** True when the role demands a second factor and the person has not set it up. */
+  twoFactorSetupRequired?: boolean;
+  twoFactorEnabled?: boolean;
+  recoveryCodeUsed?: boolean;
 };
 
 export type MeDto = {
-  user: SessionUserDto & { lastLoginAt?: string | null };
+  user: SessionUserDto;
   organization: OrganizationDto;
   membership: {
     roleKey: string;
@@ -79,6 +87,9 @@ export type RecordDto = {
   notes: string;
   customerType: string;
   extra: Record<string, unknown>;
+  createdAt?: string;
+  /** Version stamp used for optimistic locking on save. */
+  updatedAt?: string;
 };
 
 export type TaskDto = {
@@ -145,6 +156,7 @@ export type AttentionDto = {
   bookings: RecordDto[];
   finance: RecordDto[];
   visa: RecordDto[];
+  groups: RecordDto[];
 };
 
 export type AuditDto = {
@@ -199,8 +211,9 @@ export function toRecordRow(dto: RecordDto): RecordRow {
     phone: dto.phone ?? "",
     source: dto.source ?? "",
     notes: dto.notes ?? "",
-    customerType: dto.customerType ?? "",
   };
+  if (dto.customerType) row.customerType = dto.customerType as "Corporate" | "VIP" | "Leisure";
+  if (dto.updatedAt) row.updatedAt = dto.updatedAt;
   const extra = (dto.extra ?? {}) as Record<string, string | number>;
   if (Object.keys(extra).length > 0) row.extra = extra;
   return row;
@@ -251,8 +264,19 @@ export function toCustomField(dto: CustomFieldDto): CustomField {
  * Auth
  * ------------------------------------------------------------------ */
 
-export const login = (email: string, password: string) =>
-  apiRequest<SessionDto>("/auth/login", { method: "POST", body: { email, password }, auth: false });
+export const fetchCsrf = () => apiRequest<{ csrfToken: string }>("/auth/csrf", { auth: false });
+export const login = (
+  email: string,
+  password: string,
+  second?: { totp?: string; recoveryCode?: string },
+) =>
+  apiRequest<SessionDto>("/auth/login", {
+    method: "POST",
+    // Only sent when the account actually has a second factor; the server
+    // ignores them otherwise.
+    body: { email, password, ...(second ?? {}) },
+    auth: false,
+  });
 
 export const register = (body: {
   organizationName: string;
@@ -268,6 +292,44 @@ export const logout = () =>
   }));
 
 export const fetchMe = () => apiRequest<MeDto>("/auth/me");
+
+/* ------------------------------------------------------------------ *
+ * Two-factor authentication (Settings → Profile → Security)
+ * ------------------------------------------------------------------ */
+
+export type TwoFactorStatusDto = {
+  /** The role demands a second factor and it is not set up yet. */
+  required: boolean;
+  /** The role is privileged but enforcement is off in this environment. */
+  recommended: boolean;
+  enabled: boolean;
+  enabledAt: string | null;
+  recoveryCodesRemaining: number;
+  setupRequired: boolean;
+};
+
+export const fetchTwoFactorStatus = () => apiRequest<TwoFactorStatusDto>("/auth/2fa/status");
+
+export const startTwoFactorSetup = () =>
+  apiRequest<{ secret: string; otpauthUrl: string }>("/auth/2fa/setup", {
+    method: "POST",
+    body: {},
+  });
+
+export const enableTwoFactor = (code: string) =>
+  apiRequest<{ enabled: boolean; recoveryCodes: string[] }>("/auth/2fa/enable", {
+    method: "POST",
+    body: { code },
+  });
+
+export const disableTwoFactor = (password: string) =>
+  apiRequest<{ enabled: boolean }>("/auth/2fa/disable", { method: "POST", body: { password } });
+
+export const regenerateRecoveryCodes = (password: string) =>
+  apiRequest<{ recoveryCodes: string[] }>("/auth/2fa/recovery-codes", {
+    method: "POST",
+    body: { password },
+  });
 
 /* ------------------------------------------------------------------ *
  * Workspace records
@@ -289,6 +351,26 @@ export async function fetchRecords(moduleId: string): Promise<RecordDto[]> {
  */
 export async function fetchAllRecords(): Promise<Record<string, RecordDto[]>> {
   return apiRequest<Record<string, RecordDto[]>>("/workspace/all-records");
+}
+
+/**
+ * The module catalogue, including each module's workflow statuses.
+ *
+ * This is the only place the list is authored; the UI paints itself from
+ * here so it can never offer a status the API will reject.
+ */
+export type ModuleCatalogueDto = {
+  id: string;
+  name: string;
+  group: string;
+  statuses: string[];
+  tabs: string[];
+  noun: string;
+};
+
+export async function fetchWorkspaceModules(): Promise<ModuleCatalogueDto[]> {
+  const data = await apiRequest<{ modules: ModuleCatalogueDto[] }>("/workspace/modules");
+  return data.modules ?? [];
 }
 
 /** One page of a module's records, already filtered and sorted by the server. */
@@ -437,8 +519,16 @@ export const importRecordsCsv = (moduleId: string, csv: string) =>
 export const createRecord = (moduleId: string, body: unknown) =>
   apiRequest<RecordDto>(`/workspace/${moduleId}/records`, { method: "POST", body });
 
-export const updateRecord = (moduleId: string, id: string, body: unknown) =>
-  apiRequest<RecordDto>(`/workspace/${moduleId}/records/${id}`, { method: "PATCH", body });
+export const updateRecord = (
+  moduleId: string,
+  id: string,
+  body: unknown,
+  expectedUpdatedAt?: string,
+) =>
+  apiRequest<RecordDto>(`/workspace/${moduleId}/records/${id}`, {
+    method: "PATCH",
+    body: expectedUpdatedAt ? { ...(body as object), expectedUpdatedAt } : body,
+  });
 
 export const deleteRecord = (moduleId: string, id: string) =>
   apiRequest<{ deleted: boolean }>(`/workspace/${moduleId}/records/${id}`, { method: "DELETE" });

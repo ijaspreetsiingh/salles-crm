@@ -20,7 +20,9 @@ export type ReportExportInput = {
 };
 
 const money = (value: number | null | undefined, currency: string) =>
-  value === null || value === undefined ? "—" : `${currency} ${Math.round(value).toLocaleString("en-IN")}`;
+  value === null || value === undefined
+    ? "—"
+    : `${currency} ${Math.round(value).toLocaleString("en-IN")}`;
 
 async function loadReport(input: ReportExportInput) {
   const organization = await prisma.organization.findUniqueOrThrow({
@@ -124,7 +126,8 @@ export async function buildReportWorkbook(input: ReportExportInput): Promise<{
   filename: string;
   buffer: Buffer;
 }> {
-  const { organization, data, records, currency, title, kpis, moduleName } = await loadReport(input);
+  const { organization, data, records, currency, title, kpis, moduleName } =
+    await loadReport(input);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = organization.name;
@@ -145,7 +148,10 @@ export async function buildReportWorkbook(input: ReportExportInput): Promise<{
   summary.addRow({});
   for (const [label, value] of kpis) summary.addRow({ label, value });
 
-  const breakdown = (name: string, rows: Array<{ label: string; value: number; count: number }>) => {
+  const breakdown = (
+    name: string,
+    rows: Array<{ label: string; value: number; count: number }>,
+  ) => {
     if (!rows.length) return;
     const sheet = workbook.addWorksheet(name.slice(0, 31));
     sheet.columns = [
@@ -201,7 +207,8 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
   filename: string;
   buffer: Buffer;
 }> {
-  const { organization, data, records, currency, title, kpis, moduleName } = await loadReport(input);
+  const { organization, data, records, currency, title, kpis, moduleName } =
+    await loadReport(input);
 
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   const chunks: Buffer[] = [];
@@ -222,15 +229,24 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
   doc.moveDown(1.2);
   doc.fontSize(15).font("Helvetica-Bold").fillColor("#17191a").text(title);
   doc.fontSize(9).font("Helvetica").fillColor("#555555");
-  doc.text(`${data.filters.branch} · ${data.filters.range} · generated ${new Date().toLocaleString("en-IN")}`);
+  doc.text(
+    `${data.filters.branch} · ${data.filters.range} · generated ${new Date().toLocaleString("en-IN")}`,
+  );
 
   doc.moveDown(1);
   doc.fontSize(12).font("Helvetica-Bold").fillColor("#17191a").text("Summary");
   doc.moveDown(0.4);
   for (const [label, value] of kpis) {
-    doc.fontSize(9).font("Helvetica").fillColor("#555555").text(label, left, doc.y, { width: 180, continued: false });
+    doc
+      .fontSize(9)
+      .font("Helvetica")
+      .fillColor("#555555")
+      .text(label, left, doc.y, { width: 180, continued: false });
     const y = doc.y - doc.currentLineHeight();
-    doc.font("Helvetica-Bold").fillColor("#17191a").text(value, left + 190, y, { width: width - 190 });
+    doc
+      .font("Helvetica-Bold")
+      .fillColor("#17191a")
+      .text(value, left + 190, y, { width: width - 190 });
     doc.moveDown(0.3);
   }
 
@@ -248,10 +264,17 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
     let x = left;
     doc.fontSize(8).fillColor("#555555");
     for (const column of columns) {
-      doc.text(column.label.toUpperCase(), x, startY, { width: column.width, align: column.align ?? "left" });
+      doc.text(column.label.toUpperCase(), x, startY, {
+        width: column.width,
+        align: column.align ?? "left",
+      });
       x += column.width;
     }
-    doc.moveTo(left, doc.y + 2).lineTo(left + width, doc.y + 2).strokeColor("#dddddd").stroke();
+    doc
+      .moveTo(left, doc.y + 2)
+      .lineTo(left + width, doc.y + 2)
+      .strokeColor("#dddddd")
+      .stroke();
     doc.moveDown(0.4);
     doc.fillColor("#17191a");
     for (const row of rows.slice(0, limit)) {
@@ -281,7 +304,11 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
       { label: "Value", width: 140, align: "right" },
       { label: "Count", width: 80, align: "right" },
     ],
-    data.byOwner.map((row) => [row.label || "Unassigned", money(row.value, currency), String(row.count)]),
+    data.byOwner.map((row) => [
+      row.label || "Unassigned",
+      money(row.value, currency),
+      String(row.count),
+    ]),
   );
 
   table(

@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
 import { resolveWhatsAppAccount } from "./channels";
+import { sendViaWebSession, webSessionStatus } from "./whatsapp-web";
 
 /**
  * WhatsApp Business Cloud API (Meta Graph) with the same honesty model as
@@ -34,6 +35,25 @@ export async function sendWhatsApp(input: {
     },
   });
 
+  // A scanned WhatsApp Web session is the number the agency actually answers
+  // customers on, so it wins over Cloud API credentials when both exist.
+  if (webSessionStatus(input.organizationId).linked) {
+    try {
+      const sent = await sendViaWebSession(input.organizationId, input.to, input.body);
+      await prisma.emailOutbox.update({
+        where: { id: row.id },
+        data: { status: "sent", sentAt: new Date(), providerRef: sent.id },
+      });
+      return { status: "sent", id: row.id };
+    } catch (error) {
+      await prisma.emailOutbox.update({
+        where: { id: row.id },
+        data: { status: "failed", error: error instanceof Error ? error.message : String(error) },
+      });
+      return { status: "failed", id: row.id };
+    }
+  }
+
   const account = await resolveWhatsAppAccount(input.organizationId);
   if (!account) return { status: "queued", id: row.id };
 
@@ -56,9 +76,10 @@ export async function sendWhatsApp(input: {
         }),
       },
     );
-    const payload = (await response.json().catch(() => null)) as
-      | { messages?: Array<{ id: string }>; error?: { message?: string } }
-      | null;
+    const payload = (await response.json().catch(() => null)) as {
+      messages?: Array<{ id: string }>;
+      error?: { message?: string };
+    } | null;
 
     if (!response.ok) {
       const detail = payload?.error?.message ?? `WhatsApp API returned ${response.status}`;

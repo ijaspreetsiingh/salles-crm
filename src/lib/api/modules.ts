@@ -184,6 +184,16 @@ export const deleteSavedReport = (id: string) =>
 export const runReport = (report: ReportKey, filters: Filters = {}) =>
   apiRequest<ReportResultDto>(`/reports/${report}`, { query: filters });
 
+/**
+ * Downloads the report the screen is showing, as a real spreadsheet or a
+ * printable PDF — the two files a travel agency actually forwards.
+ */
+export const downloadReport = async (
+  report: ReportKey,
+  filters: Filters,
+  format: "xlsx" | "pdf",
+): Promise<Blob> => apiBlob(`/reports/${report}/export.${format}`, filters);
+
 /* ------------------------------------------------------------------ *
  * Assistant
  * ------------------------------------------------------------------ */
@@ -301,10 +311,34 @@ export type WorkflowDto = {
   trigger: string;
   condition: string;
   action: string;
+  /** Canvas graph as JSON: { nodes, edges }. */
+  graph?: string;
   status: string;
   runCount: number;
   lastRunAt: string | null;
   createdAt: string;
+};
+
+export type GraphNodeDto = {
+  id: string;
+  type: "trigger" | "condition" | "action";
+  kind: string;
+  label: string;
+  config?: Record<string, string | number | boolean>;
+  x: number;
+  y: number;
+};
+
+export type WorkflowGraphDto = {
+  nodes: GraphNodeDto[];
+  edges: Array<{ from: string; to: string }>;
+};
+
+export type GraphRunDto = {
+  status: string;
+  log: string;
+  dryRun: boolean;
+  nodes: Array<{ id: string; label: string; status: string; detail: string }>;
 };
 
 export type WorkflowRunDto = {
@@ -334,17 +368,23 @@ export const createWorkflow = (body: {
 
 export const updateWorkflow = (
   id: string,
-  body: Partial<Pick<WorkflowDto, "name" | "trigger" | "condition" | "action" | "status">>,
+  body: Partial<
+    Pick<WorkflowDto, "name" | "trigger" | "condition" | "action" | "status" | "graph">
+  >,
 ) => apiRequest<WorkflowDto>(`/workflows/${id}`, { method: "PATCH", body });
 
 export const deleteWorkflow = (id: string) =>
   apiRequest<{ deleted: boolean }>(`/workflows/${id}`, { method: "DELETE" });
 
-export const runWorkflow = (id: string) =>
-  apiRequest<{ status: string; log: string; finishedAt?: string }>(`/workflows/${id}/run`, {
-    method: "POST",
-    body: {},
-  });
+export const runWorkflow = (id: string, options: { dryRun?: boolean } = {}) =>
+  apiRequest<{ status: string; log: string; finishedAt?: string } & Partial<GraphRunDto>>(
+    `/workflows/${id}/run`,
+    {
+      method: "POST",
+      body: {},
+      query: options.dryRun ? { dryRun: "1" } : {},
+    },
+  );
 
 export const fetchWorkflowRunsFor = (id: string) =>
   apiRequest<Array<WorkflowRunDto & { workflowId: string }>>(`/workflows/${id}/runs`);
@@ -384,10 +424,8 @@ export const fetchCustomFields = (moduleId?: string) =>
 export const createCustomField = (body: CustomFieldInput) =>
   apiRequest<CustomFieldDto>("/custom-fields", { method: "POST", body });
 
-export const updateCustomField = (
-  id: string,
-  body: Partial<CustomFieldInput>,
-) => apiRequest<CustomFieldDto>(`/custom-fields/${id}`, { method: "PATCH", body });
+export const updateCustomField = (id: string, body: Partial<CustomFieldInput>) =>
+  apiRequest<CustomFieldDto>(`/custom-fields/${id}`, { method: "PATCH", body });
 
 export const deleteCustomField = (id: string) =>
   apiRequest<{ deleted: boolean }>(`/custom-fields/${id}`, { method: "DELETE" });
@@ -448,6 +486,28 @@ export const deleteWebhook = (id: string) =>
 export const testWebhook = (id: string) =>
   apiRequest<{ id: string; status: string; responseCode: number | null; createdAt: string }>(
     `/integrations/webhooks/${id}/test`,
+    { method: "POST", body: {} },
+  );
+
+/** One row of the delivery log — what was sent, where to, and what came back. */
+export type WebhookDeliveryDto = {
+  id: string;
+  webhookId: string;
+  url: string;
+  active: boolean;
+  event: string;
+  status: string;
+  responseCode: number | null;
+  payload: string;
+  createdAt: string;
+};
+
+export const fetchWebhookDeliveries = (take = 50) =>
+  apiRequest<WebhookDeliveryDto[]>("/integrations/deliveries", { query: { take } });
+
+export const retryWebhookDelivery = (id: string) =>
+  apiRequest<{ id: string; status: string; responseCode: number | null; createdAt: string }>(
+    `/integrations/deliveries/${id}/retry`,
     { method: "POST", body: {} },
   );
 
@@ -537,9 +597,14 @@ export const updateDomain = (body: { customDomain: string | null }) =>
   apiRequest<DomainDto>("/domains/domain", { method: "PUT", body });
 
 export const resolveDomain = (domain: string) =>
-  apiRequest<{ id: string; name: string; slug: string; customDomain: string; plan: string; planStatus: string }>(
-    `/domains/resolve/${encodeURIComponent(domain)}`
-  );
+  apiRequest<{
+    id: string;
+    name: string;
+    slug: string;
+    customDomain: string;
+    plan: string;
+    planStatus: string;
+  }>(`/domains/resolve/${encodeURIComponent(domain)}`);
 
 /* ------------------------------------------------------------------ *
  * Uploads
@@ -756,6 +821,8 @@ export type ChannelStatusDto = {
     detail: string;
     phoneNumberId: string;
     hasToken: boolean;
+    /** Paired WhatsApp Web device, if the team scanned a QR. */
+    web?: WhatsAppWebStatusDto;
   };
   razorpay: {
     configured: boolean;
@@ -778,6 +845,29 @@ export const saveEmailChannel = (body: {
 
 export const removeEmailChannel = () =>
   apiRequest<{ saved: boolean }>("/channels/email", { method: "DELETE" });
+
+export type WhatsAppWebStatusDto = {
+  state: "idle" | "connecting" | "qr" | "connected" | "error";
+  qr: string | null;
+  me: string | null;
+  error: string | null;
+  linked: boolean;
+};
+
+/** WhatsApp Web pairing (QR scan) — this is the number the team answers on. */
+export const fetchWhatsAppWeb = () => apiRequest<WhatsAppWebStatusDto>("/channels/whatsapp/web");
+
+export const connectWhatsAppWeb = () =>
+  apiRequest<WhatsAppWebStatusDto>("/channels/whatsapp/web/connect", { method: "POST" });
+
+export const disconnectWhatsAppWeb = () =>
+  apiRequest<WhatsAppWebStatusDto>("/channels/whatsapp/web/disconnect", { method: "POST" });
+
+export const sendWhatsAppWebTest = (to: string) =>
+  apiRequest<{ status: string; id: string }>("/channels/whatsapp/web/test", {
+    method: "POST",
+    body: { to },
+  });
 
 export const saveWhatsAppChannel = (body: { phoneNumberId: string; token?: string | undefined }) =>
   apiRequest<{ saved: boolean }>("/channels/whatsapp", { method: "PUT", body });
@@ -823,6 +913,17 @@ export const downloadQuotationPdf = async (reference: string) => {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `quotation-${reference}.pdf`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+/** The package as a customer-facing PDF: plan, inclusions, prices, terms. */
+export const downloadPackagePdf = async (reference: string) => {
+  const blob = await apiBlob(`/packages/${encodeURIComponent(reference)}/package.pdf`);
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `package-${reference}.pdf`;
   anchor.click();
   URL.revokeObjectURL(url);
 };
@@ -1020,3 +1121,278 @@ export const setOrganizationPlan = (orgId: string, body: { planKey: string; stat
     `/platform/organizations/${orgId}/plan`,
     { method: "PATCH", body },
   );
+
+/* ------------------------------------------------------------------ *
+ * Team Chat
+ * ------------------------------------------------------------------ */
+
+export type ChatChannelDto = {
+  id: string;
+  name: string;
+  description: string;
+  isPrivate: boolean;
+  isDirect: boolean;
+  memberCount: number;
+  unreadCount: number;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+};
+
+export type ChatMessageDto = {
+  id: string;
+  channelId: string;
+  body: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string | null;
+  reactions: Array<{ emoji: string; count: number; mine: boolean }>;
+  replyToId: string | null;
+  replyToBody: string | null;
+  edited: boolean;
+  createdAt: string;
+};
+
+export const fetchChatChannels = () => apiRequest<ChatChannelDto[]>("/team-chat/channels");
+
+export const createChatChannel = (body: {
+  name: string;
+  description?: string;
+  isPrivate?: boolean;
+  memberIds?: string[];
+}) => apiRequest<ChatChannelDto>("/team-chat/channels", { method: "POST", body });
+
+export const fetchChatMessages = (channelId: string, before?: string) =>
+  apiRequest<ChatMessageDto[]>(`/team-chat/channels/${channelId}/messages`, {
+    query: { pageSize: 50, ...(before ? { before } : {}) },
+  });
+
+export const sendChatMessage = (channelId: string, body: string, replyToId?: string) =>
+  apiRequest<ChatMessageDto>(`/team-chat/channels/${channelId}/messages`, {
+    method: "POST",
+    body: { body, replyToId },
+  });
+
+export const addChatReaction = (channelId: string, messageId: string, emoji: string) =>
+  apiRequest<ChatMessageDto>(`/team-chat/channels/${channelId}/messages/${messageId}/reactions`, {
+    method: "POST",
+    body: { emoji },
+  });
+
+export const markChatRead = (channelId: string) =>
+  apiRequest<{ read: boolean }>(`/team-chat/channels/${channelId}/read`, {
+    method: "POST",
+  });
+
+export const openDirectMessage = (userId: string) =>
+  apiRequest<ChatChannelDto>("/team-chat/dm", { method: "POST", body: { userId } });
+
+export const fetchChatMembers = () =>
+  apiRequest<Array<{ id: string; name: string; avatarUrl: string | null; online: boolean }>>(
+    "/team-chat/members",
+  );
+
+/* ------------------------------------------------------------------ *
+ * Hotel search (Hotelbeds / manual fallback)
+ * ------------------------------------------------------------------ */
+
+export type HotelSearchResult = {
+  configured: boolean;
+  message?: string;
+  hotels: Array<{
+    code: string;
+    name: string;
+    categoryName: string;
+    destinationName: string;
+    latitude: number | null;
+    longitude: number | null;
+    rooms: Array<{
+      code: string;
+      name: string;
+      boardName: string;
+      net: number;
+      currency: string;
+      allotment: number;
+      cancellationPolicies: string;
+    }>;
+  }>;
+  currency: string;
+};
+
+export type HotelContractRate = {
+  id: string;
+  hotelName: string;
+  city: string;
+  country: string;
+  roomType: string;
+  mealPlan: string;
+  season: string;
+  validFrom: string | null;
+  validTo: string | null;
+  costPrice: number;
+  sellingPrice: number;
+  currency: string;
+  basis: string;
+  cancellation: string;
+  supplierName: string;
+  notes: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export const searchHotels = (query: {
+  destination: string;
+  checkIn: string;
+  checkOut: string;
+  rooms?: number;
+  adults?: number;
+}) => apiRequest<HotelSearchResult>("/hotels/search", { query });
+
+export const fetchContractRates = (params: { city?: string; hotelName?: string } = {}) =>
+  apiRequest<HotelContractRate[]>("/hotels/contract-rates", { query: params });
+
+export const createContractRate = (body: Omit<HotelContractRate, "id" | "createdAt">) =>
+  apiRequest<HotelContractRate>("/hotels/contract-rates", { method: "POST", body });
+
+export const updateContractRate = (id: string, body: Partial<HotelContractRate>) =>
+  apiRequest<HotelContractRate>(`/hotels/contract-rates/${id}`, { method: "PATCH", body });
+
+export const deleteContractRate = (id: string) =>
+  apiRequest<{ deleted: boolean }>(`/hotels/contract-rates/${id}`, { method: "DELETE" });
+
+/* ------------------------------------------------------------------ *
+ * Flight PNR Queue
+ * ------------------------------------------------------------------ */
+
+export type PNRPassenger = {
+  name: string;
+  passport: string;
+  dob: string;
+  nationality: string;
+  ticketNumber: string;
+};
+
+export type PNRDto = {
+  id: string;
+  recordId: string | null;
+  pnr: string;
+  gds: string;
+  airline: string;
+  route: string;
+  departure: string;
+  passengers: PNRPassenger[];
+  fareType: string;
+  ticketDeadline: string | null;
+  hoursUntilDeadline: number | null;
+  deadlineUrgency: "none" | "ok" | "warning" | "critical" | "expired";
+  status: "Active" | "Ticketed" | "Voided" | "Expired" | "Refunded";
+  ticketNumbers: string[];
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const fetchPNRs = (params: { status?: string; deadlineHours?: number } = {}) =>
+  apiRequest<PNRDto[]>("/pnr", { query: params });
+
+export const createPNR = (body: {
+  pnr?: string;
+  gds?: string;
+  airline?: string;
+  route?: string;
+  departure?: string;
+  passengers?: PNRPassenger[];
+  fareType?: string;
+  ticketDeadline?: string;
+  notes?: string;
+  recordId?: string;
+}) => apiRequest<PNRDto>("/pnr", { method: "POST", body });
+
+export const updatePNR = (id: string, body: Partial<PNRDto>) =>
+  apiRequest<PNRDto>(`/pnr/${id}`, { method: "PATCH", body });
+
+export const issuePNRTickets = (id: string, ticketNumbers: string[]) =>
+  apiRequest<PNRDto>(`/pnr/${id}/ticket`, { method: "POST", body: { ticketNumbers } });
+
+export const voidPNR = (id: string, reason: string) =>
+  apiRequest<PNRDto>(`/pnr/${id}/void`, { method: "POST", body: { reason } });
+
+export const refundPNR = (id: string, reason: string, amount?: number) =>
+  apiRequest<PNRDto>(`/pnr/${id}/refund`, { method: "POST", body: { reason, amount } });
+
+export const expirePNR = (id: string) =>
+  apiRequest<{ expired: boolean }>(`/pnr/${id}`, { method: "DELETE" });
+
+/* ------------------------------------------------------------------ *
+ * Customer portal
+ * ------------------------------------------------------------------ */
+
+export type PortalTokenDto = {
+  token: string;
+  url: string;
+  expiresAt: string;
+};
+
+export type PortalBookingDto = {
+  id: string;
+  reference: string;
+  customerName: string;
+  destination: string;
+  departureDate: string;
+  returnDate: string;
+  status: string;
+  totalAmount: number;
+  paidAmount: number;
+  currency: string;
+  invoices: Array<{
+    id: string;
+    reference: string;
+    amount: number;
+    status: string;
+    dueDate: string | null;
+    paymentLink: string | null;
+  }>;
+  vouchers: Array<{
+    id: string;
+    type: string;
+    supplierName: string;
+    checkIn: string | null;
+    checkOut: string | null;
+    reference: string;
+    downloadUrl: string;
+  }>;
+};
+
+export const generatePortalToken = (bookingRecordId: string) =>
+  apiRequest<PortalTokenDto>("/portal/token", {
+    method: "POST",
+    body: { recordId: bookingRecordId },
+  });
+
+/* ------------------------------------------------------------------ *
+ * Payment reconciliation
+ * ------------------------------------------------------------------ */
+
+export type ReconciliationSummaryDto = {
+  total: number;
+  matched: number;
+  unmatched: number;
+  partial: number;
+  items: Array<{
+    paymentId: string;
+    amount: number;
+    currency: string;
+    provider: string;
+    status: "matched" | "unmatched" | "partial";
+    invoiceId: string | null;
+    invoiceRef: string | null;
+    matchedAt: string | null;
+    notes: string;
+  }>;
+};
+
+export const fetchReconciliationSummary = (params: { from?: string; to?: string } = {}) =>
+  apiRequest<ReconciliationSummaryDto>("/reconciliation/summary", { query: params });
+
+export const runReconciliation = () =>
+  apiRequest<{ matched: number; unmatched: number }>("/reconciliation/run", { method: "POST" });

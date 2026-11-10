@@ -12,7 +12,12 @@ import { routeTree } from "@/routeTree.gen";
 
 // Views that intentionally render an empty state because nothing exists yet
 // (no live connections / no saved reports).
-const expectedEmptyViews = new Set(["integrations:Connection logs", "reports:Saved reports"]);
+const expectedEmptyViews = new Set([
+  "integrations:Connection logs",
+  "reports:Saved reports",
+  "team-chat:Channels",
+  "team-chat:Direct messages",
+]);
 
 const router = createRouter({ routeTree, context: { queryClient: new QueryClient() } });
 
@@ -34,6 +39,7 @@ const viewsFor = (moduleId: string) => {
     "quotations",
     "automation",
     "flights",
+    "team-chat",
   ]);
   return special.has(moduleId) ? module.tabs : guideFor(module).views.map((v) => v.label);
 };

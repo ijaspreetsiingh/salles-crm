@@ -28,7 +28,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { toast } from "sonner";
 import { Btn, EmptyState, Panel, PanelHead } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Status } from "./common";
@@ -101,8 +100,26 @@ function KpiCard({
   );
 }
 
-/** Revenue trend area chart. */
-function RevenueChart({ data }: { data: { label: string; revenue: number }[] }) {
+/** Revenue trend area chart. Shows an honest empty state until real data exists. */
+function RevenueChart({
+  data,
+  loading,
+}: {
+  data: { label: string; revenue: number }[];
+  loading?: boolean;
+}) {
+  if (data.length === 0) {
+    return (
+      <Panel className="h-[320px]">
+        <PanelHead title="Revenue Trend" subtitle="Last 6 months — booking value" />
+        <p className="rounded-xl border border-dashed border-line-2 px-4 py-8 text-center text-sm text-muted">
+          {loading
+            ? "Loading your revenue…"
+            : "No revenue recorded yet. This chart fills in from your own invoices — nothing is estimated."}
+        </p>
+      </Panel>
+    );
+  }
   return (
     <Panel className="h-[320px]">
       <PanelHead title="Revenue Trend" subtitle="Last 6 months — booking value" />
@@ -126,47 +143,54 @@ function RevenueChart({ data }: { data: { label: string; revenue: number }[] }) 
 }
 
 /** Pipeline stage bars. */
-function PipelineBars({ data }: { data: { stage: string; count: number; value: number }[] }) {
+function PipelineBars({
+  data,
+  loading,
+  currency,
+}: {
+  data: { stage: string; count: number; value: number }[];
+  loading?: boolean;
+  currency: string;
+}) {
   const max = Math.max(1, ...data.map((d) => d.count));
   return (
     <Panel className="h-[320px]">
       <PanelHead title="Sales Pipeline" subtitle="Enquiries by stage" />
-      <div className="space-y-3">
-        {data.map((stage) => (
-          <div key={stage.stage} className="flex items-center gap-3">
-            <span className="w-20 text-xs font-medium text-muted">{stage.stage}</span>
-            <div className="flex-1 h-3 rounded-full bg-well overflow-hidden">
-              <div className="h-full bg-pine" style={{ width: `${(stage.count / max) * 100}%` }} />
+      {data.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-line-2 px-4 py-8 text-center text-sm text-muted">
+          {loading
+            ? "Loading your pipeline…"
+            : "No enquiries in the pipeline yet. Add your first lead and the stages appear here."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {data.map((stage) => (
+            <div key={stage.stage} className="flex items-center gap-3">
+              <span className="w-20 text-xs font-medium text-muted">{stage.stage}</span>
+              <div className="flex-1 h-3 rounded-full bg-well overflow-hidden">
+                <div
+                  className="h-full bg-pine"
+                  style={{ width: `${(stage.count / max) * 100}%` }}
+                />
+              </div>
+              <span className="w-16 text-right text-xs tabular-nums font-medium">
+                {stage.count} · {money(stage.value, currency)}
+              </span>
             </div>
-            <span className="w-16 text-right text-xs tabular-nums font-medium">
-              {stage.count} · {money(stage.value, "INR")}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </Panel>
   );
 }
 
-/** Quick action grid. */
-function QuickActions({ onCreateLead }: { onCreateLead: () => void }) {
+/** Quick action grid. Each button navigates to the module it names. */
+function QuickActions({ onOpen }: { onOpen: (module: string) => void }) {
   const actions = [
-    { label: "New Enquiry", icon: <Plus className="size-4" />, onClick: onCreateLead },
-    {
-      label: "Create Quote",
-      icon: <FileText className="size-4" />,
-      onClick: () => toast.info("Open quotations"),
-    },
-    {
-      label: "New Booking",
-      icon: <Ticket className="size-4" />,
-      onClick: () => toast.info("Open bookings"),
-    },
-    {
-      label: "Send Invoice",
-      icon: <Wallet className="size-4" />,
-      onClick: () => toast.info("Open finance"),
-    },
+    { label: "Enquiries", icon: <Plus className="size-4" />, module: "leads" },
+    { label: "Quotations", icon: <FileText className="size-4" />, module: "quotations" },
+    { label: "Bookings", icon: <Ticket className="size-4" />, module: "bookings" },
+    { label: "Invoices", icon: <Wallet className="size-4" />, module: "finance" },
   ];
   return (
     <Panel>
@@ -178,7 +202,7 @@ function QuickActions({ onCreateLead }: { onCreateLead: () => void }) {
             <button
               key={a.label}
               type="button"
-              onClick={a.onClick}
+              onClick={() => onOpen(a.module)}
               className={`flex flex-col items-center gap-1.5 h-20 px-2 rounded-xl border border-line bg-glass-2 hover:bg-glass-3 transition-colors text-left text-[12px] ${i === 0 ? "border-pine bg-pine/5" : ""}`}
             >
               <span className={`size-5 mb-1 ${i === 0 ? "text-pine" : "text-muted"}`}>
@@ -196,8 +220,10 @@ function QuickActions({ onCreateLead }: { onCreateLead: () => void }) {
 /** Recent activity feed. */
 function ActivityFeed({
   rows,
+  loading,
 }: {
-  rows: Array<{ at: string; title: string; module: string; ref: string }>;
+  rows: Array<{ detail: string; title: string; module: string; ref: string }>;
+  loading?: boolean;
 }) {
   return (
     <Panel>
@@ -205,8 +231,10 @@ function ActivityFeed({
       <div className="space-y-3">
         {rows.length === 0 ? (
           <EmptyState
-            title="No recent activity"
-            description="Start by adding an enquiry or booking."
+            title={loading ? "Loading recent activity…" : "No recent activity"}
+            description={
+              loading ? "Reading your workspace." : "Start by adding an enquiry or booking."
+            }
           />
         ) : (
           rows.map((item) => (
@@ -217,9 +245,7 @@ function ActivityFeed({
               <div className="mt-1 w-2 h-2 rounded-full bg-pine" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">{item.title}</p>
-                <p className="text-xs text-muted">
-                  {formatDay(item.at)} · {item.module}
-                </p>
+                <p className="text-xs text-muted">{item.detail}</p>
               </div>
             </div>
           ))
@@ -236,7 +262,7 @@ export function Dashboard() {
   const [branch, setBranch] = useState("All branches");
   const [range, setRange] = useState("Last 6 months");
 
-  const { data: overview } = useApiQuery<DashboardOverviewDto>(
+  const { data: overview, error: overviewError } = useApiQuery<DashboardOverviewDto>(
     () => fetchDashboardOverview(branch === "All branches" ? {} : { branch }),
     [branch],
     status === "ready",
@@ -276,36 +302,25 @@ export function Dashboard() {
     grossMarginPercent: null,
   };
 
-  // Mock revenue series for chart (replace with real server data when available)
+  // Only real server series. When the API has no history yet the chart says
+  // so instead of inventing a trend.
   const revenueSeries = useMemo(
-    () =>
-      (
-        overview?.revenueSeries ?? [
-          { month: "Oct", revenue: 450000 },
-          { month: "Nov", revenue: 620000 },
-          { month: "Dec", revenue: 540000 },
-          { month: "Jan", revenue: 780000 },
-          { month: "Feb", revenue: 910000 },
-          { month: "Mar", revenue: metrics.revenue },
-        ]
-      ).map((p) => ({ label: p.month, revenue: p.revenue })),
-    [overview, metrics.revenue],
+    () => (overview?.revenueSeries ?? []).map((p) => ({ label: p.month, revenue: p.revenue })),
+    [overview],
   );
 
-  const pipelineData = overview?.pipeline ?? [
-    { stage: "New", count: 12, value: 2400000 },
-    { stage: "Contacted", count: 8, value: 1600000 },
-    { stage: "Qualified", count: 6, value: 1200000 },
-    { stage: "Quoted", count: 4, value: 800000 },
-    { stage: "Won", count: 15, value: 3000000 },
-  ];
+  const pipelineData = overview?.pipeline ?? [];
+  // While the first response is in flight, say "loading" rather than the
+  // false claim that there is no revenue. If the request failed, fall back to
+  // the honest empty state instead of spinning forever.
+  const chartsLoading = overview === null && !overviewError;
 
   const activityRows = overview?.attention ?? [];
   const recentActivity = activityRows.map((item) => ({
-    at: item.detail,
+    detail: item.detail,
     title: item.label,
     module: item.moduleId,
-    ref: item.moduleId,
+    ref: `${item.moduleId}-${item.recordId}`,
   }));
 
   return (
@@ -344,8 +359,8 @@ export function Dashboard() {
                 label="Total Revenue"
                 value={money(metrics.revenue, currency)}
                 subtitle={`${metrics.confirmedBookings} confirmed trips`}
-                trend="up"
-                trendLabel="+12% vs last month"
+                trend="neutral"
+                trendLabel="Confirmed trip value"
                 tone="pine"
               />
               <KpiCard
@@ -353,8 +368,8 @@ export function Dashboard() {
                 label="Money Collected"
                 value={money(metrics.collected, currency)}
                 subtitle="Payments received"
-                trend="up"
-                trendLabel="+8% vs last month"
+                trend="neutral"
+                trendLabel="Recorded receipts"
                 tone="pine"
               />
               <KpiCard
@@ -363,7 +378,7 @@ export function Dashboard() {
                 value={money(metrics.outstanding, currency)}
                 subtitle="Still to be received"
                 trend="down"
-                trendLabel="-₹{money(metrics.outstanding, currency).replace(/[^\d]/g, '')} pending"
+                trendLabel={`${money(metrics.outstanding, currency)} pending`}
                 tone="tomato"
               />
               <KpiCard
@@ -371,8 +386,8 @@ export function Dashboard() {
                 label="Total Bookings"
                 value={String(metrics.bookings)}
                 subtitle={`${metrics.confirmedBookings} confirmed`}
-                trend="up"
-                trendLabel="+5 new this week"
+                trend="neutral"
+                trendLabel={`${metrics.confirmedBookings} confirmed`}
                 tone="butter"
               />
               <KpiCard
@@ -389,10 +404,10 @@ export function Dashboard() {
             {/* Charts Row */}
             <div className="grid gap-4 lg:grid-cols-3 mb-8">
               <div className="lg:col-span-2">
-                <RevenueChart data={revenueSeries} />
+                <RevenueChart data={revenueSeries} loading={chartsLoading} />
               </div>
               <div>
-                <PipelineBars data={pipelineData} />
+                <PipelineBars data={pipelineData} loading={chartsLoading} currency={currency} />
               </div>
             </div>
 
@@ -400,13 +415,11 @@ export function Dashboard() {
             <div className="grid gap-4 lg:grid-cols-3 mb-8">
               <div className="lg:col-span-2">
                 <QuickActions
-                  onCreateLead={() =>
-                    navigate({ to: "/workspace/$module", params: { module: "leads" } })
-                  }
+                  onOpen={(module) => navigate({ to: "/workspace/$module", params: { module } })}
                 />
               </div>
               <div>
-                <ActivityFeed rows={recentActivity.slice(0, 6)} />
+                <ActivityFeed rows={recentActivity.slice(0, 6)} loading={chartsLoading} />
               </div>
             </div>
 

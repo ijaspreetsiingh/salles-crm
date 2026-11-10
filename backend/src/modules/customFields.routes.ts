@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requireRole } from "../middlewares/rbac";
+import { requireModulePermission, requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { ConflictError, NotFoundError } from "../lib/errors";
 import { parseJson, slugify, stringifyJson } from "../lib/utils";
@@ -12,6 +12,7 @@ import { recordAudit } from "../services/audit";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("settings", "view"));
 
 const fieldSchema = z.object({
   moduleId: z.string().min(2),
@@ -32,7 +33,10 @@ router.get(
       where: { organizationId: req.auth!.organizationId, ...(moduleId ? { moduleId } : {}) },
       orderBy: [{ moduleId: "asc" }, { position: "asc" }],
     });
-    return ok(res, fields.map((f) => ({ ...f, options: parseJson<string[]>(f.options, []) })));
+    return ok(
+      res,
+      fields.map((f) => ({ ...f, options: parseJson<string[]>(f.options, []) })),
+    );
   }),
 );
 
@@ -50,7 +54,8 @@ router.post(
     const clash = await prisma.customField.findUnique({
       where: { organizationId_moduleId_key: { organizationId, moduleId: body.moduleId, key } },
     });
-    if (clash) throw new ConflictError("A custom field with this key already exists for the module");
+    if (clash)
+      throw new ConflictError("A custom field with this key already exists for the module");
 
     const field = await prisma.customField.create({
       data: {

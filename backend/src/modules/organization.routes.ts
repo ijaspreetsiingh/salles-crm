@@ -3,16 +3,18 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requireRole } from "../middlewares/rbac";
+import { requireModulePermission, requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { parseJson, stringifyJson } from "../lib/utils";
+import { publicOrganizationSettings } from "../lib/redact";
 import { recordAudit } from "../services/audit";
 import { readDigestSettings, sendDigestTo, writeDigestSettings } from "../services/digest";
 import { MODULES, moduleGroups } from "../domain/modules";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("settings", "view"));
 
 const orgUpdateSchema = z.object({
   name: z.string().min(2).max(120).optional(),
@@ -41,7 +43,12 @@ router.get(
     const organization = await prisma.organization.findUniqueOrThrow({
       where: { id: req.auth!.organizationId },
     });
-    return ok(res, { ...organization, settings: parseJson(organization.settings, {}) });
+    return ok(res, {
+      ...organization,
+      // Credentials never travel on the profile endpoint. Use /channels for
+      // masked status and the company_admin-only write endpoints to change them.
+      settings: publicOrganizationSettings(parseJson<Record<string, unknown>>(organization.settings, {})),
+    });
   }),
 );
 
@@ -52,11 +59,29 @@ router.patch(
   validate(orgUpdateSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as z.infer<typeof orgUpdateSchema>;
+
+    /*
+     * Settings are merged, not replaced: saving the tax rate must not wipe the
+     * digest schedule or the channel credentials that live beside it. The
+     * `channels` key is stripped because those secrets have their own
+     * endpoints (and their own audit trail).
+     */
+    let mergedSettings: string | undefined;
+    if (body.settings) {
+      const current = await prisma.organization.findUniqueOrThrow({
+        where: { id: req.auth!.organizationId },
+        select: { settings: true },
+      });
+      const existing = parseJson<Record<string, unknown>>(current.settings, {});
+      const { channels: _ignored, ...safePatch } = body.settings as Record<string, unknown>;
+      mergedSettings = stringifyJson({ ...existing, ...safePatch });
+    }
+
     const organization = await prisma.organization.update({
       where: { id: req.auth!.organizationId },
       data: {
         ...body,
-        settings: body.settings ? stringifyJson(body.settings) : undefined,
+        settings: mergedSettings,
       },
     });
 
@@ -69,7 +94,10 @@ router.patch(
       req,
     });
 
-    return ok(res, { ...organization, settings: parseJson(organization.settings, {}) });
+    return ok(res, {
+      ...organization,
+      settings: publicOrganizationSettings(parseJson<Record<string, unknown>>(organization.settings, {})),
+    });
   }),
 );
 

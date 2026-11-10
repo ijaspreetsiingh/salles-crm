@@ -44,6 +44,29 @@ describe("parseCsv", () => {
       ['Mehta, "Priya"', "Bali"],
     ]);
   });
+
+  it("neutralises spreadsheet formulas so a lead cannot run code in Excel", () => {
+    const rows = [
+      {
+        name: '=HYPERLINK("http://evil.example","click")',
+        city: "+1 (555) 0100",
+        notes: "@SUM(1+1)",
+        amount: -500,
+      },
+    ];
+    const csv = toCsv(rows, [
+      { key: "name", label: "Name" },
+      { key: "city", label: "City" },
+      { key: "notes", label: "Notes" },
+      { key: "amount", label: "Amount" },
+    ]);
+    const cells = parseCsv(csv)[1]!;
+    expect(cells[0]!.startsWith("'=")).toBe(true);
+    expect(cells[1]!.startsWith("'+")).toBe(true);
+    expect(cells[2]!.startsWith("'@")).toBe(true);
+    // A real number is untouched.
+    expect(cells[3]).toBe("-500");
+  });
 });
 
 describe("import value normalisation", () => {

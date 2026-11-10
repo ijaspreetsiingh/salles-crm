@@ -194,7 +194,12 @@ export function AutomationStudio() {
       }
       const out = await runWorkflow(active.id, { dryRun });
       if (out.nodes) {
-        setResult({ status: out.status, log: out.log, dryRun: out.dryRun ?? dryRun, nodes: out.nodes });
+        setResult({
+          status: out.status,
+          log: out.log,
+          dryRun: out.dryRun ?? dryRun,
+          nodes: out.nodes,
+        });
       }
       if (out.status === "failed") toast.error("A step failed — see the run panel");
       else if (out.status === "skipped") toast.info("Nothing ran — check the conditions");
@@ -210,7 +215,12 @@ export function AutomationStudio() {
     }
   };
 
-  const addNode = (type: "condition" | "action", kind: string, label: string, config?: Record<string, string>) => {
+  const addNode = (
+    type: "condition" | "action",
+    kind: string,
+    label: string,
+    config?: Record<string, string>,
+  ) => {
     if (!graph) return;
     const id = newId();
     const maxY = graph.nodes.reduce((max, node) => Math.max(max, node.y), 60);
@@ -269,7 +279,11 @@ export function AutomationStudio() {
     const node = graph?.nodes.find((entry) => entry.id === id);
     const box = canvasRef.current?.getBoundingClientRect();
     if (!node || !box) return;
-    dragRef.current = { id, dx: event.clientX - box.left - node.x, dy: event.clientY - box.top - node.y };
+    dragRef.current = {
+      id,
+      dx: event.clientX - box.left - node.x,
+      dy: event.clientY - box.top - node.y,
+    };
     setSelectedId(id);
   };
 
@@ -359,7 +373,12 @@ export function AutomationStudio() {
           <span className="text-[11px] text-muted">on {active?.moduleId}</span>
           <div className="ml-auto flex items-center gap-1.5">
             {dirty && <span className="text-[11px] text-butter">Unsaved</span>}
-            <Button size="sm" variant="outline" disabled={busy || !dirty} onClick={() => void save()}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy || !dirty}
+              onClick={() => void save()}
+            >
               <Save className="size-4" /> Save
             </Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(true)}>
@@ -433,10 +452,18 @@ export function AutomationStudio() {
                   {node.kind === "update_status" && `New status: ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "create_task" && String(node.config?.["title"] ?? "Create a task")}
                   {["send_email", "send_whatsapp", "notify"].includes(node.kind) &&
-                    String(node.config?.["body"] ?? node.config?.["message"] ?? "Write the message")}
-                  {!["amount_above", "status_is", "update_status", "create_task", "send_email", "send_whatsapp", "notify"].includes(
-                    node.kind,
-                  ) && KIND_LABEL[node.kind]}
+                    String(
+                      node.config?.["body"] ?? node.config?.["message"] ?? "Write the message",
+                    )}
+                  {![
+                    "amount_above",
+                    "status_is",
+                    "update_status",
+                    "create_task",
+                    "send_email",
+                    "send_whatsapp",
+                    "notify",
+                  ].includes(node.kind) && KIND_LABEL[node.kind]}
                 </p>
                 <div className="auto-node__foot">
                   {runState ? (
@@ -535,7 +562,11 @@ export function AutomationStudio() {
             <header>
               <strong>{result.dryRun ? "Test run" : "Last run"}</strong>
               <span className={`auto-run__status is-${result.status}`}>{result.status}</span>
-              <button type="button" className="ml-auto text-xs text-muted" onClick={() => setResult(null)}>
+              <button
+                type="button"
+                className="ml-auto text-xs text-muted"
+                onClick={() => setResult(null)}
+              >
                 Hide
               </button>
             </header>
@@ -560,7 +591,9 @@ export function AutomationStudio() {
         {selected ? (
           <>
             <h3>{selected.label}</h3>
-            <p className="text-[11px] text-muted">{selected.type} · {selected.kind}</p>
+            <p className="text-[11px] text-muted">
+              {selected.type} · {selected.kind}
+            </p>
 
             {["amount_above", "status_is", "update_status"].includes(selected.kind) && (
               <label>
@@ -614,9 +647,7 @@ export function AutomationStudio() {
                   Message
                   <textarea
                     rows={5}
-                    value={String(
-                      selected.config?.["body"] ?? selected.config?.["message"] ?? "",
-                    )}
+                    value={String(selected.config?.["body"] ?? selected.config?.["message"] ?? "")}
                     onChange={(e) =>
                       setGraph((current) =>
                         current
@@ -653,7 +684,10 @@ export function AutomationStudio() {
                                 ...current,
                                 nodes: current.nodes.map((node) =>
                                   node.id === selected.id
-                                    ? { ...node, config: { ...node.config, subject: e.target.value } }
+                                    ? {
+                                        ...node,
+                                        config: { ...node.config, subject: e.target.value },
+                                      }
                                     : node,
                                 ),
                               }
@@ -723,7 +757,14 @@ export function AutomationStudio() {
             {runs.items.slice(0, 5).map((run) => (
               <div key={run.id}>
                 <span>{run.workflow}</span>
-                <small>{new Date(run.startedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small>
+                <small>
+                  {new Date(run.startedAt).toLocaleString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </small>
                 <span className={`auto-run__status is-${run.status}`}>{run.status}</span>
               </div>
             ))}
@@ -766,7 +807,11 @@ export function ExecutionHistory() {
           ))}
         </div>
         <Button size="sm" variant="outline" onClick={() => reload()} disabled={loading}>
-          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <WorkflowIcon className="size-3.5" />}
+          {loading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <WorkflowIcon className="size-3.5" />
+          )}
           Refresh
         </Button>
       </div>
@@ -817,7 +862,10 @@ export function ExecutionHistory() {
                   <td className="px-4 py-3">
                     <span className={`auto-run__status is-${run.status}`}>{run.status}</span>
                   </td>
-                  <td className="hidden max-w-[420px] truncate px-4 py-3 text-muted md:table-cell" title={run.log}>
+                  <td
+                    className="hidden max-w-[420px] truncate px-4 py-3 text-muted md:table-cell"
+                    title={run.log}
+                  >
                     {run.log || "—"}
                   </td>
                 </tr>

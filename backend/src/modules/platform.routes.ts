@@ -7,6 +7,7 @@ import { requirePlatformAdmin } from "../middlewares/platform";
 import { validate } from "../middlewares/validate";
 import { ConflictError, NotFoundError } from "../lib/errors";
 import { parseJson, stringifyJson } from "../lib/utils";
+import { INTERNAL_ORG_SLUG } from "../domain/tenancy";
 
 const router = Router();
 router.use(requireAuth);
@@ -16,6 +17,8 @@ router.get(
   "/organizations",
   asyncHandler(async (_req, res) => {
     const organizations = await prisma.organization.findMany({
+      // Our own workspace is not a customer tenant.
+      where: { slug: { not: INTERNAL_ORG_SLUG } },
       orderBy: { createdAt: "desc" },
       include: { _count: { select: { memberships: true } } },
     });
@@ -162,7 +165,9 @@ router.delete(
     if (!plan) throw new NotFoundError("Plan");
     const inUse = await prisma.subscription.count({ where: { planKey: plan.key } });
     if (inUse > 0) {
-      throw new ConflictError("This plan still has active subscriptions — move those companies to another plan first.");
+      throw new ConflictError(
+        "This plan still has active subscriptions — move those companies to another plan first.",
+      );
     }
     await prisma.plan.delete({ where: { key: plan.key } });
     return ok(res, { deleted: true });

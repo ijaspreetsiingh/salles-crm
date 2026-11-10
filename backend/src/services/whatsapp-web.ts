@@ -94,8 +94,13 @@ export async function connectWebSession(
   fs.mkdirSync(dir, { recursive: true });
 
   try {
-    const { useMultiFileAuthState, fetchLatestBaileysVersion, makeWASocket, Browsers, DisconnectReason } =
-      await loadBaileys();
+    const {
+      useMultiFileAuthState,
+      fetchLatestBaileysVersion,
+      makeWASocket,
+      Browsers,
+      DisconnectReason,
+    } = await loadBaileys();
     const { state, saveCreds } = await useMultiFileAuthState(dir);
     const { version } = await fetchLatestBaileysVersion();
 

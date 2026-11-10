@@ -5,7 +5,10 @@ export const Route = createFileRoute("/lead/$slug")({
   head: () => ({
     meta: [
       { title: "Plan my trip — enquiry" },
-      { name: "description", content: "Send your trip details to the travel desk and get a plan within one working day." },
+      {
+        name: "description",
+        content: "Send your trip details to the travel desk and get a plan within one working day.",
+      },
     ],
   }),
   component: LeadFormPage,

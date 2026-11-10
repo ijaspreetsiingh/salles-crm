@@ -135,9 +135,7 @@ export function RecycleBin() {
         </select>
         {confirmEmpty ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-tomato">
-              Delete all {data?.total ?? 0} permanently?
-            </span>
+            <span className="text-xs text-tomato">Delete all {data?.total ?? 0} permanently?</span>
             <Button size="sm" variant="destructive" disabled={busy} onClick={() => void empty()}>
               Yes, empty it
             </Button>
@@ -187,7 +185,9 @@ export function RecycleBin() {
                   <p className="mt-0.5 truncate text-xs text-muted">
                     {[item.destination, item.owner, item.email || item.phone]
                       .filter(Boolean)
-                      .join(" · ") || item.detail || "No further detail"}
+                      .join(" · ") ||
+                      item.detail ||
+                      "No further detail"}
                     {item.amount > 0 ? ` · ${money(item.amount, item.currency || currency)}` : ""}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1 text-[11px] text-faint">
@@ -196,7 +196,12 @@ export function RecycleBin() {
                   </p>
                 </div>
 
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => void restore(item)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void restore(item)}
+                >
                   <RotateCcw className="size-4" /> Restore
                 </Button>
 

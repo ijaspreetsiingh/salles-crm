@@ -8,6 +8,7 @@ import { validate } from "../middlewares/validate";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import { recordAudit } from "../services/audit";
 import { dateKey } from "../services/payment-ledger";
+import { num } from "../lib/money";
 
 /**
  * Payables — the money the agency owes hotels, airlines, DMCs and guides.
@@ -33,6 +34,7 @@ type PayableRow = {
   amount: number;
   currency: string;
   gstRate: number;
+  supplierGstin: string;
   dueDate: Date | null;
   status: string;
   notes: string;
@@ -56,6 +58,7 @@ const mapPayable = (row: PayableRow, paid: number, today: string) => {
     amount: row.amount,
     currency: row.currency,
     gstRate: row.gstRate,
+    supplierGstin: row.supplierGstin,
     dueDate: due,
     status: statusFor(row.amount, paid),
     paid,
@@ -68,19 +71,31 @@ const mapPayable = (row: PayableRow, paid: number, today: string) => {
 
 const createSchema = z.object({
   supplierName: z.string().min(1).max(160),
+  /** Needed to claim input credit in GSTR-3B. */
+  supplierGstin: z
+    .string()
+    .max(20)
+    .transform((value) => value.trim().toUpperCase())
+    .optional(),
   supplierRecordId: z.string().max(60).optional(),
   reference: z.string().max(40).optional(),
   description: z.string().max(300).optional(),
   amount: z.number().positive().max(1_000_000_000),
   currency: z.string().max(8).optional(),
   gstRate: z.number().min(0).max(50).optional(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dueDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   notes: z.string().max(600).optional(),
 });
 
 const settleSchema = z.object({
   amount: z.number().positive().max(1_000_000_000),
-  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  paidOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   method: z.string().max(40).optional(),
   referenceNo: z.string().max(120).optional(),
   note: z.string().max(400).optional(),
@@ -93,7 +108,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const status = String(req.query.status ?? "").toLowerCase();
-    const search = String(req.query.q ?? "").trim().toLowerCase();
+    const search = String(req.query.q ?? "")
+      .trim()
+      .toLowerCase();
 
     const [rows, grouped] = await Promise.all([
       prisma.payable.findMany({
@@ -107,7 +124,7 @@ router.get(
       }),
     ]);
 
-    const paidBy = new Map(grouped.map((g) => [g.payableId, g._sum.amount ?? 0]));
+    const paidBy = new Map(grouped.map((g) => [g.payableId, num(g._sum.amount)]));
     const today = dateKey(new Date());
 
     let items = rows.map((row) =>
@@ -164,6 +181,7 @@ router.post(
       data: {
         organizationId: req.auth!.organizationId,
         supplierName: body.supplierName.trim(),
+        ...(body.supplierGstin ? { supplierGstin: body.supplierGstin } : {}),
         ...(body.supplierRecordId ? { supplierRecordId: body.supplierRecordId } : {}),
         reference: body.reference?.trim() ?? "",
         description: body.description?.trim() ?? "",
@@ -208,7 +226,7 @@ router.post(
       where: { organizationId, payableId: payable.id },
       _sum: { amount: true },
     });
-    const alreadyPaid = settled._sum.amount ?? 0;
+    const alreadyPaid = num(settled._sum.amount);
     const balance = Math.max(0, payable.amount - alreadyPaid);
     if (balance <= 0.5) throw new BadRequestError("This bill is already settled");
     if (body.amount > balance + 0.5) {
@@ -246,7 +264,11 @@ router.post(
     });
 
     return created(res, {
-      payment: { id: payment.id, amount: payment.amount, paidOn: dateKey(payment.paidOn ?? payment.createdAt) },
+      payment: {
+        id: payment.id,
+        amount: payment.amount,
+        paidOn: dateKey(payment.paidOn ?? payment.createdAt),
+      },
       payable: mapPayable(
         { ...(payable as unknown as PayableRow), status: statusFor(payable.amount, paid) },
         paid,
@@ -277,6 +299,7 @@ router.patch(
         ...(body.description !== undefined ? { description: body.description.trim() } : {}),
         ...(body.amount !== undefined ? { amount: body.amount } : {}),
         ...(body.gstRate !== undefined ? { gstRate: body.gstRate } : {}),
+        ...(body.supplierGstin !== undefined ? { supplierGstin: body.supplierGstin } : {}),
         ...(body.dueDate !== undefined ? { dueDate: asDate(body.dueDate) } : {}),
         ...(body.notes !== undefined ? { notes: body.notes.trim() } : {}),
       },
@@ -289,7 +312,7 @@ router.patch(
     return ok(res, {
       payable: mapPayable(
         updated as unknown as PayableRow,
-        settled._sum.amount ?? 0,
+        num(settled._sum.amount),
         dateKey(new Date()),
       ),
     });
@@ -307,7 +330,9 @@ router.delete(
     });
     if (!existing) throw new NotFoundError("Payable");
     if (existing.payments.length > 0) {
-      throw new BadRequestError("Money has already moved against this bill — delete the payments first");
+      throw new BadRequestError(
+        "Money has already moved against this bill — delete the payments first",
+      );
     }
     await prisma.payable.delete({ where: { id: existing.id } });
     await recordAudit({

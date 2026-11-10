@@ -15,7 +15,9 @@ export async function generateVoucherPdf(input: {
   organizationId: string;
   recordId: string;
 }): Promise<{ filename: string; stream: PDFKit.PDFDocument; voucherNo: string }> {
-  const organization = await prisma.organization.findUnique({ where: { id: input.organizationId } });
+  const organization = await prisma.organization.findUnique({
+    where: { id: input.organizationId },
+  });
   if (!organization) throw new NotFoundError("Organization");
 
   const record = await prisma.record.findFirst({
@@ -44,16 +46,16 @@ export async function generateVoucherPdf(input: {
 
   doc.rect(0, 0, doc.page.width, 96).fill("#2f5c50");
   doc.fillColor("#fbf8f2").font("Helvetica-Bold").fontSize(20).text(organization.name, 48, 34);
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("#dfeae5")
-    .text("Hotel / service voucher", 48, 62);
+  doc.font("Helvetica").fontSize(9).fillColor("#dfeae5").text("Hotel / service voucher", 48, 62);
 
-  doc.fillColor("#fbf8f2").font("Helvetica-Bold").fontSize(16).text("VOUCHER", 0, 40, {
-    width: doc.page.width - 48,
-    align: "right",
-  });
+  doc
+    .fillColor("#fbf8f2")
+    .font("Helvetica-Bold")
+    .fontSize(16)
+    .text("VOUCHER", 0, 40, {
+      width: doc.page.width - 48,
+      align: "right",
+    });
   doc
     .font("Helvetica")
     .fontSize(9)
@@ -64,8 +66,16 @@ export async function generateVoucherPdf(input: {
 
   const row = (label: string, value: string) => {
     if (!value) return;
-    doc.font("Helvetica-Bold").fillColor("#7a7a7a").fontSize(8).text(label.toUpperCase(), 48, y, { width: 140 });
-    doc.font("Helvetica").fillColor("#17191a").fontSize(10).text(value, 190, y - 1, { width: 350 });
+    doc
+      .font("Helvetica-Bold")
+      .fillColor("#7a7a7a")
+      .fontSize(8)
+      .text(label.toUpperCase(), 48, y, { width: 140 });
+    doc
+      .font("Helvetica")
+      .fillColor("#17191a")
+      .fontSize(10)
+      .text(value, 190, y - 1, { width: 350 });
     y += 22;
   };
 
@@ -84,7 +94,11 @@ export async function generateVoucherPdf(input: {
   row("Status", record.status);
 
   y += 10;
-  doc.moveTo(48, y).lineTo(doc.page.width - 48, y).strokeColor("#dddddd").stroke();
+  doc
+    .moveTo(48, y)
+    .lineTo(doc.page.width - 48, y)
+    .strokeColor("#dddddd")
+    .stroke();
   y += 18;
 
   doc.font("Helvetica-Bold").fontSize(11).fillColor("#17191a").text("Inclusions", 48, y);
@@ -97,7 +111,11 @@ export async function generateVoucherPdf(input: {
   doc.text(String(inclusions).slice(0, 1200), 48, y, { width: doc.page.width - 96 });
   y = doc.y + 18;
 
-  doc.moveTo(48, y).lineTo(doc.page.width - 48, y).strokeColor("#dddddd").stroke();
+  doc
+    .moveTo(48, y)
+    .lineTo(doc.page.width - 48, y)
+    .strokeColor("#dddddd")
+    .stroke();
   y += 18;
 
   doc.font("Helvetica-Bold").fontSize(10).text("Important", 48, y);
@@ -133,7 +151,11 @@ export async function generateVoucherPdf(input: {
     .filter(Boolean)
     .join("  |  ");
   if (contact) doc.text(contact, 48, footerY + 12, { width: doc.page.width - 96 });
-  doc.text("This is a computer-generated voucher and does not require a signature.", 48, footerY + 26);
+  doc.text(
+    "This is a computer-generated voucher and does not require a signature.",
+    48,
+    footerY + 26,
+  );
 
   return { filename, stream: doc, voucherNo };
 }

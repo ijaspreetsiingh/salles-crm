@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
       # Set DATABASE_PROVIDER=postgres to bake the Postgres Prisma engine in.
       args:
-        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-sqlite}
+        DATABASE_PROVIDER: ${DATABASE_PROVIDER:-postgres}
     image: traveldesk/backend:latest
     container_name: traveldesk-api
     restart: unless-stopped
@@ -21,7 +21,7 @@ services:
       # SQLite in a volume by default; point DATABASE_URL at postgres:// (see
       # the postgres service below) and rebuild with DATABASE_PROVIDER=postgres
       # for managed production deployments.
-      DATABASE_URL: ${DATABASE_URL:-file:/app/data/traveldesk.db}
+      DATABASE_URL: ${DATABASE_URL:-postgres://traveldesk:traveldesk-change-me@postgres:5432/traveldesk}
       UPLOAD_DIR: /app/data/uploads
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev-access-secret-please-change-me-000000000000}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-please-change-me-000000000000}
@@ -49,6 +49,12 @@ services:
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
       AMADEUS_CLIENT_ID: ${AMADEUS_CLIENT_ID:-}
       AMADEUS_CLIENT_SECRET: ${AMADEUS_CLIENT_SECRET:-}
+      HOTELBEDS_API_KEY: ${HOTELBEDS_API_KEY:-}
+      HOTELBEDS_SECRET: ${HOTELBEDS_SECRET:-}
+      HOTELBEDS_ENV: ${HOTELBEDS_ENV:-sandbox}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@yourdomain.com}
     volumes:
       - traveldesk-data:/app/data
     healthcheck:

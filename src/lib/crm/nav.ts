@@ -2,13 +2,16 @@ import {
   BadgeIndianRupee,
   BarChart3,
   Building2,
+  CalendarDays,
   FileSpreadsheet,
   Globe,
   Handshake,
+  Home,
   Hotel,
   KanbanSquare,
   LifeBuoy,
   MessageCircle,
+  MessageSquare,
   Package,
   Plane,
   Plug,
@@ -28,10 +31,22 @@ import { modules, type Module } from "./catalog";
 import { plain } from "./language";
 
 /* ==========================================================================
-   Navigation model — Travo CRM inspired.
+   Navigation model
 
-   Core modules (CORE_MODULE_IDS): hamesha sidebar mein dikhte hain.
-   Extra modules (EXTRA_MODULE_IDS): "More" popup ke under, user add kar sakta hai.
+   Two ideas, and nothing else:
+
+   1. The core of a CRM is fixed. Enquiries, customers, quotes, bookings,
+      money, tasks, conversations, reports and the team are always in the
+      sidebar, in the order the work happens. A person never has to "add"
+      them, and a new joiner cannot accidentally hide them.
+
+   2. Everything a travel agency *might* need — hotels, visas, groups,
+      agents, automation, integrations — lives behind "Add more". Adding one
+      puts it in the sidebar permanently; removing it puts it back.
+
+   `tasks` and `team` are screens, not workspace modules, so they carry their
+   own route instead of a module id. That used to be a bug: they were listed
+   as addable modules but no module existed, so the toggle did nothing.
    ========================================================================== */
 
 export type NavEntry = {
@@ -40,6 +55,10 @@ export type NavEntry = {
   icon: LucideIcon;
   /** Two-key shortcut: "g" then this. */
   go: string;
+  /** Where it goes. Module screens use `/workspace/<id>`; standalone pages set this. */
+  to?: string;
+  /** Module id to highlight when this entry is the current page. */
+  moduleId: string;
 };
 
 export type NavGroup = {
@@ -54,6 +73,7 @@ export const ICONS: Record<string, LucideIcon> = {
   quotations: FileSpreadsheet,
   companies: Building2,
   inbox: MessageCircle,
+  "team-chat": MessageSquare,
   campaigns: TrendingUp,
   bookings: Ticket,
   flights: Plane,
@@ -81,6 +101,7 @@ const GOTO: Record<string, string> = {
   quotations: "q",
   companies: "co",
   inbox: "i",
+  "team-chat": "C",
   campaigns: "m",
   bookings: "b",
   flights: "f",
@@ -91,7 +112,7 @@ const GOTO: Record<string, string> = {
   groups: "g",
   operations: "o",
   suppliers: "s",
-  support: "h",
+  support: "u",
   agents: "a",
   finance: "F",
   assistant: "A",
@@ -103,30 +124,132 @@ const GOTO: Record<string, string> = {
 };
 
 /**
- * Core modules — Travo CRM ke sabse zaroori features.
- * Ye HAMESHA sidebar mein dikhte hain, user inhe hatata nahi hai.
+ * The fixed part of the sidebar, in working order.
+ *
+ * "Today" is the home page; the rest follow the life of a trip — an enquiry,
+ * the customer, the quote, the booking, the money, the follow-up, the
+ * conversation, the numbers, the people.
  */
+export const CORE_LINKS: NavGroup[] = [
+  {
+    id: "start",
+    label: "Start here",
+    entries: [{ id: "today", moduleId: "today", label: "Today", icon: Home, go: "T", to: "/" }],
+  },
+  {
+    id: "selling",
+    label: "Selling",
+    entries: [
+      {
+        id: "leads",
+        moduleId: "leads",
+        label: "Enquiries",
+        icon: UserPlus,
+        go: "l",
+      },
+      {
+        id: "customers",
+        moduleId: "customers",
+        label: "Customers",
+        icon: Users,
+        go: "c",
+      },
+      {
+        id: "packages",
+        moduleId: "packages",
+        label: "Packages",
+        icon: Package,
+        go: "p",
+      },
+      {
+        id: "quotations",
+        moduleId: "quotations",
+        label: "Quotes",
+        icon: FileSpreadsheet,
+        go: "q",
+      },
+    ],
+  },
+  {
+    id: "trips",
+    label: "Trips",
+    entries: [{ id: "bookings", moduleId: "bookings", label: "Bookings", icon: Ticket, go: "b" }],
+  },
+  {
+    id: "money",
+    label: "Money",
+    entries: [
+      { id: "finance", moduleId: "finance", label: "Invoices & money", icon: Wallet, go: "F" },
+    ],
+  },
+  {
+    id: "working",
+    label: "Working",
+    entries: [
+      {
+        id: "tasks",
+        moduleId: "tasks",
+        label: "Tasks",
+        icon: CalendarDays,
+        go: "t",
+        to: "/tasks",
+      },
+      {
+        id: "inbox",
+        moduleId: "inbox",
+        label: "Conversations",
+        icon: MessageCircle,
+        go: "i",
+      },
+      {
+        id: "team-chat",
+        moduleId: "team-chat",
+        label: "Team chat",
+        icon: MessageSquare,
+        go: "C",
+      },
+      {
+        id: "reports",
+        moduleId: "reports",
+        label: "Reports",
+        icon: BarChart3,
+        go: "r",
+      },
+      {
+        id: "team",
+        moduleId: "team",
+        label: "Your team",
+        icon: Users,
+        go: "e",
+        to: "/team",
+      },
+    ],
+  },
+];
+
+/** Every core module id — the workspace should never hide these. */
 export const CORE_MODULE_IDS: string[] = [
   "leads",
   "customers",
+  "packages",
   "quotations",
   "bookings",
   "finance",
+  "inbox",
+  "team-chat",
+  "reports",
 ];
 
 /**
- * Extra modules — "More" popup ke under.
- * User click karke inhe sidebar mein add kar sakta hai.
+ * Extra modules — offered under "Add more", never forced on anyone.
+ * These are real workspace modules (`modules` catalogue), so enabling one
+ * always produces a working screen.
  */
 export const EXTRA_MODULE_IDS: string[] = [
-  "tasks",
-  "team",
   "companies",
-  "inbox",
   "campaigns",
   "flights",
   "hotels",
-  "packages",
   "transfers",
   "visa",
   "groups",
@@ -136,110 +259,110 @@ export const EXTRA_MODULE_IDS: string[] = [
   "agents",
   "assistant",
   "automation",
-  "reports",
   "distribution",
   "integrations",
   "settings",
+  "team-chat",
 ];
 
-/**
- * Sidebar groups in the order a travel agency actually works:
- * Selling, Trips, Money, More (extra).
- */
-const ORDER: string[][] = [
-  ["leads", "customers", "quotations", "bookings"],
-  ["finance"],
-];
-
-const GROUP_LABELS: Record<string, string> = {
-  leads: "Selling",
-  bookings: "Trips",
-  finance: "Money",
-  default: "More",
+/** Plain-language note shown next to an extra module in the Add more list. */
+export const EXTRA_HINTS: Record<string, string> = {
+  companies: "Corporate accounts, travel policies and cost centres",
+  campaigns: "Email and WhatsApp campaigns with a delivery log",
+  flights: "Live fare search, PNR queue, reissues and refunds",
+  hotels: "Live hotel search, room inventory, rate plans and vouchers",
+  transfers: "Airport pickups and ground transport",
+  visa: "Applications, checklists and document reminders",
+  groups: "Group trips, delegates, room blocks and budgets",
+  operations: "Departures, manifests and day-of-travel work",
+  suppliers: "Supplier contracts, allotments and purchase orders",
+  support: "Complaints and after-trip service",
+  agents: "B2B agents, credit limits and commissions",
+  assistant: "Ask questions about your own workspace",
+  automation: "Workflows that run without anyone remembering",
+  distribution: "Website pages and the lead-capture form",
+  integrations: "WhatsApp, email, payments, webhooks",
+  "team-chat": "Internal Slack-style chat — channels, DMs, emoji reactions",
+  settings: "Company, branches, roles, tax, recycle bin",
 };
 
+/** Sidebar highlight key for a path. Standalone screens map to themselves. */
+export function activeKeyFor(path: string, moduleId: string | null): string | null {
+  if (path === "/tasks") return "tasks";
+  if (path === "/team") return "team";
+  if (path === "/insights") return "reports";
+  if (path === "/") return "today";
+  return moduleId;
+}
+
 /**
- * Build sidebar groups from the modules that are currently enabled.
- * Core modules ALWAYS show. Extra modules show only if enabled.
+ * Build the sidebar: the fixed core first, then whatever extras the person
+ * has added. `enabledModuleIds` only ever affects the extras group.
  */
-export function buildNavGroups(enabledModuleIds: string[]): NavGroup[] {
+export function buildSidebarGroups(
+  enabledModuleIds: string[],
+  /** The caller's role: `"*"` for full access, else the module ids it may open. */
+  allowedModules: string[] | "*" = "*",
+): NavGroup[] {
   const enabledSet = new Set(enabledModuleIds);
+  const canOpen = (moduleId: string) =>
+    allowedModules === "*" ||
+    // Screens that are not catalogue modules (Today, Tasks, Your team) are
+    // never role-gated, so they must not disappear from the sidebar.
+    !modules.some((m) => m.id === moduleId) ||
+    allowedModules.includes(moduleId);
+  const extras: NavEntry[] = EXTRA_MODULE_IDS.filter((id) => enabledSet.has(id))
+    .map((id) => {
+      const meta = modules.find((m) => m.id === id);
+      if (!meta) return null;
+      return {
+        id,
+        moduleId: id,
+        label: plain(meta.name),
+        icon: ICONS[id] ?? KanbanSquare,
+        go: GOTO[id] ?? id.charAt(0),
+      } satisfies NavEntry;
+    })
+    .filter((entry): entry is NavEntry => Boolean(entry));
 
-  // Core modules ALWAYS show — force them regardless of enabledSet
-  const coreModules = CORE_MODULE_IDS.filter((id) =>
-    modules.find((m) => m.id === id),
-  );
-  const extraModules = EXTRA_MODULE_IDS.filter((id) =>
-    enabledSet.has(id) && modules.find((m) => m.id === id),
-  );
+  const core = CORE_LINKS.map((group) => ({
+    ...group,
+    entries: group.entries.filter((entry) => canOpen(entry.moduleId)),
+  })).filter((group) => group.entries.length > 0);
 
-  const groups: NavGroup[] = ORDER.map((ids) => {
-    const entries = ids
-      .map((id) => {
-        const m = modules.find((mm) => mm.id === id);
-        // Core modules always show; extra modules only if enabled
-        const isCore = CORE_MODULE_IDS.includes(id);
-        const isEnabled = enabledSet.has(id);
-        if (!m || (!isCore && !isEnabled)) return null;
-        return {
-          id: m.id,
-          label: plain(m.name),
-          icon: ICONS[m.id] ?? KanbanSquare,
-          go: GOTO[m.id] ?? m.id.charAt(0),
-        };
-      })
-      .filter((e): e is NonNullable<typeof e> => Boolean(e));
-
-    return {
-      id: ids[0] ?? "",
-      label: GROUP_LABELS[ids[0] ?? ""] ?? "More",
-      entries,
-    };
-  });
-
-  // Add remaining enabled extra modules that didn't fit in ORDER groups
-  const usedIds = new Set(ORDER.flat());
-  const remaining = extraModules.filter((id) => !usedIds.has(id));
-  if (remaining.length > 0) {
-    groups.push({
-      id: "extra-core",
-      label: "More",
-      entries: remaining
-        .map((id) => {
-          const m = modules.find((mm) => mm.id === id);
-          if (!m) return null;
-          return {
-            id: m.id,
-            label: plain(m.name),
-            icon: ICONS[m.id] ?? KanbanSquare,
-            go: GOTO[m.id] ?? m.id.charAt(0),
-          };
-        })
-        .filter((e): e is NonNullable<typeof e> => Boolean(e)),
-    });
-  }
-
-  return groups.filter((g) => g.entries.length > 0);
+  return extras.length > 0
+    ? [...core, { id: "extras", label: "Added by you", entries: extras }]
+    : core;
 }
 
-/** Flat list of every enabled module, in sidebar order — used by the palette. */
-export function buildNavEntries(enabledModuleIds: string[]): NavEntry[] {
-  return buildNavGroups(enabledModuleIds).flatMap((g) => g.entries);
+/** Flat list of every destination, in sidebar order — used by the palette. */
+export function buildNavEntries(
+  enabledModuleIds: string[],
+  allowedModules: string[] | "*" = "*",
+): NavEntry[] {
+  return buildSidebarGroups(enabledModuleIds, allowedModules).flatMap((g) => g.entries);
 }
 
-/** "g" then <key> to module id. */
-export function buildGoShortcuts(enabledModuleIds: string[]): Record<string, string> {
-  return Object.fromEntries(buildNavEntries(enabledModuleIds).map((e) => [e.go, e.id]));
+/** "g" then <key> to a destination. */
+export function buildGoShortcuts(
+  enabledModuleIds: string[],
+  allowedModules: string[] | "*" = "*",
+): Record<string, string> {
+  return Object.fromEntries(
+    buildNavEntries(enabledModuleIds, allowedModules).map((e) => [
+      e.go,
+      e.to ?? `/workspace/${e.moduleId}`,
+    ]),
+  );
 }
 
 /** Icon lookup for any module id. */
 export const iconFor = (id: string): LucideIcon => ICONS[id] ?? KanbanSquare;
 
-/** Default enabled modules — core only on first install. */
-export const DEFAULT_ENABLED_MODULES: string[] = [
-  "leads",
-  "customers",
-  "quotations",
-  "bookings",
-  "finance",
-];
+/** Modules a workspace starts with: the core, nothing else. */
+export const DEFAULT_ENABLED_MODULES: string[] = [...CORE_MODULE_IDS];
+
+/** Backwards-compatible alias used by older call sites. */
+export const buildNavGroups = buildSidebarGroups;
+
+export type { Module };

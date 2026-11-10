@@ -1,9 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
-import { UnauthorizedError } from "../lib/errors";
+import { UnauthorizedError, ForbiddenError } from "../lib/errors";
 import { verifyAccessToken } from "../lib/jwt";
-import { normalizePermissions, ROLE_MAP } from "../domain/rbac";
+import { normalizePermissions, permissionsForApiKeyScopes, requiresTwoFactor, ROLE_MAP } from "../domain/rbac";
 import { sha256 } from "../lib/utils";
+import { env } from "../config/env";
 
 const readToken = (req: Request): string | null => {
   const header = req.header("authorization");
@@ -56,7 +57,18 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
         branchId: null,
         email: apiKey.organization.supportEmail ?? "",
         name: apiKey.name,
-        permissions: { modules: "*", actions: "*" },
+        // Scopes are the key's permission matrix; "admin" is the only way to
+        // full access, and it has to be granted deliberately.
+        permissions: permissionsForApiKeyScopes(
+          (() => {
+            try {
+              const parsed = JSON.parse(apiKey.scopes || "[]");
+              return Array.isArray(parsed) ? parsed.map(String) : [];
+            } catch {
+              return [];
+            }
+          })(),
+        ),
         apiKeyId: apiKey.id,
       };
       return next();
@@ -76,6 +88,39 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       throw new UnauthorizedError("You no longer have access to this organisation");
     }
 
+    /*
+     * Session revocation. Access tokens live for 15 minutes and cannot be
+     * recalled, so every token carries the `tokenVersion` it was minted with.
+     * A password change, a deactivation or a role change bumps the version and
+     * every token issued before it stops working immediately.
+     *
+     * Tokens minted before this existed carry no `tv`; they are treated as
+     * version 0, which is what the migration backfills.
+     */
+    if ((payload.tv ?? 0) !== user.tokenVersion) {
+      throw new UnauthorizedError("Your session has ended. Please sign in again.", "session_revoked");
+    }
+
+    if (env.ENFORCE_SUBSCRIPTION) {
+      const subscription = await prisma.subscription.findUnique({
+        where: { organizationId: payload.org },
+      });
+      if (subscription) {
+        const now = new Date();
+        const expiredTrial =
+          subscription.status === "trialing" &&
+          subscription.currentPeriodEnd !== null &&
+          subscription.currentPeriodEnd < now;
+        const inactive =
+          subscription.status === "canceled" || subscription.status === "past_due";
+        if (expiredTrial || inactive) {
+          throw new ForbiddenError(
+            "Your subscription has expired. Please update your plan to continue.",
+          );
+        }
+      }
+    }
+
     const permissions = await permissionsForRole(payload.org, membership.roleKey);
 
     req.auth = {
@@ -86,7 +131,29 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       email: user.email,
       name: user.name,
       permissions,
+      twoFactorEnabled: Boolean(user.twoFactorEnabledAt),
     };
+
+    /*
+     * Two-factor enforcement for the roles that hold the money.
+     *
+     * The person still gets a session — they need one to reach the enrolment
+     * screen — but every other route refuses until they have enrolled. The
+     * auth router marks its own routes exempt so that "set up 2FA" and
+     * "change my password" remain reachable.
+     */
+    if (
+      env.TWO_FACTOR_ENFORCEMENT &&
+      requiresTwoFactor(membership.roleKey) &&
+      !user.twoFactorEnabledAt &&
+      !(req as Request & { twoFactorExempt?: boolean }).twoFactorExempt
+    ) {
+      throw new ForbiddenError(
+        "Two-factor authentication is required for your role. Set it up in Settings → Security.",
+        "two_factor_setup_required",
+      );
+    }
+
     next();
   } catch (error) {
     next(error);

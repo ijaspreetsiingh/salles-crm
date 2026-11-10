@@ -121,8 +121,12 @@ export function relatedRecords(
   for (const [moduleId, rows] of Object.entries(all)) {
     const found = rows.filter((candidate) => {
       if (candidate.id === record.id) return false;
-      const recordRefs = Array.isArray(record.extra?.["relatedRefs"]) ? (record.extra?.["relatedRefs"] as unknown[]) : [];
-      const candidateRefs = Array.isArray(candidate.extra?.["relatedRefs"]) ? (candidate.extra?.["relatedRefs"] as unknown[]) : [];
+      const recordRefs = Array.isArray(record.extra?.["relatedRefs"])
+        ? (record.extra?.["relatedRefs"] as unknown[])
+        : [];
+      const candidateRefs = Array.isArray(candidate.extra?.["relatedRefs"])
+        ? (candidate.extra?.["relatedRefs"] as unknown[])
+        : [];
       if (recordRefs.includes(candidate.id) || candidateRefs.includes(record.id)) return true;
       // 1 — the candidate's reference is named in this record.
       if (references.has(candidate.id)) return true;

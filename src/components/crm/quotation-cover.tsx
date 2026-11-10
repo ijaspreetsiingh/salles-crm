@@ -19,11 +19,7 @@ import { money, type RecordRow } from "@/lib/crm/catalog";
 import { useCRM } from "@/lib/crm/store";
 import { setCommsFocus } from "@/lib/crm/handoff";
 import { cn } from "@/lib/utils";
-import {
-  downloadQuotationPdf,
-  sendQuotationEmail,
-  type QuoteItemDto,
-} from "@/lib/api/modules";
+import { downloadQuotationPdf, sendQuotationEmail, type QuoteItemDto } from "@/lib/api/modules";
 import { errorMessage } from "@/lib/api/client";
 
 /** Line items live in the record's extra bag as a JSON string. */
@@ -78,8 +74,19 @@ export function QuotationCover({
 
   const isProposal = row.extra?.["docKind"] === "proposal";
   const issued = row.date ? new Date(row.date) : new Date();
-  const validUntil = new Date(issued);
-  validUntil.setDate(validUntil.getDate() + 15);
+  // Honour the validity date the agent typed. Only fall back to a 15-day
+  // default when no date is on record — the customer must never see a
+  // different date from the one that was saved.
+  const storedValidUntil = row.extra?.["validUntil"];
+  const parsedValidUntil = storedValidUntil ? new Date(storedValidUntil) : null;
+  const validUntil =
+    parsedValidUntil && !Number.isNaN(parsedValidUntil.getTime())
+      ? parsedValidUntil
+      : (() => {
+          const fallback = new Date(issued);
+          fallback.setDate(fallback.getDate() + 15);
+          return fallback;
+        })();
   const fmt = (d: Date) =>
     d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
@@ -179,9 +186,7 @@ export function QuotationCover({
                 <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted">
                   Trip summary
                 </div>
-                <div className="text-xs text-muted">
-                  {row.detail || "Package as discussed"}
-                </div>
+                <div className="text-xs text-muted">{row.detail || "Package as discussed"}</div>
                 <div className="text-xs text-muted">
                   Travellers {row.extra?.["travellers"] ?? "—"} · Nights{" "}
                   {row.extra?.["nights"] ?? "—"}
@@ -256,8 +261,8 @@ export function QuotationCover({
           <section className="glass-card p-5">
             <h3 className="text-[15px] font-medium">Package lines</h3>
             <p className="mt-1 text-xs text-muted">
-              These lines go straight into the PDF — the customer sees them as a priced
-              breakdown, not a single lump sum.
+              These lines go straight into the PDF — the customer sees them as a priced breakdown,
+              not a single lump sum.
             </p>
             <div className="record-sheet__quote-form mt-3">
               <input
@@ -412,8 +417,16 @@ export function QuotationCover({
               {[
                 { icon: <User className="size-4" />, label: "Customer", value: row.name },
                 { icon: <FileText className="size-4" />, label: "Reference", value: row.id },
-                { icon: <MapPin className="size-4" />, label: "Destination", value: row.destination || "—" },
-                { icon: <Check className="size-4" />, label: "Valid until", value: fmt(validUntil) },
+                {
+                  icon: <MapPin className="size-4" />,
+                  label: "Destination",
+                  value: row.destination || "—",
+                },
+                {
+                  icon: <Check className="size-4" />,
+                  label: "Valid until",
+                  value: fmt(validUntil),
+                },
               ].map((f) => (
                 <div key={f.label} className="flex items-start gap-3">
                   <span className="mt-0.5 text-muted">{f.icon}</span>

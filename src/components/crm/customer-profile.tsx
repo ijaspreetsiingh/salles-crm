@@ -62,7 +62,7 @@ export function CustomerProfile({
   row: RecordRow;
   currency: string;
   onBack: () => void;
-  onOpenCommunications?: (row: RecordRow) => void;
+  onOpenCommunications?: (row: RecordRow, channel?: "Email" | "WhatsApp") => void;
 }) {
   const [sheet, setSheet] = useState<{ row: RecordRow; module: Module } | null>(null);
   const [sheetEdit, setSheetEdit] = useState<RecordRow | null>(null);
@@ -179,7 +179,7 @@ export function CustomerProfile({
 
   const openComms = (channel: "Email" | "WhatsApp") => {
     if (onOpenCommunications) {
-      onOpenCommunications(current);
+      onOpenCommunications(current, channel);
       return;
     }
     const phone = current.phone.replace(/[^\d+]/g, "");

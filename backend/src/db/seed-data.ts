@@ -24,11 +24,46 @@ export const EMPLOYEE_SEED: Array<{
   email: string;
   active: boolean;
 }> = [
-  { name: "Sarah Wilson", role: "Workspace administrator", branch: "Mumbai", roleKey: "company_admin", email: "owner@horizontravel.in", active: true },
-  { name: "Rahul Verma", role: "Sales manager", branch: "Delhi", roleKey: "sales", email: "rahul.verma@horizontravel.in", active: true },
-  { name: "Emily Chen", role: "Operations lead", branch: "Bengaluru", roleKey: "operations", email: "emily.chen@horizontravel.in", active: true },
-  { name: "Daniel Kumar", role: "Finance executive", branch: "Mumbai", roleKey: "finance", email: "daniel.kumar@horizontravel.in", active: true },
-  { name: "Priya Nair", role: "Support agent", branch: "Delhi", roleKey: "support", email: "priya.nair@horizontravel.in", active: true },
+  {
+    name: "Sarah Wilson",
+    role: "Workspace administrator",
+    branch: "Mumbai",
+    roleKey: "company_admin",
+    email: "owner@horizontravel.in",
+    active: true,
+  },
+  {
+    name: "Rahul Verma",
+    role: "Sales manager",
+    branch: "Delhi",
+    roleKey: "sales",
+    email: "rahul.verma@horizontravel.in",
+    active: true,
+  },
+  {
+    name: "Emily Chen",
+    role: "Operations lead",
+    branch: "Bengaluru",
+    roleKey: "operations",
+    email: "emily.chen@horizontravel.in",
+    active: true,
+  },
+  {
+    name: "Daniel Kumar",
+    role: "Finance executive",
+    branch: "Mumbai",
+    roleKey: "finance",
+    email: "daniel.kumar@horizontravel.in",
+    active: true,
+  },
+  {
+    name: "Priya Nair",
+    role: "Support agent",
+    branch: "Delhi",
+    roleKey: "support",
+    email: "priya.nair@horizontravel.in",
+    active: true,
+  },
 ];
 
 export const PEOPLE = [
@@ -206,8 +241,7 @@ export const isoOffset = (days: number) => {
 
 const detailFor = (module: ModuleDef, tab: string | undefined, name: string, i: number) => {
   if (module.id === "flights") return FLIGHT_DETAILS[i] ?? "";
-  if (module.id === "transfers")
-    return `${TRANSFER_TYPES[i % 4]} · ${(i % 3) + 2} passengers`;
+  if (module.id === "transfers") return `${TRANSFER_TYPES[i % 4]} · ${(i % 3) + 2} passengers`;
   if (tab === "Documents") return `${DOC_TYPES[i % 4]} · ${name}`;
   return `${(i % 3) + 2} travellers · ${TRAVELLERS[i]} days`;
 };
@@ -263,45 +297,177 @@ export const TASK_SEED: Array<{
   priority: string;
   done: boolean;
 }> = [
-  { title: "Follow up with Aarav on Bali quotation", type: "Sales follow-up", offset: 0, priority: "High", done: false },
-  { title: "Issue Dubai tickets before deadline", type: "Ticketing", offset: 0, priority: "Urgent", done: false },
-  { title: "Collect balance payment for BK-2402", type: "Payment collection", offset: 1, priority: "High", done: false },
-  { title: "Confirm Bali hotel voucher", type: "Supplier follow-up", offset: 2, priority: "Normal", done: false },
-  { title: "Review group rooming list", type: "Trip operations", offset: 3, priority: "Normal", done: true },
-  { title: "Send Paris departure briefing", type: "Departure", offset: 5, priority: "Normal", done: false },
-  { title: "Verify visa documents for Neha", type: "Documents", offset: 7, priority: "High", done: false },
-  { title: "Supplier settlement review", type: "Finance", offset: 10, priority: "Normal", done: false },
+  {
+    title: "Follow up with Aarav on Bali quotation",
+    type: "Sales follow-up",
+    offset: 0,
+    priority: "High",
+    done: false,
+  },
+  {
+    title: "Issue Dubai tickets before deadline",
+    type: "Ticketing",
+    offset: 0,
+    priority: "Urgent",
+    done: false,
+  },
+  {
+    title: "Collect balance payment for BK-2402",
+    type: "Payment collection",
+    offset: 1,
+    priority: "High",
+    done: false,
+  },
+  {
+    title: "Confirm Bali hotel voucher",
+    type: "Supplier follow-up",
+    offset: 2,
+    priority: "Normal",
+    done: false,
+  },
+  {
+    title: "Review group rooming list",
+    type: "Trip operations",
+    offset: 3,
+    priority: "Normal",
+    done: true,
+  },
+  {
+    title: "Send Paris departure briefing",
+    type: "Departure",
+    offset: 5,
+    priority: "Normal",
+    done: false,
+  },
+  {
+    title: "Verify visa documents for Neha",
+    type: "Documents",
+    offset: 7,
+    priority: "High",
+    done: false,
+  },
+  {
+    title: "Supplier settlement review",
+    type: "Finance",
+    offset: 10,
+    priority: "Normal",
+    done: false,
+  },
 ];
 
 export const taskDate = (offset: number) => isoOffset(offset);
 
 export const WORKFLOW_SEED = [
-  { name: "New enquiry assignment", trigger: "New lead created", condition: "Assigned owner is empty", action: "Assign to sales owner", status: "Active" },
-  { name: "Quote expiry reminder", trigger: "Quote expiring", condition: "All records", action: "Prepare reminder draft", status: "Active" },
-  { name: "Payment due follow-up", trigger: "Payment overdue", condition: "Amount above ₹1,00,000", action: "Create follow-up task", status: "Active" },
-  { name: "Departure briefing", trigger: "Booking confirmed", condition: "Destination is Bali", action: "Prepare reminder draft", status: "Active" },
-  { name: "Supplier escalation", trigger: "Payment overdue", condition: "All records", action: "Request manager approval", status: "Paused" },
-  { name: "Post-trip review request", trigger: "Booking confirmed", condition: "All records", action: "Prepare reminder draft", status: "Active" },
-  { name: "Low-margin approval", trigger: "Quote expiring", condition: "Amount above ₹1,00,000", action: "Request manager approval", status: "Paused" },
-  { name: "Passport expiry alert", trigger: "New lead created", condition: "All records", action: "Create follow-up task", status: "Active" },
+  {
+    name: "New enquiry assignment",
+    trigger: "New lead created",
+    condition: "Assigned owner is empty",
+    action: "Assign to sales owner",
+    status: "Active",
+  },
+  {
+    name: "Quote expiry reminder",
+    trigger: "Quote expiring",
+    condition: "All records",
+    action: "Prepare reminder draft",
+    status: "Active",
+  },
+  {
+    name: "Payment due follow-up",
+    trigger: "Payment overdue",
+    condition: "Amount above ₹1,00,000",
+    action: "Create follow-up task",
+    status: "Active",
+  },
+  {
+    name: "Departure briefing",
+    trigger: "Booking confirmed",
+    condition: "Destination is Bali",
+    action: "Prepare reminder draft",
+    status: "Active",
+  },
+  {
+    name: "Supplier escalation",
+    trigger: "Payment overdue",
+    condition: "All records",
+    action: "Request manager approval",
+    status: "Paused",
+  },
+  {
+    name: "Post-trip review request",
+    trigger: "Booking confirmed",
+    condition: "All records",
+    action: "Prepare reminder draft",
+    status: "Active",
+  },
+  {
+    name: "Low-margin approval",
+    trigger: "Quote expiring",
+    condition: "Amount above ₹1,00,000",
+    action: "Request manager approval",
+    status: "Paused",
+  },
+  {
+    name: "Passport expiry alert",
+    trigger: "New lead created",
+    condition: "All records",
+    action: "Create follow-up task",
+    status: "Active",
+  },
 ];
 
 export const INTEGRATION_SEED = [
-  { provider: "Amadeus GDS", category: "gds", description: "Air inventory, reservations and ticketing" },
+  {
+    provider: "Amadeus GDS",
+    category: "gds",
+    description: "Air inventory, reservations and ticketing",
+  },
   { provider: "Sabre", category: "gds", description: "Air inventory, reservations and ticketing" },
-  { provider: "Travelport", category: "gds", description: "Air inventory, reservations and ticketing" },
-  { provider: "Airline NDC", category: "gds", description: "Air inventory, reservations and ticketing" },
+  {
+    provider: "Travelport",
+    category: "gds",
+    description: "Air inventory, reservations and ticketing",
+  },
+  {
+    provider: "Airline NDC",
+    category: "gds",
+    description: "Air inventory, reservations and ticketing",
+  },
   { provider: "Hotelbeds", category: "supplier", description: "Hotel availability and rate plans" },
-  { provider: "WhatsApp Business", category: "business", description: "Business communication and service distribution" },
-  { provider: "Google Workspace", category: "business", description: "Business communication and service distribution" },
-  { provider: "Payment gateway", category: "payment", description: "Collections and payment links" },
+  {
+    provider: "WhatsApp Business",
+    category: "business",
+    description: "Business communication and service distribution",
+  },
+  {
+    provider: "Google Workspace",
+    category: "business",
+    description: "Business communication and service distribution",
+  },
+  {
+    provider: "Payment gateway",
+    category: "payment",
+    description: "Collections and payment links",
+  },
 ];
 
 export const TEMPLATE_SEED = [
-  { channel: "Shared inbox", name: "Acknowledgement", body: "Thanks for reaching out. I'll share details shortly." },
-  { channel: "Shared inbox", name: "Details request", body: "Please share your travel dates and pax count." },
+  {
+    channel: "Shared inbox",
+    name: "Acknowledgement",
+    body: "Thanks for reaching out. I'll share details shortly.",
+  },
+  {
+    channel: "Shared inbox",
+    name: "Details request",
+    body: "Please share your travel dates and pax count.",
+  },
   { channel: "WhatsApp", name: "WhatsApp greeting", body: "Hi! Thanks for your enquiry. 📞" },
-  { channel: "Email", name: "Itinerary proposal", body: "Subject: Your Bali Itinerary\n\nHi [Name], please find attached draft itinerary." },
+  {
+    channel: "Email",
+    name: "Itinerary proposal",
+    body: "Subject: Your Bali Itinerary\n\nHi [Name], please find attached draft itinerary.",
+  },
   { channel: "Call logs", name: "Call summary", body: "Called customer. Requested dates." },
 ];
 

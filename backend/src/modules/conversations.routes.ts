@@ -4,15 +4,18 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
+import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
 import { recordAudit } from "../services/audit";
 import { sendEmail } from "../services/email";
 import { sendWhatsApp } from "../services/whatsapp";
+import { emitToOrg } from "../lib/socket";
 
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("inbox", "view"));
 
 const conversationSchema = z.object({
   channel: z.string().max(40).default("Shared inbox"),
@@ -87,7 +90,10 @@ router.get(
         orderBy: { lastMessageAt: "desc" },
         skip: p.skip,
         take: p.take,
-        include: { messages: { orderBy: { createdAt: "desc" }, take: 1 }, _count: { select: { messages: true } } },
+        include: {
+          messages: { orderBy: { createdAt: "desc" }, take: 1 },
+          _count: { select: { messages: true } },
+        },
       }),
       prisma.conversation.count({ where }),
     ]);
@@ -105,7 +111,10 @@ router.get(
       where: { organizationId: req.auth!.organizationId },
       _count: { _all: true },
     });
-    return ok(res, rows.map((r) => ({ channel: r.channel, count: r._count._all })));
+    return ok(
+      res,
+      rows.map((r) => ({ channel: r.channel, count: r._count._all })),
+    );
   }),
 );
 
@@ -128,6 +137,7 @@ router.get(
         body: m.body,
         sentBy: m.sentByName,
         createdAt: m.createdAt.toISOString(),
+        delivery: null,
       })),
     });
   }),
@@ -138,16 +148,24 @@ router.post(
   validate(conversationSchema),
   asyncHandler(async (req, res) => {
     const conversation = await prisma.conversation.create({
-      data: { organizationId: req.auth!.organizationId, ...(req.body as z.infer<typeof conversationSchema>) },
+      data: {
+        organizationId: req.auth!.organizationId,
+        ...(req.body as z.infer<typeof conversationSchema>),
+      },
     });
-    return created(res, conversationDto(conversation));
+    const dto = conversationDto(conversation);
+    // Notify every member of this org so their sidebar updates live.
+    emitToOrg(req.auth!.organizationId, "conversation:new", dto);
+    return created(res, dto);
   }),
 );
 
 /**
- * Appends a message to a thread. Outbound email/WhatsApp messages are now
+ * Appends a message to a thread. Outbound email/WhatsApp messages are
  * delivered for real (SMTP / WhatsApp Cloud API) and every delivery attempt
  * is recorded in the outbox so the timeline always shows the truth.
+ * The new message is also broadcast over socket.io so every open inbox tab
+ * receives it instantly without polling.
  */
 router.post(
   "/:id/messages",
@@ -218,28 +236,50 @@ router.post(
       req,
     });
 
-    return created(res, {
+    const messageDto = {
       id: message.id,
+      conversationId: conversation.id,
       direction: message.direction,
       channel: message.channel,
       body: message.body,
       sentBy: message.sentByName,
       createdAt: message.createdAt.toISOString(),
       delivery: delivery?.status ?? null,
+    };
+
+    // Push the new message + updated conversation preview to all org members.
+    emitToOrg(req.auth!.organizationId, "message:new", messageDto);
+    emitToOrg(req.auth!.organizationId, "conversation:updated", {
+      id: conversation.id,
+      status: "In progress",
+      lastMessageAt: new Date().toISOString(),
+      preview: body.body.slice(0, 120),
     });
+
+    return created(res, messageDto);
   }),
 );
 
 router.patch(
   "/:id",
-  validate(z.object({ status: z.string().max(40).optional(), assignedTo: z.string().max(120).optional() })),
+  validate(
+    z.object({
+      status: z.string().max(40).optional(),
+      assignedTo: z.string().max(120).optional(),
+    }),
+  ),
   asyncHandler(async (req, res) => {
     const conversation = await prisma.conversation.findFirst({
       where: { id: req.params.id, organizationId: req.auth!.organizationId },
     });
     if (!conversation) throw new NotFoundError("Conversation");
-    const updated = await prisma.conversation.update({ where: { id: conversation.id }, data: req.body });
-    return ok(res, conversationDto(updated));
+    const updated = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: req.body as Prisma.ConversationUpdateInput,
+    });
+    const dto = conversationDto(updated);
+    emitToOrg(req.auth!.organizationId, "conversation:updated", dto);
+    return ok(res, dto);
   }),
 );
 
@@ -249,7 +289,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const channel = req.query.channel as string | undefined;
     const templates = await prisma.messageTemplate.findMany({
-      where: { organizationId: req.auth!.organizationId, ...(channel ? { channel } : {}) },
+      where: {
+        organizationId: req.auth!.organizationId,
+        ...(channel ? { channel } : {}),
+      },
       orderBy: { createdAt: "asc" },
     });
     return ok(res, templates);
@@ -261,7 +304,10 @@ router.post(
   validate(templateSchema),
   asyncHandler(async (req, res) => {
     const template = await prisma.messageTemplate.create({
-      data: { organizationId: req.auth!.organizationId, ...(req.body as z.infer<typeof templateSchema>) },
+      data: {
+        organizationId: req.auth!.organizationId,
+        ...(req.body as z.infer<typeof templateSchema>),
+      },
     });
     return created(res, template);
   }),

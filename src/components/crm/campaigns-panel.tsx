@@ -48,7 +48,10 @@ export function Campaigns() {
   }, [sending, reload]);
 
   const audienceModules = useMemo(
-    () => modules.filter((module) => ["leads", "customers", "bookings", "quotations"].includes(module.id)),
+    () =>
+      modules.filter((module) =>
+        ["leads", "customers", "bookings", "quotations"].includes(module.id),
+      ),
     [],
   );
   const statusOptions = useMemo(
@@ -150,7 +153,9 @@ export function Campaigns() {
           <Field label="Channel">
             <select
               value={draft.channel}
-              onChange={(e) => setDraft({ ...draft, channel: e.target.value as "email" | "whatsapp" })}
+              onChange={(e) =>
+                setDraft({ ...draft, channel: e.target.value as "email" | "whatsapp" })
+              }
             >
               <option value="email">Email</option>
               <option value="whatsapp">WhatsApp</option>
@@ -293,7 +298,12 @@ export function Campaigns() {
             >
               <Send className="size-4" /> {campaign.status === "sending" ? "Sending…" : "Send now"}
             </Button>
-            <Button size="sm" variant="ghost" title="Delete campaign" onClick={() => void remove(campaign)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              title="Delete campaign"
+              onClick={() => void remove(campaign)}
+            >
               <Trash2 className="size-4" />
             </Button>
           </div>
@@ -311,7 +321,8 @@ export function Campaigns() {
                 />
               </div>
               <p className="mt-1 text-[11px] text-muted">
-                {campaign.sent + campaign.failed} of {campaign.total} done — safe to leave this page.
+                {campaign.sent + campaign.failed} of {campaign.total} done — safe to leave this
+                page.
               </p>
             </div>
           )}
@@ -344,7 +355,9 @@ function CampaignDetail({ campaign }: { campaign: CampaignDto }) {
             <p className="mt-1 text-sm">
               <strong>{audience?.eligible ?? 0}</strong> will receive it
               {audience?.skippedOptedOut ? `, ${audience.skippedOptedOut} opted out` : ""}
-              {audience?.skippedNoAddress ? `, ${audience.skippedNoAddress} without an address` : ""}
+              {audience?.skippedNoAddress
+                ? `, ${audience.skippedNoAddress} without an address`
+                : ""}
               .
             </p>
             <ul className="mt-2 grid gap-1 text-xs text-muted">
@@ -373,7 +386,11 @@ function CampaignDetail({ campaign }: { campaign: CampaignDto }) {
               <li key={row.id} className="flex items-center gap-2">
                 <span
                   className={`inline-flex size-2 shrink-0 rounded-full ${
-                    row.status === "sent" ? "bg-pine" : row.status === "failed" ? "bg-tomato" : "bg-muted"
+                    row.status === "sent"
+                      ? "bg-pine"
+                      : row.status === "failed"
+                        ? "bg-tomato"
+                        : "bg-muted"
                   }`}
                 />
                 <span className="min-w-0 flex-1 truncate">{row.to}</span>

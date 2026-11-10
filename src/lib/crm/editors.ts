@@ -16,16 +16,40 @@
 export type EditorRow = {
   [key: string]: string | number | boolean;
 } & Partial<{
-  name: string; type: string; dob: string; passport: string;
-  role: string; phone: string; email: string;
-  from: string; to: string; date: string; depart: string; arrive: string;
-  flightNo: string; cabin: string;
-  roomType: string; count: number; nights: number; rate: number; meal: string;
-  time: string; vehicle: string; driver: string; flight: string;
-  rooms: number; occupancy: number;
-  seats: number; price: number; note: string;
-  service: string; validFrom: string; validTo: string; commission: number;
-  label: string; done: boolean;
+  name: string;
+  type: string;
+  dob: string;
+  passport: string;
+  role: string;
+  phone: string;
+  email: string;
+  from: string;
+  to: string;
+  date: string;
+  depart: string;
+  arrive: string;
+  flightNo: string;
+  cabin: string;
+  roomType: string;
+  count: number;
+  nights: number;
+  rate: number;
+  meal: string;
+  time: string;
+  vehicle: string;
+  driver: string;
+  flight: string;
+  rooms: number;
+  occupancy: number;
+  seats: number;
+  price: number;
+  note: string;
+  service: string;
+  validFrom: string;
+  validTo: string;
+  commission: number;
+  label: string;
+  done: boolean;
 }>;
 
 export type EditorColumn = {
@@ -99,7 +123,9 @@ const travellerTable = (key: string, title: string, addLabel: string): TableSpec
   columns: travellerColumns,
   derive: (rows) => {
     const people = nonEmpty(rows, "name");
-    const adults = people.filter((row) => (row.type || "Adult") !== "Child" && row.type !== "Infant").length;
+    const adults = people.filter(
+      (row) => (row.type || "Adult") !== "Child" && row.type !== "Infant",
+    ).length;
     return {
       pax: people.length,
       adults,
@@ -204,7 +230,13 @@ export const editorSpecs: Record<string, EditorSpec> = {
           { key: "depart", label: "Departs", type: "time", width: "104px" },
           { key: "arrive", label: "Arrives", type: "time", width: "104px" },
           { key: "flightNo", label: "Flight no.", type: "text", width: "112px" },
-          { key: "cabin", label: "Cabin", type: "select", options: ["Economy", "Premium economy", "Business", "First"], width: "132px" },
+          {
+            key: "cabin",
+            label: "Cabin",
+            type: "select",
+            options: ["Economy", "Premium economy", "Business", "First"],
+            width: "132px",
+          },
         ],
         derive: (rows) => {
           const legs = nonEmpty(rows, "from");
@@ -218,7 +250,9 @@ export const editorSpecs: Record<string, EditorSpec> = {
             ...(first.cabin ? { cabin: String(first.cabin) } : {}),
           };
         },
-        seed: [{ from: "", to: "", date: "", depart: "", arrive: "", flightNo: "", cabin: "Economy" }],
+        seed: [
+          { from: "", to: "", date: "", depart: "", arrive: "", flightNo: "", cabin: "Economy" },
+        ],
       },
     ],
   },
@@ -235,7 +269,13 @@ export const editorSpecs: Record<string, EditorSpec> = {
           { key: "count", label: "Rooms", type: "number", width: "88px" },
           { key: "nights", label: "Nights", type: "number", width: "88px" },
           { key: "rate", label: "Rate / night", type: "money", width: "128px" },
-          { key: "meal", label: "Meal plan", type: "select", options: ["Room only", "Breakfast", "Half board", "Full board", "All inclusive"], width: "140px" },
+          {
+            key: "meal",
+            label: "Meal plan",
+            type: "select",
+            options: ["Room only", "Breakfast", "Half board", "Full board", "All inclusive"],
+            width: "140px",
+          },
         ],
         totalColumn: "rate",
         derive: (rows) => {
@@ -244,7 +284,9 @@ export const editorSpecs: Record<string, EditorSpec> = {
           const rooms = typed.reduce((total, row) => total + (Number(row.count) || 0), 0);
           const nights = typed.reduce((max, row) => Math.max(max, Number(row.nights) || 0), 0);
           const rate = typed.reduce(
-            (total, row) => total + (Number(row.count) || 0) * (Number(row.nights) || 0) * (Number(row.rate) || 0),
+            (total, row) =>
+              total +
+              (Number(row.count) || 0) * (Number(row.nights) || 0) * (Number(row.rate) || 0),
             0,
           );
           return {
@@ -271,7 +313,13 @@ export const editorSpecs: Record<string, EditorSpec> = {
           { key: "time", label: "Time", type: "time", width: "100px" },
           { key: "from", label: "From", type: "text", placeholder: "Airport T2" },
           { key: "to", label: "To", type: "text", placeholder: "Nusa Dua resort" },
-          { key: "vehicle", label: "Vehicle", type: "select", options: ["Sedan", "SUV", "Van", "Coach", "Luxury"], width: "112px" },
+          {
+            key: "vehicle",
+            label: "Vehicle",
+            type: "select",
+            options: ["Sedan", "SUV", "Van", "Coach", "Luxury"],
+            width: "112px",
+          },
           { key: "driver", label: "Driver", type: "text", width: "132px" },
           { key: "flight", label: "Flight no.", type: "text", width: "112px" },
         ],
@@ -434,5 +482,4 @@ export const editorSpecs: Record<string, EditorSpec> = {
 export const editorsFor = (moduleId: string): EditorSpec => editorSpecs[moduleId] ?? {};
 
 /** Which modules hold a real traveller list. */
-export const hasTravellers = (moduleId: string) =>
-  moduleId === "bookings" || moduleId === "leads";
+export const hasTravellers = (moduleId: string) => moduleId === "bookings" || moduleId === "leads";

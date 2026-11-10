@@ -155,7 +155,8 @@ export function documentTotals(
     tax,
     total,
     margin,
-    marginPercent: margin === null || subtotal === 0 ? null : Math.round((margin / subtotal) * 1000) / 10,
+    marginPercent:
+      margin === null || subtotal === 0 ? null : Math.round((margin / subtotal) * 1000) / 10,
     paid,
     balance: Math.max(0, total - paid),
   };
@@ -219,7 +220,9 @@ export function LineItemsEditor({
         <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
           {label}
         </span>
-        <span className="text-[11.5px] text-muted">{items.length} line{items.length === 1 ? "" : "s"}</span>
+        <span className="text-[11.5px] text-muted">
+          {items.length} line{items.length === 1 ? "" : "s"}
+        </span>
       </div>
 
       {items.length > 0 && (
@@ -350,7 +353,9 @@ export function ItineraryEditor({
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-faint">
           <CalendarDays className="size-3.5" /> Day-by-day plan
         </span>
-        <span className="text-[11.5px] text-muted">{days.length} day{days.length === 1 ? "" : "s"}</span>
+        <span className="text-[11.5px] text-muted">
+          {days.length} day{days.length === 1 ? "" : "s"}
+        </span>
       </div>
 
       <div className="space-y-2">
@@ -594,7 +599,11 @@ export function DocumentSummary({
         ...(tcs > 0
           ? [
               { label: `TCS ${tcsPercent}%`, value: money(tcs, currency), strong: false },
-              { label: "Payable incl. TCS", value: money(totals.total + tcs, currency), strong: false },
+              {
+                label: "Payable incl. TCS",
+                value: money(totals.total + tcs, currency),
+                strong: false,
+              },
             ]
           : []),
         ...(totals.cost !== null
@@ -613,7 +622,12 @@ export function DocumentSummary({
       <dl className="space-y-1.5">
         {rows.map((row) => (
           <div key={row.label} className="flex items-baseline justify-between gap-3">
-            <dt className={cn("text-[12.5px]", row.strong ? "font-semibold text-foreground" : "text-muted")}>
+            <dt
+              className={cn(
+                "text-[12.5px]",
+                row.strong ? "font-semibold text-foreground" : "text-muted",
+              )}
+            >
               {row.label}
             </dt>
             <dd
@@ -635,9 +649,7 @@ export function DocumentSummary({
           </div>
           <div className="text-[14px] font-bold tabular-nums text-foreground">
             {money(totals.margin, currency)}{" "}
-            <span className="text-[12px] font-semibold text-muted">
-              ({totals.marginPercent}%)
-            </span>
+            <span className="text-[12px] font-semibold text-muted">({totals.marginPercent}%)</span>
           </div>
         </div>
       )}
@@ -786,9 +798,7 @@ function EditorCell({
         step={column.type === "percent" ? "0.5" : column.type === "money" ? "any" : undefined}
         placeholder={column.placeholder}
         value={value === undefined || value === null ? "" : String(value)}
-        onChange={(e) =>
-          onChange(type === "number" ? Number(e.target.value) || 0 : e.target.value)
-        }
+        onChange={(e) => onChange(type === "number" ? Number(e.target.value) || 0 : e.target.value)}
         className={cn(
           cellInput,
           type === "number" && "text-right tabular-nums",
@@ -997,5 +1007,4 @@ export const hasLineItems = (moduleId: string) =>
 
 export const hasItinerary = (moduleId: string) => moduleId === "packages";
 
-export const hasPayments = (moduleId: string) =>
-  moduleId === "finance" || moduleId === "bookings";
+export const hasPayments = (moduleId: string) => moduleId === "finance" || moduleId === "bookings";

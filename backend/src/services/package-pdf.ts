@@ -69,9 +69,12 @@ export async function generatePackagePdf(input: {
 
   /* ---------------- Title block ---------------- */
   let y = 122;
-  doc.font("Helvetica-Bold").fontSize(20).text(record.name || "Travel package", 50, y, {
-    width: 495,
-  });
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(20)
+    .text(record.name || "Travel package", 50, y, {
+      width: 495,
+    });
   y += 26;
   const facts: string[] = [];
   if (record.destination) facts.push(record.destination);
@@ -84,7 +87,12 @@ export async function generatePackagePdf(input: {
   doc
     .fontSize(9)
     .fillColor("#777777")
-    .text(`Package ${record.reference}  ·  ${currency}  ·  prepared ${formatDate(new Date().toISOString())}`, 50, y, { width: 495 });
+    .text(
+      `Package ${record.reference}  ·  ${currency}  ·  prepared ${formatDate(new Date().toISOString())}`,
+      50,
+      y,
+      { width: 495 },
+    );
   doc.fillColor("#17191a");
 
   /* ---------------- Price by group size ---------------- */
@@ -118,7 +126,9 @@ export async function generatePackagePdf(input: {
       doc
         .fontSize(8.5)
         .fillColor("#555555")
-        .text(`Child rate ${formatMoney(plan.childRate, currency)} per child.`, 62, y, { width: 470 });
+        .text(`Child rate ${formatMoney(plan.childRate, currency)} per child.`, 62, y, {
+          width: 470,
+        });
       y += 13;
     }
     if (plan.singleSupplement !== null) {
@@ -205,7 +215,11 @@ export async function generatePackagePdf(input: {
   ];
   y += 10;
   y = ensure(doc, y, 90);
-  doc.moveTo(50, y - 8).lineTo(545, y - 8).strokeColor("#dddddd").stroke();
+  doc
+    .moveTo(50, y - 8)
+    .lineTo(545, y - 8)
+    .strokeColor("#dddddd")
+    .stroke();
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#17191a").text("Terms & conditions", 50, y);
   y += 14;
   doc.font("Helvetica").fontSize(8.5).fillColor("#444444");
@@ -220,12 +234,15 @@ export async function generatePackagePdf(input: {
   doc.fillColor("#17191a");
 
   /* ---------------- Footer ---------------- */
-  doc.fontSize(8).fillColor("#888888").text(
-    `Prepared by ${organization.name} using Traveldesk on ${new Date().toLocaleString("en-IN")}`,
-    50,
-    doc.page.height - 46,
-    { width: 495 },
-  );
+  doc
+    .fontSize(8)
+    .fillColor("#888888")
+    .text(
+      `Prepared by ${organization.name} using Traveldesk on ${new Date().toLocaleString("en-IN")}`,
+      50,
+      doc.page.height - 46,
+      { width: 495 },
+    );
 
   return { filename, stream: doc };
 }
@@ -247,8 +264,12 @@ function parsePlan(extra: Record<string, unknown>): {
     .map((entry) => {
       const day = readObject(entry);
       return {
-        title: String(day["title"] ?? "").trim().slice(0, 140),
-        detail: String(day["detail"] ?? "").trim().slice(0, 800),
+        title: String(day["title"] ?? "")
+          .trim()
+          .slice(0, 140),
+        detail: String(day["detail"] ?? "")
+          .trim()
+          .slice(0, 800),
       };
     })
     .filter((day) => day.title || day.detail);
@@ -323,7 +344,11 @@ function readList(raw: unknown): string[] {
 
 function sectionBar(doc: PDFKit.PDFDocument, title: string, y: number): number {
   doc.rect(50, y, 495, 22).fill("#f3efe6");
-  doc.fillColor("#2f5c50").font("Helvetica-Bold").fontSize(9.5).text(title, 62, y + 7);
+  doc
+    .fillColor("#2f5c50")
+    .font("Helvetica-Bold")
+    .fontSize(9.5)
+    .text(title, 62, y + 7);
   doc.fillColor("#17191a");
   return y + 32;
 }

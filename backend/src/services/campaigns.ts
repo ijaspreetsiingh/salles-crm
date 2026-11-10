@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { parseJson } from "../lib/utils";
 import { sendEmail } from "./email";
 import { sendWhatsApp } from "./whatsapp";
+import { unsubscribeUrl } from "./unsubscribe";
 
 /**
  * Campaign audiences and sending.
@@ -62,10 +63,7 @@ export async function resolveAudience(
   ]);
 
   const consentByEmail = new Map(
-    consents.map((row) => [
-      row.contactEmail.trim().toLowerCase(),
-      row,
-    ]),
+    consents.map((row) => [row.contactEmail.trim().toLowerCase(), row]),
   );
 
   const eligible: AudienceMember[] = [];
@@ -80,7 +78,8 @@ export async function resolveAudience(
     }
 
     const consent = consentByEmail.get(record.email.trim().toLowerCase());
-    const optedOut = Boolean(consent) && (channel === "whatsapp" ? !consent!.whatsapp : !consent!.email);
+    const optedOut =
+      Boolean(consent) && (channel === "whatsapp" ? !consent!.whatsapp : !consent!.email);
     if (optedOut) {
       skippedOptedOut += 1;
       continue;
@@ -146,10 +145,31 @@ export async function sendCampaign(input: {
     },
   });
 
+  /*
+   * Resume safely. If the process restarted mid-send, the audience is
+   * recomputed from the same rule and anyone already in the outbox for this
+   * campaign is skipped — nobody gets the same campaign twice.
+   */
+  const alreadySent = await prisma.emailOutbox.findMany({
+    where: {
+      organizationId: input.organizationId,
+      relatedModule: "campaigns",
+      relatedReference: campaign.id,
+      status: { not: "failed" },
+    },
+    select: { to: true },
+  });
+  const sentTo = new Set(alreadySent.map((row) => row.to.trim().toLowerCase()));
+
   let sent = 0;
   let failed = 0;
 
   for (const member of audience.eligible) {
+    const address = addressFor(member, campaign.channel);
+    if (sentTo.has(address.trim().toLowerCase())) {
+      sent += 1;
+      continue;
+    }
     const body = personalize(campaign.body, member);
     try {
       const result =
@@ -166,7 +186,8 @@ export async function sendCampaign(input: {
               organizationId: input.organizationId,
               to: addressFor(member, campaign.channel),
               subject: campaign.subject || campaign.name,
-              body,
+              // Marketing email must always carry a working way out.
+              body: `${body}\n\n—\nUnsubscribe: ${unsubscribeUrl(input.organizationId, member.email)}`,
               template: "campaign",
               userId: input.userId ?? null,
               relatedModule: "campaigns",

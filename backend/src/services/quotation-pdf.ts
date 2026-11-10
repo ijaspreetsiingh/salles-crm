@@ -84,11 +84,29 @@ export async function generateQuotationPdf(input: {
   // No line items maintained? The quoted amount stands as one package line.
   if (items.length === 0 && record.amount > 0) {
     items.push({
-      label: record.detail?.slice(0, 120) || `Complete trip package — ${record.destination || "as discussed"}`,
+      label:
+        record.detail?.slice(0, 120) ||
+        `Complete trip package — ${record.destination || "as discussed"}`,
       qty: 1,
       rate: record.amount,
     });
   }
+
+  // The day-by-day plan, inclusions and exclusions travel with the quote so a
+  // customer can read what they are paying for, not just the total.
+  const planDays = readTextArray(extra.itinerary)
+    .map((entry) => ({
+      title: String((entry as { title?: unknown }).title ?? "")
+        .trim()
+        .slice(0, 90),
+      detail: String((entry as { detail?: unknown }).detail ?? "")
+        .trim()
+        .slice(0, 600),
+    }))
+    .filter((day) => day.title.length > 0 || day.detail.length > 0);
+  const inclusions = readStringList(extra.inclusions);
+  const exclusions = readStringList(extra.exclusions);
+  const planTerms = typeof extra.terms === "string" ? extra.terms.trim() : "";
   const subtotal = items.reduce((sum, item) => sum + item.qty! * item.rate, 0);
   const taxAmount = Math.round((subtotal * taxRate) / 100);
   const grandTotal = subtotal + taxAmount;
@@ -96,7 +114,13 @@ export async function generateQuotationPdf(input: {
   const issueDate = record.date ? new Date(record.date) : new Date();
   const validUntil = new Date(issueDate);
   validUntil.setDate(validUntil.getDate() + VALIDITY_DAYS);
-  const fmt = (d: Date) => d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  // A package can carry its own validity window; that beats the default.
+  if (typeof extra.validTo === "string" && extra.validTo.trim()) {
+    const packageValidTo = new Date(extra.validTo);
+    if (!Number.isNaN(packageValidTo.getTime())) validUntil.setTime(packageValidTo.getTime());
+  }
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
   // A proposal is a soft, no-commitment pitch; a quotation is a priced offer.
   const isProposal = extra.docKind === "proposal";
@@ -113,10 +137,14 @@ export async function generateQuotationPdf(input: {
     .map((w) => w[0]!.toUpperCase())
     .join("");
   doc.rect(50, 44, 54, 54).fill("#2f5c50");
-  doc.fillColor("#fbf8f2").font("Helvetica-Bold").fontSize(22).text(initials || "T", 50, 61, {
-    width: 54,
-    align: "center",
-  });
+  doc
+    .fillColor("#fbf8f2")
+    .font("Helvetica-Bold")
+    .fontSize(22)
+    .text(initials || "T", 50, 61, {
+      width: 54,
+      align: "center",
+    });
   doc.fillColor("#17191a").font("Helvetica-Bold").fontSize(19).text(organization.name, 118, 52);
   doc.fontSize(9).font("Helvetica").fillColor("#555555");
   let headY = 74;
@@ -136,14 +164,8 @@ export async function generateQuotationPdf(input: {
   doc.fillColor("#17191a");
 
   /* ---------------- Title band ---------------- */
-  doc
-    .rect(50, 112, 495, 30)
-    .fill("#f3efe6");
-  doc
-    .fillColor("#2f5c50")
-    .font("Helvetica-Bold")
-    .fontSize(13)
-    .text(docTitle, 66, 121);
+  doc.rect(50, 112, 495, 30).fill("#f3efe6");
+  doc.fillColor("#2f5c50").font("Helvetica-Bold").fontSize(13).text(docTitle, 66, 121);
   doc
     .fillColor("#555555")
     .font("Helvetica")
@@ -205,10 +227,7 @@ export async function generateQuotationPdf(input: {
 
   y += 34;
   for (const item of items) {
-    const label =
-      item.qty! > 1
-        ? `${item.label}  ×${item.qty}`
-        : item.label;
+    const label = item.qty! > 1 ? `${item.label}  ×${item.qty}` : item.label;
     for (const line of wrapText(label, 64)) {
       doc.text(line, 62, y);
       y += 15;
@@ -244,24 +263,105 @@ export async function generateQuotationPdf(input: {
   }
   doc.fillColor("#17191a").fontSize(10);
 
+  /* ---------------- Day-by-day plan, inclusions ---------------- */
+  let cursorY = y + (currency === "INR" ? 96 : 78);
+  const bottomLimit = () => doc.page.height - 130;
+  const ensureSpace = (needed: number) => {
+    if (cursorY + needed > bottomLimit()) {
+      doc.addPage();
+      cursorY = 60;
+    }
+  };
+  const sectionBar = (title: string) => {
+    ensureSpace(44);
+    doc.rect(50, cursorY, 495, 22).fill("#f3efe6");
+    doc
+      .fillColor("#2f5c50")
+      .font("Helvetica-Bold")
+      .fontSize(9.5)
+      .text(title, 62, cursorY + 7);
+    doc.fillColor("#17191a");
+    cursorY += 32;
+  };
+  const bullets = (title: string, list: string[], marker: string) => {
+    if (list.length === 0) return;
+    sectionBar(title);
+    doc.font("Helvetica").fontSize(8.5).fillColor("#444444");
+    for (const entry of list.slice(0, 30)) {
+      for (const line of wrapText(`${marker}  ${entry}`, 104)) {
+        ensureSpace(14);
+        doc.text(line, 62, cursorY, { width: 470 });
+        cursorY += 12;
+      }
+      cursorY += 2;
+    }
+    doc.fillColor("#17191a");
+    cursorY += 8;
+  };
+
+  if (planDays.length > 0) {
+    sectionBar(`Day-by-day plan${planDays.length > 1 ? ` (${planDays.length} days)` : ""}`);
+    planDays.slice(0, 40).forEach((day, index) => {
+      ensureSpace(40);
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(9.5)
+        .fillColor("#17191a")
+        .text(`Day ${index + 1}${day.title ? `  ${day.title}` : ""}`, 62, cursorY, { width: 470 });
+      cursorY += 14;
+      if (day.detail) {
+        doc.font("Helvetica").fontSize(8.5).fillColor("#444444");
+        for (const line of wrapText(day.detail, 96)) {
+          ensureSpace(14);
+          doc.text(line, 62, cursorY, { width: 470 });
+          cursorY += 12;
+        }
+      }
+      cursorY += 8;
+      doc.fillColor("#17191a");
+    });
+    cursorY += 4;
+  }
+
+  bullets("What is included", inclusions, "•");
+  bullets("Not included", exclusions, "•");
+
   /* ---------------- Terms ---------------- */
-  const termsY = Math.max(y + 100, doc.page.height - 210);
-  doc.moveTo(50, termsY - 14).lineTo(545, termsY - 14).strokeColor("#dddddd").stroke();
-  doc.fontSize(9).font("Helvetica-Bold").fillColor("#17191a").text("Terms & conditions", 50, termsY);
+  ensureSpace(150);
+  const termsY = cursorY + 10;
+  doc
+    .moveTo(50, termsY - 14)
+    .lineTo(545, termsY - 14)
+    .strokeColor("#dddddd")
+    .stroke();
+  doc
+    .fontSize(9)
+    .font("Helvetica-Bold")
+    .fillColor("#17191a")
+    .text("Terms & conditions", 50, termsY);
   doc.fontSize(8.5).font("Helvetica").fillColor("#444444");
   const terms = [
     isProposal
       ? `This proposal is indicative and valid till ${fmt(validUntil)} — final pricing is confirmed at booking.`
       : `This quotation is valid till ${fmt(validUntil)}. Prices may change after that.`,
-    "25% advance confirms the booking; balance due 15 days before departure.",
-    record.notes
-      ? `Inclusions / notes: ${record.notes}`
-      : "Inclusions and exclusions as per the package details above.",
+    // The package terms win; only fall back to the house terms.
+    ...(planTerms
+      ? [planTerms]
+      : ["25% advance confirms the booking; balance due 15 days before departure."]),
+    inclusions.length > 0 || exclusions.length > 0
+      ? "Inclusions and exclusions are listed above — anything not listed is not covered."
+      : record.notes
+        ? `Inclusions / notes: ${record.notes}`
+        : "Inclusions and exclusions as per the package details above.",
     "Cancellations are subject to supplier and hotel policies.",
   ];
   let termY = termsY + 14;
   for (const term of terms) {
     for (const line of wrapText(`•  ${term}`, 108)) {
+      if (termY + 12 > doc.page.height - 110) {
+        doc.addPage();
+        termY = 60;
+      }
       doc.text(line, 50, termY, { width: 495 });
       termY += 12;
     }
@@ -269,19 +369,58 @@ export async function generateQuotationPdf(input: {
   }
 
   /* ---------------- Signature ---------------- */
-  const signY = doc.page.height - 92;
+  const signY = Math.max(termY + 26, doc.page.height - 92);
   doc.fontSize(9).fillColor("#17191a").font("Helvetica-Bold");
   doc.text(`For ${organization.name}`, 380, signY);
-  doc.moveTo(380, signY + 40).lineTo(520, signY + 40).strokeColor("#999999").stroke();
+  doc
+    .moveTo(380, signY + 40)
+    .lineTo(520, signY + 40)
+    .strokeColor("#999999")
+    .stroke();
   doc.fontSize(8).font("Helvetica").fillColor("#777777");
   doc.text("Authorised signatory", 380, signY + 44);
 
   doc.fontSize(8).fillColor("#888888");
-  doc.text(`Generated by Traveldesk on ${new Date().toLocaleString("en-IN")}`, 50, doc.page.height - 46, {
-    width: 495,
-  });
+  doc.text(
+    `Generated by Traveldesk on ${new Date().toLocaleString("en-IN")}`,
+    50,
+    doc.page.height - 46,
+    {
+      width: 495,
+    },
+  );
 
   return { filename, stream: doc };
+}
+
+/** Array values arrive either as real arrays or as a JSON string (records store text). */
+function readTextArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string" && raw.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/** Inclusions and exclusions: a JSON array, or one line of free text. */
+function readStringList(raw: unknown): string[] {
+  // A stored [] means nothing here, not the literal text "[]".
+  const isJsonList = Array.isArray(raw) || (typeof raw === "string" && raw.trim().startsWith("["));
+  const list = isJsonList ? (Array.isArray(raw) ? raw : readTextArray(raw)) : [];
+  const source = isJsonList
+    ? list
+    : typeof raw === "string"
+      ? raw.split(new RegExp(String.fromCharCode(13, 10) + "+"))
+      : [];
+  return source
+    .map((entry) => (typeof entry === "string" ? entry : "").trim())
+    .filter(Boolean)
+    .map((entry) => entry.slice(0, 160));
 }
 
 function wrapText(text: string, maxChars: number): string[] {
@@ -297,9 +436,26 @@ function wrapText(text: string, maxChars: number): string[] {
 }
 
 const ONES = [
-  "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
-  "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
-  "eighteen", "nineteen",
+  "",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
 ];
 const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 

@@ -1,5 +1,7 @@
-import type { Prisma, Record as RecordModel } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import type { RecordRow } from "../lib/money";
 import { prisma } from "../lib/prisma";
+import { env } from "../config/env";
 import { parseJson, stringifyJson } from "../lib/utils";
 import type { ModuleDef } from "../domain/modules";
 import { isBranchScoped } from "../domain/rbac";
@@ -30,7 +32,7 @@ export type RecordDto = {
   updatedAt: string;
 };
 
-export function toRecordDto(record: RecordModel): RecordDto {
+export function toRecordDto(record: RecordRow): RecordDto {
   return {
     id: record.id,
     moduleId: record.moduleId,
@@ -102,22 +104,124 @@ export async function resolveOwnerBranch(
 /**
  * Generates the next human-friendly reference, e.g. LD-2409.
  *
- * The highest existing number wins (not simply the newest record), so two
- * records created in the same second can never hand out the same reference.
+ * Uses a dedicated `Sequence` counter incremented inside a transaction that
+ * locks the organisation row, so two concurrent creates never hand out the
+ * same reference. The counter starts at 2401 to match the legacy starting
+ * point; existing references above that number are migrated in on first use.
  */
 export async function nextReference(organizationId: string, module: ModuleDef): Promise<string> {
-  const rows = await prisma.record.findMany({
-    where: { organizationId, moduleId: module.id },
-    select: { reference: true },
+  return prisma.$transaction(async (tx) => {
+    // Pessimistic lock: serialises reference generation for this org.
+    // PostgreSQL uses SELECT FOR UPDATE; SQLite serialises via WAL.
+    const isPg = !env.DATABASE_URL.startsWith("file:");
+    if (isPg) {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+    }
+
+    // Migrate the highest existing reference into the counter on first use
+    // so the numbering continues seamlessly from where the old scan left off.
+    const existing = await tx.record.findMany({
+      where: { organizationId, moduleId: module.id },
+      select: { reference: true },
+    });
+    let highestExisting = 2400;
+    for (const row of existing) {
+      const match = row.reference?.match(/(\d+)$/);
+      if (!match) continue;
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > highestExisting) highestExisting = value;
+    }
+
+    const seq = await tx.sequence.upsert({
+      where: {
+        organizationId_moduleId_stem: { organizationId, moduleId: module.id, stem: "" },
+      },
+      create: {
+        organizationId,
+        moduleId: module.id,
+        stem: "",
+        lastNumber: Math.max(2401, highestExisting + 1),
+      },
+      update: { lastNumber: { increment: 1 } },
+    });
+    return `${module.prefix}-${seq.lastNumber}`;
   });
-  let highest = 2400;
-  for (const row of rows) {
-    const match = row.reference?.match(/(\d+)$/);
-    if (!match) continue;
-    const value = Number(match[1]);
-    if (Number.isFinite(value) && value > highest) highest = value;
-  }
-  return `${module.prefix}-${highest + 1}`;
+}
+
+/**
+ * The Indian financial year a date belongs to, as "26-27".
+ * A financial year runs April → March, so January still belongs to the year
+ * that started the previous April.
+ */
+export function financialYearLabel(date: string): string {
+  const parsed = new Date(`${(date || "").slice(0, 10)}T00:00:00`);
+  const when = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  const year = when.getFullYear();
+  const month = when.getMonth() + 1;
+  const start = month >= 4 ? year : year - 1;
+  const short = (value: number) => String(value % 100).padStart(2, "0");
+  return `${short(start)}-${short(start + 1)}`;
+}
+
+/** The invoice prefix the organisation configured, e.g. "HT-INV-". */
+export async function invoiceNumberPrefix(organizationId: string): Promise<string> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { settings: true },
+  });
+  const settings = parseJson<{ invoicePrefix?: string }>(organization?.settings ?? "{}", {});
+  return settings.invoicePrefix?.trim() || "INV-";
+}
+
+/**
+ * Sequential, financial-year invoice numbers: HT-INV-26-27-0001.
+ *
+ * GST expects an unbroken serial series per financial year. The number is
+ * derived from a `Sequence` counter keyed by organisation + "finance" +
+ * the invoice stem (prefix + financial year), atomically incremented inside
+ * a transaction. Deleting a record never re-uses a number and a gap is
+ * visible rather than silently filled.
+ */
+export async function nextInvoiceNumber(
+  organizationId: string,
+  date: string,
+  prefix: string,
+): Promise<string> {
+  const stem = `${prefix}${financialYearLabel(date)}-`;
+  return prisma.$transaction(async (tx) => {
+    const isPg = !env.DATABASE_URL.startsWith("file:");
+    if (isPg) {
+      await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+    }
+
+    // Migrate the highest existing invoice number on first use so the
+    // sequence continues seamlessly from the old scan-based approach.
+    const existing = await tx.record.findMany({
+      where: { organizationId, moduleId: "finance", reference: { startsWith: stem } },
+      select: { reference: true },
+    });
+    let highestExisting = 0;
+    for (const row of existing) {
+      const match = row.reference.slice(stem.length).match(/^(\d+)$/);
+      if (!match) continue;
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value > highestExisting) highestExisting = value;
+    }
+
+    const seq = await tx.sequence.upsert({
+      where: {
+        organizationId_moduleId_stem: { organizationId, moduleId: "finance", stem },
+      },
+      create: {
+        organizationId,
+        moduleId: "finance",
+        stem,
+        lastNumber: Math.max(1, highestExisting + 1),
+      },
+      update: { lastNumber: { increment: 1 } },
+    });
+    return `${stem}${String(seq.lastNumber).padStart(4, "0")}`;
+  });
 }
 
 /** Serialises a record for export / create / update payloads. */
@@ -150,7 +254,13 @@ export function applyBranchScope(
   }
   if (!isBranchScoped(auth.roleKey)) return where;
   if (!auth.branchId) return where;
-  where.OR = [...(where.OR ?? []), { branchId: auth.branchId }, { branchId: null }];
+  // Keep branch scope in its own AND clause. If a caller has already filled
+  // `where.OR` with a free-text search, appending the branch disjuncts to that
+  // same `OR` would let any matching sibling-branch record through.
+  where.AND = [
+    ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+    { OR: [{ branchId: auth.branchId }, { branchId: null }] },
+  ];
   return where;
 }
 

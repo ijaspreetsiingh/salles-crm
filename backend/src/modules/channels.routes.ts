@@ -3,9 +3,10 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { ok, asyncHandler } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requireRole } from "../middlewares/rbac";
+import { requireModulePermission, requireRole } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { BadRequestError } from "../lib/errors";import { recordAudit } from "../services/audit";
+import { BadRequestError } from "../lib/errors";
+import { recordAudit } from "../services/audit";
 import {
   maskSecret,
   resolveEmailAccount,
@@ -16,12 +17,18 @@ import {
 } from "../services/channels";
 import { sendEmail } from "../services/email";
 import { sendWhatsApp } from "../services/whatsapp";
+import {
+  connectWebSession,
+  disconnectWebSession,
+  webSessionStatus,
+} from "../services/whatsapp-web";
 import { env } from "../config/env";
 import { string } from "zod/v4";
 
 const router = Router();
 
 router.use(requireAuth);
+router.use(requireModulePermission("settings", "view"));
 
 const readOrgSettings = async (organizationId: string): Promise<Record<string, unknown>> => {
   const organization = await prisma.organization.findUniqueOrThrow({
@@ -29,7 +36,9 @@ const readOrgSettings = async (organizationId: string): Promise<Record<string, u
     select: { settings: true },
   });
   try {
-    return organization.settings ? (JSON.parse(organization.settings) as Record<string, unknown>) : {};
+    return organization.settings
+      ? (JSON.parse(organization.settings) as Record<string, unknown>)
+      : {};
   } catch {
     return {};
   }
@@ -67,12 +76,13 @@ router.get(
         hasPassword: Boolean(email?.pass),
       },
       whatsapp: {
-        ...(describeWhatsAppAccount(whatsapp, organizationId)),
+        ...describeWhatsAppAccount(whatsapp, organizationId),
         phoneNumberId: whatsapp?.phoneNumberId ?? "",
         hasToken: Boolean(whatsapp?.token),
+        web: webSessionStatus(organizationId),
       },
       razorpay: {
-        ...(describeRazorpayAccount(razorpay)),
+        ...describeRazorpayAccount(razorpay),
         hasKey: Boolean(razorpay?.keyId),
       },
     });
@@ -168,7 +178,7 @@ router.put(
       const channels = (settings.channels ?? {}) as Record<string, unknown>;
       const previous = (channels.whatsapp ?? {}) as Record<string, unknown>;
       const token =
-        body.token && body.token !== maskSecret(previous["token"] as string ?? "")
+        body.token && body.token !== maskSecret((previous["token"] as string) ?? "")
           ? body.token
           : previous["token"];
       if (!token) throw new BadRequestError("A WhatsApp access token is required");
@@ -271,6 +281,66 @@ router.delete(
       req,
     });
     return ok(res, { saved: true });
+  }),
+);
+
+/** WhatsApp Web pairing — the QR the operator scans with their phone. */
+router.get(
+  "/whatsapp/web",
+  asyncHandler(async (req, res) => {
+    return ok(res, webSessionStatus(req.auth!.organizationId));
+  }),
+);
+
+router.post(
+  "/whatsapp/web/connect",
+  requireRole("company_admin"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const session = await connectWebSession(organizationId);
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: `WhatsApp pairing started (${session.state})`,
+      req,
+    });
+    return ok(res, session);
+  }),
+);
+
+router.post(
+  "/whatsapp/web/disconnect",
+  requireRole("company_admin"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    await disconnectWebSession(organizationId);
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: "WhatsApp device unlinked",
+      req,
+    });
+    return ok(res, webSessionStatus(organizationId));
+  }),
+);
+
+router.post(
+  "/whatsapp/web/test",
+  requireRole("company_admin"),
+  validate(z.object({ to: z.string().min(5).max(200) })),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const result = await sendWhatsApp({
+      organizationId,
+      to: (req.body as { to: string }).to,
+      body: "Traveldesk test — this number is now linked to your workspace. 🧳",
+      template: "channel_test",
+      userId: req.auth!.userId,
+      relatedReference: "whatsapp-web-test",
+    });
+    return ok(res, result);
   }),
 );
 

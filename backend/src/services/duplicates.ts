@@ -1,4 +1,5 @@
-import type { Prisma, Record as RecordModel } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import type { RecordRow } from "../lib/money";
 import { prisma } from "../lib/prisma";
 import { parseJson } from "../lib/utils";
 import { BadRequestError } from "../lib/errors";
@@ -123,7 +124,7 @@ export type DuplicateCandidate = {
 };
 
 /** Turns a stored record into a candidate for the duplicate scan. */
-export const toCandidate = (record: RecordModel): DuplicateCandidate => ({
+export const toCandidate = (record: RecordRow): DuplicateCandidate => ({
   id: record.id,
   reference: record.reference,
   name: record.name,

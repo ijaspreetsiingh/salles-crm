@@ -38,6 +38,7 @@ const fromAttention = (attention: AttentionDto) => ({
   bookings: attention.bookings.map(toRecordRow),
   finance: attention.finance.map(toRecordRow),
   visa: attention.visa.map(toRecordRow),
+  groups: attention.groups.map(toRecordRow),
   today: attention.today,
 });
 
@@ -69,20 +70,15 @@ function KpiCard({ icon, label, value, subtitle, tone = "pine" }: KpiCardProps) 
 function DepartureStatus({ status }: { status: string }) {
   const isConfirmed = status === "Confirmed";
   const cls = isConfirmed ? "bg-pine/10 text-pine" : "bg-butter/10 text-on-butter";
-  return (
-    <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${cls}`}>
-      {status}
-    </span>
-  );
+  return <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${cls}`}>{status}</span>;
 }
 
 export function Home() {
-  const { getRows, tasks, settings, status, attention, user, getModulePage } = useCRM();
-  const [customerTypeFilter, setCustomerTypeFilter] = useState<"" | "Corporate" | "VIP" | "Leisure">("");
-  const customerTypeWhere = customerTypeFilter
-    ? { customerType: customerTypeFilter }
-    : {};
-
+  const { getRows, tasks, settings, status, attention, user } = useCRM();
+  const [customerTypeFilter, setCustomerTypeFilter] = useState<
+    "" | "Corporate" | "VIP" | "Leisure"
+  >("");
+  const customerTypeWhere = customerTypeFilter ? { customerType: customerTypeFilter } : {};
 
   const navigate = useNavigate();
   const currency = settings.currency;
@@ -103,10 +99,21 @@ export function Home() {
       ? fromAttention(live.data)
       : {
           tasks,
-          leads: customerTypeFilter ? getRows("leads").filter((r) => r.customerType === customerTypeFilter) : getRows("leads"),
-          bookings: customerTypeFilter ? getRows("bookings").filter((r) => r.customerType === customerTypeFilter) : getRows("bookings"),
-          finance: customerTypeFilter ? getRows("finance").filter((r) => r.customerType === customerTypeFilter) : getRows("finance"),
-          visa: customerTypeFilter ? getRows("visa").filter((r) => r.customerType === customerTypeFilter) : getRows("visa"),
+          leads: customerTypeFilter
+            ? getRows("leads").filter((r) => r.customerType === customerTypeFilter)
+            : getRows("leads"),
+          bookings: customerTypeFilter
+            ? getRows("bookings").filter((r) => r.customerType === customerTypeFilter)
+            : getRows("bookings"),
+          finance: customerTypeFilter
+            ? getRows("finance").filter((r) => r.customerType === customerTypeFilter)
+            : getRows("finance"),
+          visa: customerTypeFilter
+            ? getRows("visa").filter((r) => r.customerType === customerTypeFilter)
+            : getRows("visa"),
+          groups: customerTypeFilter
+            ? getRows("groups").filter((r) => r.customerType === customerTypeFilter)
+            : getRows("groups"),
           today,
         };
     return buildWorklist({ ...source, currency });
@@ -167,29 +174,33 @@ export function Home() {
             {/* Customer Type Filter */}
             <div className="grid gap-2 mb-3 sm:grid-cols-4">
               <Btn
-                variant="outline"
                 size="sm"
                 onClick={() => setCustomerTypeFilter("")}
                 className={customerTypeFilter === "" ? "bg-primary/10 text-primary" : ""}
-              >All</Btn>
+              >
+                All
+              </Btn>
               <Btn
-                variant="outline"
                 size="sm"
                 onClick={() => setCustomerTypeFilter("Corporate")}
                 className={customerTypeFilter === "Corporate" ? "bg-primary/10 text-primary" : ""}
-              >Corporate</Btn>
+              >
+                Corporate
+              </Btn>
               <Btn
-                variant="outline"
                 size="sm"
                 onClick={() => setCustomerTypeFilter("VIP")}
                 className={customerTypeFilter === "VIP" ? "bg-primary/10 text-primary" : ""}
-              >VIP</Btn>
+              >
+                VIP
+              </Btn>
               <Btn
-                variant="outline"
                 size="sm"
                 onClick={() => setCustomerTypeFilter("Leisure")}
                 className={customerTypeFilter === "Leisure" ? "bg-primary/10 text-primary" : ""}
-              >Leisure</Btn>
+              >
+                Leisure
+              </Btn>
             </div>
             {/* KPI Row */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 mb-6">
@@ -235,10 +246,7 @@ export function Home() {
               <div className="lg:col-span-2">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-[15px] font-medium text-foreground">What needs you today</h2>
-                  <Link
-                    to="/tasks"
-                    className="text-xs font-semibold text-pine hover:underline"
-                  >
+                  <Link to="/tasks" className="text-xs font-semibold text-pine hover:underline">
                     View all tasks →
                   </Link>
                 </div>
@@ -248,7 +256,11 @@ export function Home() {
                     title="Nothing is waiting on you right now."
                     description="No overdue work, no unpaid invoices and no enquiries waiting for a reply."
                     actions={
-                      <Btn tone="primary" icon={<Plus />} onClick={() => setOpen({ module: "leads", id: "" })}>
+                      <Btn
+                        tone="primary"
+                        icon={<Plus />}
+                        onClick={() => setOpen({ module: "leads", id: "" })}
+                      >
                         Add an enquiry
                       </Btn>
                     }
@@ -292,9 +304,7 @@ export function Home() {
                     </Link>
                   </div>
                   {overview?.upcomingDepartures?.length === 0 ? (
-                    <p className="text-xs text-muted text-center py-4">
-                      No upcoming departures.
-                    </p>
+                    <p className="text-xs text-muted text-center py-4">No upcoming departures.</p>
                   ) : (
                     <div className="space-y-2">
                       {overview?.upcomingDepartures?.slice(0, 5).map((d) => (

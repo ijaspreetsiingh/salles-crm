@@ -1,6 +1,7 @@
 import { env } from "../config/env";
 import { logger } from "../lib/logger";
 import { prisma } from "../lib/prisma";
+import { num } from "../lib/money";
 
 export type ChatTurn = { role: "system" | "user" | "assistant"; content: string };
 
@@ -25,7 +26,9 @@ export async function callModel(messages: ChatTurn[]): Promise<string | null> {
       logger.warn({ status: response.status }, "LLM request failed");
       return null;
     }
-    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
     return payload.choices?.[0]?.message?.content?.trim() ?? null;
   } catch (error) {
     logger.warn({ err: error }, "LLM request errored");
@@ -49,7 +52,10 @@ async function snapshot(organizationId: string): Promise<WorkspaceSnapshot> {
     prisma.record.count({ where: { ...base, moduleId: "bookings", status: "Confirmed" } }),
     prisma.record.count({ where: { ...base, moduleId: "leads", status: "New" } }),
     prisma.record.aggregate({ where: { ...base, moduleId: "bookings" }, _sum: { amount: true } }),
-    prisma.record.aggregate({ where: { ...base, moduleId: "finance", status: "Overdue" }, _sum: { amount: true } }),
+    prisma.record.aggregate({
+      where: { ...base, moduleId: "finance", status: "Overdue" },
+      _sum: { amount: true },
+    }),
     prisma.record.groupBy({
       by: ["destination"],
       where: { ...base, moduleId: "bookings" },
@@ -63,14 +69,18 @@ async function snapshot(organizationId: string): Promise<WorkspaceSnapshot> {
     bookings,
     confirmedBookings: confirmed,
     newLeads,
-    revenue: revenueAgg._sum.amount ?? 0,
-    overdue: overdueAgg._sum.amount ?? 0,
+    revenue: num(revenueAgg._sum.amount),
+    overdue: num(overdueAgg._sum.amount),
     topDestination: destinations[0]?.destination ?? "Bali, Indonesia",
   };
 }
 
 const inr = (value: number) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value);
 
 /** Rule-based assistant used offline so the workspace is always usable. */
 export function deterministicReply(message: string, snap: WorkspaceSnapshot): string {

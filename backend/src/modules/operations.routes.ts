@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
-import { requirePermission } from "../middlewares/rbac";
+import { requireModulePermission } from "../middlewares/rbac";
 import { NotFoundError } from "../lib/errors";
 import { generateVoucherPdf } from "../services/voucher-pdf";
 
@@ -15,6 +15,7 @@ import { generateVoucherPdf } from "../services/voucher-pdf";
  */
 const router = Router();
 router.use(requireAuth);
+router.use(requireModulePermission("operations", "view"));
 
 const dayOf = (offset = 0) => {
   const date = new Date();
@@ -25,7 +26,7 @@ const dayOf = (offset = 0) => {
 /** Departures for a date window, with the travellers behind each booking. */
 router.get(
   "/departures",
-  requirePermission("view"),
+  requireModulePermission("operations", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const from = String(req.query.from ?? dayOf(0));
@@ -116,7 +117,7 @@ router.get(
  */
 router.get(
   "/manifest/:recordId",
-  requirePermission("view"),
+  requireModulePermission("operations", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const record = await prisma.record.findFirst({
@@ -172,7 +173,7 @@ router.get(
 /** Printable hotel / service voucher for one booking. */
 router.get(
   "/voucher/:recordId",
-  requirePermission("view"),
+  requireModulePermission("operations", "view"),
   asyncHandler(async (req, res) => {
     const { stream, filename, voucherNo } = await generateVoucherPdf({
       organizationId: req.auth!.organizationId,
@@ -200,7 +201,7 @@ router.get(
  */
 router.get(
   "/deadlines",
-  requirePermission("view"),
+  requireModulePermission("operations", "view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
     const today = dayOf(0);
@@ -230,7 +231,11 @@ router.get(
     });
     const checklist = visaApplications.length
       ? await prisma.visaChecklistItem.findMany({
-          where: { organizationId, recordId: { in: visaApplications.map((a) => a.id) }, status: "pending" },
+          where: {
+            organizationId,
+            recordId: { in: visaApplications.map((a) => a.id) },
+            status: "pending",
+          },
         })
       : [];
     const pendingByRecord = new Map<string, number>();
@@ -247,7 +252,8 @@ router.get(
         releaseDays: row.releaseDays,
         freeRooms: Math.max(0, row.totalRooms - row.usedRooms),
         daysLeft: Math.ceil(
-          (new Date(`${row.contractTo}T00:00:00`).getTime() - new Date(`${today}T00:00:00`).getTime()) /
+          (new Date(`${row.contractTo}T00:00:00`).getTime() -
+            new Date(`${today}T00:00:00`).getTime()) /
             86_400_000,
         ),
       })),

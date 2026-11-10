@@ -63,7 +63,8 @@ const mapRate = (row: RateRow) => {
     active: row.active,
     margin,
     // A zero selling price has no meaningful percentage; the screen shows "—".
-    marginPercent: row.sellingPrice > 0 ? Math.round((margin / row.sellingPrice) * 1000) / 10 : null,
+    marginPercent:
+      row.sellingPrice > 0 ? Math.round((margin / row.sellingPrice) * 1000) / 10 : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -104,7 +105,9 @@ router.get(
   requirePermission("view"),
   asyncHandler(async (req, res) => {
     const organizationId = req.auth!.organizationId;
-    const q = String(req.query.q ?? "").trim().toLowerCase();
+    const q = String(req.query.q ?? "")
+      .trim()
+      .toLowerCase();
     const city = String(req.query.city ?? "").trim();
     const includeInactive = String(req.query.inactive ?? "") === "true";
 

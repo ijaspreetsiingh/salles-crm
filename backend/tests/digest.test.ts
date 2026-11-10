@@ -126,6 +126,7 @@ const emptyDay = (overrides: Partial<AttentionDto> = {}): AttentionDto => ({
   bookings: [],
   finance: [],
   visa: [],
+  groups: [],
   ...overrides,
 });
 

@@ -22,14 +22,14 @@ export class BadRequestError extends AppError {
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = "Authentication required") {
-    super(message, 401, "unauthorized");
+  constructor(message = "Authentication required", code = "unauthorized") {
+    super(message, 401, code);
   }
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = "You do not have permission to perform this action") {
-    super(message, 403, "forbidden");
+  constructor(message = "You do not have permission to perform this action", code = "forbidden") {
+    super(message, 403, code);
   }
 }
 

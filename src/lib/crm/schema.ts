@@ -48,8 +48,23 @@ export type FieldDef = {
   key: string;
   label: string;
   type: FieldType;
-  /** Static choices, or a reference to a dynamic option set. */
-  options?: string[] | "statuses" | "owners" | "branches" | "sources";
+  /**
+   * Static choices, or a reference to a live option set.
+   *
+   * The live ones are filled from records the workspace already holds, so a
+   * booking links to a real booking instead of a retyped reference.
+   */
+  options?:
+    | string[]
+    | "statuses"
+    | "owners"
+    | "branches"
+    | "sources"
+    | "customers"
+    | "bookings"
+    | "suppliers"
+    | "packages"
+    | "hotels";
   required?: boolean;
   /** One-line helper shown under the input — keeps the UI easy to learn. */
   hint?: string;
@@ -424,6 +439,10 @@ export const schemas: Record<string, ModuleSchema> = {
     fields: [
       ...CONTACT_FIELDS,
       DESTINATION_FIELD,
+      extra(
+        { key: "packageRef", label: "Package", type: "select", options: "packages" },
+        "Itinerary",
+      ),
       extra({ label: "Nights", type: "number" }, "Itinerary"),
       extra({ label: "Valid until", type: "date" }, "Itinerary"),
       extra(
@@ -463,7 +482,13 @@ export const schemas: Record<string, ModuleSchema> = {
       { title: "Customer", keys: ["name", "email", "phone"] },
       {
         title: "Itinerary",
-        keys: ["destination", "extra:nights", "extra:validUntil", "extra:summary"],
+        keys: [
+          "destination",
+          "extra:packageRef",
+          "extra:nights",
+          "extra:validUntil",
+          "extra:summary",
+        ],
       },
       { title: "Pricing", keys: ["amount", "extra:costPrice", "status", "date"] },
       { title: "Ownership", keys: ["owner", "branch"] },
@@ -686,7 +711,6 @@ export const schemas: Record<string, ModuleSchema> = {
       DESTINATION_FIELD,
       extra({ key: "departure", label: "Departure date", type: "date" }, "Trip"),
       extra({ key: "return", label: "Return date", type: "date" }, "Trip"),
-      extra({ key: "pax", label: "Travellers", type: "number", placeholder: "2" }, "Trip"),
       {
         key: "detail",
         label: "Services booked",
@@ -769,21 +793,13 @@ export const schemas: Record<string, ModuleSchema> = {
         "Flight",
       ),
       extra({ label: "Airline", type: "text", placeholder: "Emirates" }, "Flight"),
-      extra({ label: "Sector", type: "text", placeholder: "BOM → DXB" }, "Flight"),
-      extra(
-        { key: "flightNo", label: "Flight number", type: "text", placeholder: "EK 501" },
-        "Flight",
-      ),
       { key: "date", label: "Departure date", type: "date", group: "Flight" },
       extra(
-        {
-          label: "Cabin",
-          type: "select",
-          options: ["Economy", "Premium economy", "Business", "First"],
-        },
+        { key: "bookingRef", label: "Booking reference", type: "select", options: "bookings" },
         "Flight",
       ),
       extra({ key: "ticketNo", label: "Ticket number", type: "text" }, "Ticketing"),
+      extra({ key: "ticketDeadline", label: "Ticketing deadline", type: "date" }, "Ticketing"),
       { key: "amount", label: "Fare", type: "number", group: "Ticketing" },
       { key: "detail", label: "Routing summary", type: "text", group: "Flight" },
       {
@@ -860,16 +876,18 @@ export const schemas: Record<string, ModuleSchema> = {
       { key: "destination", label: "City", type: "text", group: "Stay" },
       extra({ key: "checkin", label: "Check-in", type: "date" }, "Stay"),
       extra({ key: "checkout", label: "Check-out", type: "date" }, "Stay"),
-      extra({ label: "Room type", type: "text", placeholder: "Deluxe sea view" }, "Rooms"),
-      extra({ label: "Rooms", type: "number" }, "Rooms"),
-      extra({ label: "Nights", type: "number" }, "Rooms"),
+      extra({ key: "guest", label: "Guest name", type: "text" }, "Stay"),
       extra(
-        {
-          label: "Meal plan",
-          type: "select",
-          options: ["Room only", "Breakfast", "Half board", "Full board", "All inclusive"],
-        },
-        "Rooms",
+        { key: "bookingRef", label: "Booking reference", type: "select", options: "bookings" },
+        "Stay",
+      ),
+      extra(
+        { key: "supplier", label: "Booked through", type: "select", options: "suppliers" },
+        "Commercials",
+      ),
+      extra(
+        { key: "cancellationDeadline", label: "Free cancellation until", type: "date" },
+        "Commercials",
       ),
       { key: "amount", label: "Total rate", type: "number", group: "Commercials" },
       extra({ key: "confirmation", label: "Confirmation number", type: "text" }, "Commercials"),
@@ -992,6 +1010,14 @@ export const schemas: Record<string, ModuleSchema> = {
     fields: [
       { key: "name", label: "Guest name", type: "text", required: true, group: "Transfer" },
       extra(
+        { key: "bookingRef", label: "Booking reference", type: "select", options: "bookings" },
+        "Transfer",
+      ),
+      extra(
+        { key: "supplier", label: "Supplier", type: "select", options: "suppliers" },
+        "Transfer",
+      ),
+      extra(
         {
           label: "Transfer type",
           type: "select",
@@ -1077,6 +1103,10 @@ export const schemas: Record<string, ModuleSchema> = {
       extra({ label: "Passport expiry", type: "date" }, "Applicant"),
       extra({ label: "Nationality", type: "text" }, "Applicant"),
       { key: "destination", label: "Visa country", type: "text", group: "Application" },
+      extra(
+        { key: "bookingRef", label: "Booking reference", type: "select", options: "bookings" },
+        "Application",
+      ),
       extra(
         {
           label: "Visa type",
@@ -1165,8 +1195,6 @@ export const schemas: Record<string, ModuleSchema> = {
       { key: "date", label: "Departure date", type: "date", group: "Departure" },
       extra({ key: "return", label: "Return date", type: "date" }, "Departure"),
       extra({ key: "pax", label: "Expected pax", type: "number" }, "Departure"),
-      extra({ label: "Confirmed pax", type: "number" }, "Departure"),
-      extra({ label: "Room blocks", type: "number" }, "Departure"),
       { key: "amount", label: "Group budget", type: "number", group: "Budget" },
       extra({ label: "Cost per pax", type: "number" }, "Budget"),
       { key: "status", label: "Status", type: "select", options: "statuses", group: "Budget" },
@@ -1206,8 +1234,6 @@ export const schemas: Record<string, ModuleSchema> = {
       { label: "Group trips", hint: "All group movements." },
       { label: "Delegates", hint: "Participant lists." },
       { label: "Room blocks", hint: "Held inventory per hotel." },
-      { label: "Budgets", hint: "Cost vs quoted per group." },
-      { label: "Suppliers", hint: "Vendors used per group." },
     ],
   },
 
@@ -1505,23 +1531,27 @@ export const schemas: Record<string, ModuleSchema> = {
       {
         key: "detail",
         label: "Booking reference",
-        type: "text",
+        type: "select",
+        options: "bookings",
         group: "Invoice",
-        placeholder: "BK-2402",
       },
       { key: "destination", label: "Description", type: "text", group: "Invoice" },
       extra({ label: "Invoice date", type: "date" }, "Invoice"),
       { key: "date", label: "Due date", type: "date", group: "Invoice" },
       { key: "amount", label: "Invoice amount", type: "number", group: "Amounts" },
-      extra({ key: "received", label: "Amount received", type: "number" }, "Amounts"),
-      extra({ key: "gst", label: "GST rate %", type: "number" }, "Amounts"),
+      /*
+       * Place of supply is what decides IGST vs CGST + SGST on the invoice
+       * and in the tax working paper. It is asked for here, on the invoice,
+       * because the same customer can be billed into two states.
+       */
+      extra({ key: "buyerGstin", label: "Customer GSTIN", type: "text" }, "Invoice"),
       extra(
         {
-          label: "Payment mode",
-          type: "select",
-          options: ["Bank transfer", "UPI", "Card", "Cash", "Cheque"],
+          key: "placeOfSupply",
+          label: "Place of supply (state code)",
+          type: "text",
         },
-        "Amounts",
+        "Invoice",
       ),
       {
         key: "status",

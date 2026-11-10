@@ -1,72 +1,58 @@
-// Traveldesk Service Worker — offline support for the CRM
-const CACHE_NAME = "traveldesk-v1";
-const STATIC_ASSETS = [
-  "/",
-  "/manifest.json",
-  "/favicon.ico",
-];
+/**
+ * Traveldesk Service Worker — handles Web Push notifications.
+ *
+ * When a push arrives and no Traveldesk tab is focused, the browser shows
+ * a system notification. Clicking it opens (or focuses) the app.
+ */
 
-// Install: cache static shell
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)),
-  );
-  self.skipWaiting();
-});
+const APP_URL = self.registration.scope;
 
-// Activate: clean old caches
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))),
-    ),
-  );
-  self.clients.claim();
-});
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
 
-// Fetch: network-first for API, cache-first for static assets
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // API requests: try network, fall back to cache
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          // Cache successful GET responses
-          if (response.ok && request.method === "GET") {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(request)),
-    );
-    return;
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: "Traveldesk", body: event.data.text() };
   }
 
-  // Static assets: cache-first
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        if (response.ok && request.method === "GET") {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+  const title = payload.title ?? "Traveldesk";
+  const options = {
+    body: payload.body ?? "",
+    icon: payload.icon ?? "/favicon.ico",
+    badge: payload.badge ?? "/favicon.ico",
+    tag: payload.tag ?? "traveldesk",
+    data: { url: payload.url ?? APP_URL, ...(payload.data ?? {}) },
+    requireInteraction: false,
+    silent: false,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url ?? APP_URL;
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      // If there is already a tab open on the app, focus it.
+      for (const client of windowClients) {
+        if (client.url.startsWith(APP_URL) && "focus" in client) {
+          return client.focus();
         }
-        return response;
-      });
+      }
+      // Otherwise open a new tab.
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     }),
   );
 });
 
-// Background sync for outbound messages (email/WhatsApp) when back online
-self.addEventListener("sync", (event) => {
-  if (event.tag === "sync-outbox") {
-    event.waitUntil(
-      // The frontend will retry outbox messages on reconnect
-      Promise.resolve(),
-    );
-  }
+// Keep the SW alive for background sync in future.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(clients.claim());
 });

@@ -3,6 +3,8 @@ import { prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { env } from "../config/env";
 import { MODULES } from "../domain/modules";
+import { renderMetrics } from "../lib/metrics";
+import { UnauthorizedError, NotFoundError } from "../lib/errors";
 
 const router = Router();
 
@@ -41,6 +43,24 @@ router.get("/meta", (_req, res) => {
       moduleCount: MODULES.length,
     },
   });
+});
+
+/**
+ * Prometheus-style metrics. Off by default in production until a token is
+ * configured, because request paths and memory use are internal details.
+ */
+router.get("/metrics", (req, res) => {
+  if (env.METRICS_TOKEN) {
+    const header = req.header("authorization") ?? "";
+    const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
+    const supplied = bearer || (req.header("x-metrics-token") ?? "");
+    if (supplied !== env.METRICS_TOKEN) {
+      throw new UnauthorizedError("Metrics token is missing or wrong");
+    }
+  } else if (env.NODE_ENV === "production") {
+    throw new NotFoundError("Metrics");
+  }
+  res.type("text/plain; version=0.0.4").send(renderMetrics());
 });
 
 export default router;

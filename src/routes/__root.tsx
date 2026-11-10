@@ -128,6 +128,12 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+      >
+        Skip to main content
+      </a>
       {/* Required: nested routes render here. Removing <CRMProvider><AuthGate><CRMShell><Outlet /></CRMShell></AuthGate><Toaster position="bottom-right" /></CRMProvider> breaks all child routes. */}
       <CRMProvider>
         <AuthGate>

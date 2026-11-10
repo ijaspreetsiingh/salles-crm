@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
+  FileSpreadsheet,
   FileText,
   Filter,
   Globe2,
@@ -19,10 +20,12 @@ import {
   List,
   Loader2,
   Mail,
+  MessageCircle,
   MoreHorizontal,
   Phone,
   Plane,
   Plus,
+  RefreshCw,
   Search,
   Send,
   Settings2,
@@ -47,7 +50,7 @@ import { RecordSheet } from "./record-sheet";
 import { RecordCards } from "./record-cards";
 import { RowMenu } from "./row-menu";
 import { NotificationBell, type Notification } from "./notification-bell";
-import { Btn, FilterMenu, Kbd, Segmented } from "./ui";
+import { Btn, FilterMenu, Kbd, Segmented, Sheet } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Ledger } from "./archetypes/ledger";
 import { Pipeline } from "./archetypes/pipeline";
@@ -68,12 +71,30 @@ import {
 } from "@/lib/crm/catalog";
 import { useCRM } from "@/lib/crm/store";
 import { cn } from "@/lib/utils";
-import { takeCommsFocus, takeProfileFocus, setProfileFocus, type CommsFocus } from "@/lib/crm/handoff";
+import {
+  takeCommsFocus,
+  takeProfileFocus,
+  setCommsFocus,
+  setProfileFocus,
+  type CommsFocus,
+} from "@/lib/crm/handoff";
+import { COMMS_TEMPLATES, fillCommsTemplate } from "@/lib/crm/comms-templates";
 import { getSchema, getTabDef, extraKeyName, type ModuleSchema } from "@/lib/crm/schema";
 import { CustomerDirectory } from "./customer-directory";
 import { CustomerProfile } from "./customer-profile";
 import { QuotationCover } from "./quotation-cover";
 import { GrowthReports } from "./growth-reports";
+import { WhatsAppConnect } from "./whatsapp-connect";
+import { AutomationStudio, ExecutionHistory } from "./automation-canvas";
+import { Expenses, Payables, ProfitLoss, TaxSummary } from "./finance-panels";
+import { ReconciliationPanel } from "./reconciliation-panel";
+import { HotelRates } from "./hotel-rates-panel";
+import { HotelSearch } from "./hotel-search";
+import { TeamChat } from "./team-chat";
+import { PNRQueue } from "./pnr-queue";
+import { RecycleBin } from "./recycle-bin";
+import { Campaigns } from "./campaigns-panel";
+import { TwoFactorPanel } from "./two-factor";
 import { WebsitePanel } from "./website-panel";
 import { ROLE_KEY_BY_LABEL } from "@/lib/api/crm";
 import { errorMessage } from "@/lib/api/client";
@@ -94,6 +115,7 @@ import {
   deleteWebhook,
   deleteWorkflow,
   disconnectIntegration,
+  downloadReport,
   exportRecordsCsv,
   fetchApiKeys,
   fetchAssistantMessages,
@@ -111,12 +133,14 @@ import {
   fetchSavedReports,
   fetchSubscription,
   fetchWebhooks,
+  fetchWebhookDeliveries,
   fetchWorkflows,
   fetchDomain,
   revokeApiKey,
   removeEmailChannel,
   removeRazorpayChannel,
   removeWhatsAppChannel,
+  retryWebhookDelivery,
   runReport,
   runWorkflow,
   saveEmailChannel,
@@ -141,6 +165,7 @@ import {
   type MessageDto,
   type PlanDto,
   type ReportKey,
+  type WebhookDeliveryDto,
   type RoleDto,
   type WorkflowDto,
   type FlightSearchResult,
@@ -205,26 +230,16 @@ const SPECIAL_TAB_MODULES = new Set([
   "quotations",
   "automation",
   "flights",
+  "campaigns",
+  "team-chat",
 ]);
 
 export function Workspace({ module }: { module: Module }) {
   const guide = guideFor(module);
-  const { getRows, update, createRecord, settings, fields, user, permissions } = useCRM();
+  const { getRows, update, createRecord, settings, fields, user, permissions, status } = useCRM();
   const navigate = useNavigate();
   const allowed =
     !permissions || permissions.modules === "*" || permissions.modules.includes(module.id);
-  if (!allowed) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
-        <div className="glass-card w-full max-w-md p-8 text-center">
-          <h1 className="text-2xl font-bold text-foreground">Access denied</h1>
-          <p className="mt-2 text-sm text-muted">
-            Your role cannot open the {module.name} workspace.
-          </p>
-        </div>
-      </div>
-    );
-  }
   const currency = settings.currency;
   const schema = getSchema(module.id);
   const customFields = fields[module.id] ?? [];
@@ -265,78 +280,49 @@ export function Workspace({ module }: { module: Module }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [userLanguage, setUserLanguage] = useState<Language>("en");
   const [showNotifications, setShowNotifications] = useState(false);
-  const sseRef = useRef<EventSource | null>(null);
 
   const rows = getRows(module.id, tab);
   const tabDef = getTabDef(schema, tab);
   const activeView = usesModuleTabs ? undefined : guide.views.find((v) => v.label === tab);
 
-  // A brand-new workspace does not show an empty table. It sits the person
-  // down and walks them through making their first record.
-  useEffect(() => {
-    if (offered.current) return;
-    if (rows.length === 0 && !query && statusFilter.length === 0 && owner === "All owners") {
-      offered.current = true;
-      setWizard(true);
-    }
-  }, [rows.length, query, statusFilter.length, owner]);
-
-  /** Load language preference and connect SSE for real-time notifications. */
+  /** Language preference + the real notification tray from the API. */
   useEffect(() => {
     const stored = localStorage.getItem("travo.language");
-    if (stored && (stored === "en" || stored === "hi" || stored === "es" || stored === "fr" || stored === "ar")) {
+    if (
+      stored &&
+      (stored === "en" || stored === "hi" || stored === "es" || stored === "fr" || stored === "ar")
+    ) {
       setUserLanguage(stored as Language);
     } else {
       setUserLanguage(detectLanguage());
     }
 
-    // Connect to SSE notification stream
-    const eventSource = new EventSource("/api/v1/notifications/stream");
-    sseRef.current = eventSource;
-
-    eventSource.onmessage = (event) => {
-      try {
-        const raw = JSON.parse(event.data) as Notification;
-        const notification: Notification = {
-          ...raw,
-          level: (["info", "warning", "danger", "success"] as const).includes(raw.level as any)
-            ? raw.level
+    // One authenticated read of the tray. The app polls it with the rest of
+    // the workspace instead of holding an EventSource open on a route the
+    // server never implemented.
+    let cancelled = false;
+    fetchNotifications()
+      .then((tray) => {
+        if (cancelled) return;
+        const items: Notification[] = (tray.items ?? []).map((n) => ({
+          ...n,
+          moduleId: n.moduleId ?? "",
+          recordId: n.recordId ?? "",
+          level: (["info", "warning", "danger", "success"] as const).includes(
+            n.level as "info" | "warning" | "danger" | "success",
+          )
+            ? (n.level as Notification["level"])
             : "info",
-        };
-        setNotifications((prev) => [notification, ...prev.slice(0, 49)]);
-        setUnreadCount((prev) => prev + 1);
-      } catch {
-        // ignore malformed events
-      }
-    };
-
-    eventSource.onerror = () => {
-      eventSource.close();
-      sseRef.current = null;
-    };
-
-    // Fetch existing notifications
-    fetch("/api/v1/notifications")
-      .then((r) => r.json())
-      .then((data: any) => {
-        if (data?.items) {
-          const items: Notification[] = data.items.map((n: any) => ({
-            ...n,
-            level: (["info", "warning", "danger", "success"] as const).includes(n.level as any)
-              ? n.level
-              : "info",
-          }));
-          setNotifications(items);
-          setUnreadCount(data.unread ?? 0);
-        }
+        }));
+        setNotifications(items);
+        setUnreadCount(tray.unread ?? 0);
       })
       .catch(() => {
-        // notifications are optional
+        // The tray is supplementary; the workspace works without it.
       });
 
     return () => {
-      eventSource.close();
-      sseRef.current = null;
+      cancelled = true;
     };
   }, []);
 
@@ -467,23 +453,66 @@ export function Workspace({ module }: { module: Module }) {
     module.id === "inbox" ||
     module.id === "integrations" ||
     module.id === "settings" ||
+    module.id === "team-chat" ||
+    (module.id === "finance" &&
+      (tab === "Payables" ||
+        tab === "Tax & GST" ||
+        tab === "Expenses" ||
+        tab === "Profitability" ||
+        tab === "Reconciliation")) ||
     (module.id === "reports" && tab !== "Growth") ||
     (module.id === "quotations" && tab === "Itinerary builder") ||
-    (module.id === "automation" && tab === "Workflows") ||
+    (module.id === "automation" && (tab === "Workflows" || tab === "Execution history")) ||
     (module.id === "flights" && tab === "Flight search") ||
+    (module.id === "flights" && tab === "PNR queue") ||
+    (module.id === "hotels" &&
+      (tab === "Rate plans" || tab === "Hotels" || tab === "Room inventory")) ||
+    (module.id === "campaigns" && tab === "Campaigns") ||
     (module.id === "distribution" && tab === "Website pages");
+
+  // A brand-new workspace does not show an empty table. It sits the person
+  // down and walks them through making their first record. Pages with their own
+  // console (canvas, inbox, settings, reports) create nothing, so they never
+  // get the record wizard laid over the top of them.
+  useEffect(() => {
+    if (offered.current) return;
+    if (isSpecialView) return;
+    // Only a loaded, genuinely empty module gets the guided first record.
+    if (status !== "ready") return;
+    if (rows.length === 0 && !query && statusFilter.length === 0 && owner === "All owners") {
+      offered.current = true;
+      setWizard(true);
+    }
+  }, [rows.length, query, statusFilter.length, owner, status, isSpecialView]);
 
   const specialBody = (() => {
     if (module.id === "assistant") return <Assistant tab={tab} />;
     if (module.id === "inbox") return <Inbox tab={tab} />;
+    if (module.id === "team-chat") return <TeamChat />;
+    if (module.id === "finance" && tab === "Payables") return <Payables />;
+    if (module.id === "finance" && tab === "Tax & GST") return <TaxSummary />;
+    if (module.id === "finance" && tab === "Expenses") return <Expenses />;
+    if (module.id === "finance" && tab === "Profitability") return <ProfitLoss />;
+    if (module.id === "finance" && tab === "Reconciliation") return <ReconciliationPanel />;
     if (module.id === "reports" && tab === "Growth") return <GrowthReports />;
     if (module.id === "reports") return <Reports rows={rows} tab={tab} />;
     if (module.id === "integrations") return <Integrations tab={tab} />;
-    if (module.id === "quotations" && tab === "Itinerary builder") return <Itinerary />;
-    if (module.id === "automation" && tab === "Workflows") return <Automations />;
-    if (module.id === "settings") return <SettingsPanel tab={tab} userLanguage={userLanguage} setUserLanguage={setUserLanguage} />;
+    if (module.id === "quotations" && tab === "Itinerary builder") return <Itinerary rows={rows} />;
+    if (module.id === "automation" && tab === "Workflows") return <AutomationStudio />;
+    if (module.id === "automation" && tab === "Execution history") return <ExecutionHistory />;
+    if (module.id === "settings")
+      return (
+        <SettingsPanel tab={tab} userLanguage={userLanguage} setUserLanguage={setUserLanguage} />
+      );
     if (module.id === "flights" && tab === "Flight search")
       return <FlightSearch onOpen={setRow} rows={rows} />;
+    if (module.id === "flights" && tab === "PNR queue") return <PNRQueue />;
+    // Hotels — "Hotels" and "Room inventory" tabs get the live search + contract rates UI.
+    // "Rate plans" tab keeps the original rate-plan editor for backward compat.
+    if (module.id === "hotels" && (tab === "Hotels" || tab === "Room inventory"))
+      return <HotelSearch />;
+    if (module.id === "hotels" && tab === "Rate plans") return <HotelRates />;
+    if (module.id === "campaigns" && tab === "Campaigns") return <Campaigns />;
     if (module.id === "distribution" && tab === "Website pages") return <WebsitePanel />;
     return null;
   })();
@@ -501,7 +530,18 @@ export function Workspace({ module }: { module: Module }) {
     if (requested?.id) setProfileCover(requested);
   }, [module.id]);
 
-  const openCommunications = () => {
+  const openCommunications = (row?: RecordRow, channel?: "Email" | "WhatsApp") => {
+    if (row) {
+      const phone = (row.phone || "").replace(/[^\\d+]/g, "");
+      setCommsFocus({
+        name: row.name,
+        email: row.email || undefined,
+        phone: phone || undefined,
+        channel: channel ?? "WhatsApp",
+        module: module.id,
+        recordId: row.id,
+      });
+    }
     void navigate({ to: "/workspace/$module", params: { module: "inbox" } });
   };
 
@@ -509,166 +549,188 @@ export function Workspace({ module }: { module: Module }) {
   const sheetModule =
     (sheetModuleId ? modules.find((m) => m.id === sheetModuleId) : undefined) ?? module;
 
+  /**
+   * The drawer shows the record as it is *now*, not the snapshot taken when it
+   * was opened: saving inside the drawer (a package plan, a quote line) writes
+   * to the store, and the panel has to reflect what was just saved.
+   */
+  const liveRow = row
+    ? (getRows(sheetModule.id).find((candidate) => candidate.id === row.id) ?? row)
+    : null;
+
+  if (!allowed) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
+        <div className="glass-card w-full max-w-md p-8 text-center">
+          <h1 className="text-2xl font-bold text-foreground">Access denied</h1>
+          <p className="mt-2 text-sm text-muted">
+            Your role cannot open the {module.name} workspace.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Page
         identity={
           profileCover || quoteCover ? null : (
-          <PageIdentity
-            eyebrow={module.group}
-            title={plainModule(module)}
-            purpose={guide.purpose}
-            stats={
-              isSpecialView
-                ? undefined
-                : kpis.map((kpi) => ({
-                    icon: <span className={`kpi-dot kpi-dot--${kpi.tone}`} aria-hidden />,
-                    value: kpi.display,
-                    label: plain(kpi.label),
-                    tone: kpi.tone === "ink" ? "neutral" : kpi.tone,
-                    // Clicking a number shows exactly the records behind it.
-                    onClick:
-                      kpi.statuses && kpi.statuses.length > 0
-                        ? () => setStatusFilter(kpi.statuses!)
-                        : undefined,
-                  }))
-            }
-            actions={
-              isSpecialView ? null : (
-                <>
-                  <Btn
-                    size="md"
-                    onClick={() => setHelp(true)}
-                    aria-label={`How ${plainModule(module)} works`}
-                    title={`How ${plainModule(module)} works`}
-                  >
-                    <CircleHelp />
-                  </Btn>
-                  <Btn
-                    size="md"
-                    icon={<ArrowDownToLine />}
-                    onClick={() => {
-                      exportRows(filtered, module.id);
-                      toast.success("CSV exported");
-                    }}
-                  >
-                    Export
-                  </Btn>
-                  <Btn
-                    size="md"
-                    tone={unreadCount > 0 ? "danger" : "secondary"}
-                    icon={<Bell className="size-5" />}
-                    onClick={() => setShowNotifications(true)}
-                    aria-label="Notifications"
-                    title={`Notifications (${unreadCount})`}
-                  >
-                    {unreadCount > 0 ? `Notifications (${unreadCount})` : "Notifications"}
-                    {unreadCount > 0 ? (
-                      <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-destructive border border-background" />
-                    ) : null}
-                  </Btn>
-                  <Btn size="md" tone="primary" icon={<Plus />} onClick={() => openCreate()}>
-                    {guide.primary}
-                  </Btn>
-                </>
-              )
-            }
-          />
+            <PageIdentity
+              eyebrow={module.group}
+              title={plainModule(module)}
+              purpose={guide.purpose}
+              stats={
+                isSpecialView
+                  ? undefined
+                  : kpis.map((kpi) => ({
+                      icon: <span className={`kpi-dot kpi-dot--${kpi.tone}`} aria-hidden />,
+                      value: kpi.display,
+                      label: plain(kpi.label),
+                      tone: kpi.tone === "ink" ? "neutral" : kpi.tone,
+                      // Clicking a number shows exactly the records behind it.
+                      onClick:
+                        kpi.statuses && kpi.statuses.length > 0
+                          ? () => setStatusFilter(kpi.statuses!)
+                          : undefined,
+                    }))
+              }
+              actions={
+                isSpecialView ? null : (
+                  <>
+                    <Btn
+                      size="md"
+                      onClick={() => setHelp(true)}
+                      aria-label={`How ${plainModule(module)} works`}
+                      title={`How ${plainModule(module)} works`}
+                    >
+                      <CircleHelp />
+                    </Btn>
+                    <Btn
+                      size="md"
+                      icon={<ArrowDownToLine />}
+                      onClick={() => {
+                        exportRows(filtered, module.id);
+                        toast.success("CSV exported");
+                      }}
+                    >
+                      Export
+                    </Btn>
+                    <Btn
+                      size="md"
+                      tone={unreadCount > 0 ? "danger" : "secondary"}
+                      icon={<Bell className="size-5" />}
+                      onClick={() => setShowNotifications(true)}
+                      aria-label="Notifications"
+                      title={`Notifications (${unreadCount})`}
+                    >
+                      {unreadCount > 0 ? `Notifications (${unreadCount})` : "Notifications"}
+                      {unreadCount > 0 ? (
+                        <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-destructive border border-background" />
+                      ) : null}
+                    </Btn>
+                    <Btn size="md" tone="primary" icon={<Plus />} onClick={() => openCreate()}>
+                      {guide.primary}
+                    </Btn>
+                  </>
+                )
+              }
+            />
           )
         }
         switchboard={
           profileCover || quoteCover ? null : (
-          <>
-            <Segmented
-              options={tabOptions as string[]}
-              value={tab}
-              onChange={(next) => {
-                setTab(next);
-                setQuery("");
-                setStatusFilter([]);
-                setOwner("All owners");
-              }}
-              label={`${module.name} views`}
-            />
-            {isSpecialView ? null : (
-              <>
-                <div className="switchboard__spacer" />
-                <FilterMenu
-                  label="Status"
-                  value={statusFilter[0] ?? "All"}
-                  options={["All", ...statusOptions]}
-                  onChange={(next) => setStatusFilter(next === "All" ? [] : [next])}
-                  counts={Object.fromEntries(
-                    statusOptions.map((s) => [s, rows.filter((r) => r.status === s).length]),
-                  )}
-                />
-                <FilterMenu
-                  label="Assigned to"
-                  value={owner}
-                  options={ownerOptions}
-                  onChange={setOwner}
-                />
-                <FilterMenu
-                  label="Date"
-                  value={date}
-                  options={["This week", "This month", "Last month", "This year", "All time"]}
-                  onChange={setDate}
-                />
-                {canBoard ? (
-                  <Segmented
-                    options={["List", "Board", "Cards"]}
-                    value={view === "board" ? "Board" : view === "list" ? "List" : "Cards"}
-                    onChange={(next) =>
-                      setView(
-                        next === "Board"
-                          ? "board"
-                          : next === "List"
-                            ? "list"
-                            : module.id === "customers"
-                              ? "grid"
-                              : "cards",
-                      )
-                    }
-                    label="Layout"
-                  />
-                ) : (
-                  <Segmented
-                    options={["List", "Cards"]}
-                    value={view === "list" ? "List" : "Cards"}
-                    onChange={(next) =>
-                      setView(
-                        next === "List" ? "list" : module.id === "customers" ? "grid" : "cards",
-                      )
-                    }
-                    label="Layout"
-                  />
-                )}
-                <button type="button" onClick={() => setView("list")}>
-                  Table
-                </button>
-              </>
-            )}
-            <div className="switchboard__spacer" />
-            <div className="switchboard__search">
-              <Search className="size-4" />
-              <input
-                aria-label={`Search ${module.name}`}
-                placeholder={`Search ${module.name.toLowerCase()}…`}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+            <>
+              <Segmented
+                options={tabOptions as string[]}
+                value={tab}
+                onChange={(next) => {
+                  setTab(next);
+                  setQuery("");
+                  setStatusFilter([]);
+                  setOwner("All owners");
+                }}
+                label={`${module.name} views`}
               />
-              {query && (
-                <button
-                  type="button"
-                  onClick={() => setQuery("")}
-                  aria-label="Clear search"
-                  className="text-faint hover:text-foreground"
-                >
-                  <X className="size-3.5" />
-                </button>
+              {isSpecialView ? null : (
+                <>
+                  <div className="switchboard__spacer" />
+                  <FilterMenu
+                    label="Status"
+                    value={statusFilter[0] ?? "All"}
+                    options={["All", ...statusOptions]}
+                    onChange={(next) => setStatusFilter(next === "All" ? [] : [next])}
+                    counts={Object.fromEntries(
+                      statusOptions.map((s) => [s, rows.filter((r) => r.status === s).length]),
+                    )}
+                  />
+                  <FilterMenu
+                    label="Assigned to"
+                    value={owner}
+                    options={ownerOptions}
+                    onChange={setOwner}
+                  />
+                  <FilterMenu
+                    label="Date"
+                    value={date}
+                    options={["This week", "This month", "Last month", "This year", "All time"]}
+                    onChange={setDate}
+                  />
+                  {canBoard ? (
+                    <Segmented
+                      options={["List", "Board", "Cards"]}
+                      value={view === "board" ? "Board" : view === "list" ? "List" : "Cards"}
+                      onChange={(next) =>
+                        setView(
+                          next === "Board"
+                            ? "board"
+                            : next === "List"
+                              ? "list"
+                              : module.id === "customers"
+                                ? "grid"
+                                : "cards",
+                        )
+                      }
+                      label="Layout"
+                    />
+                  ) : (
+                    <Segmented
+                      options={["List", "Cards"]}
+                      value={view === "list" ? "List" : "Cards"}
+                      onChange={(next) =>
+                        setView(
+                          next === "List" ? "list" : module.id === "customers" ? "grid" : "cards",
+                        )
+                      }
+                      label="Layout"
+                    />
+                  )}
+                  <button type="button" onClick={() => setView("list")}>
+                    Table
+                  </button>
+                </>
               )}
-            </div>
-          </>
+              <div className="switchboard__spacer" />
+              <div className="switchboard__search">
+                <Search className="size-4" />
+                <input
+                  aria-label={`Search ${module.name}`}
+                  placeholder={`Search ${module.name.toLowerCase()}…`}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    className="text-faint hover:text-foreground"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            </>
           )
         }
         work={
@@ -749,9 +811,7 @@ export function Workspace({ module }: { module: Module }) {
                     <RowMenu
                       module={module}
                       row={row}
-                      onOpen={(r) =>
-                        module.id === "quotations" ? setQuoteCover(r) : setRow(r)
-                      }
+                      onOpen={(r) => (module.id === "quotations" ? setQuoteCover(r) : setRow(r))}
                       onEdit={(r) => {
                         setRow(r);
                         setEditingRow(r);
@@ -822,15 +882,15 @@ export function Workspace({ module }: { module: Module }) {
           }}
         />
       )}
-      {row && !editingRow && (
+      {liveRow && !editingRow && (
         <RecordSheet
           module={sheetModule}
-          row={row}
+          row={liveRow}
           onClose={() => {
             setRow(null);
             setSheetModuleId(null);
           }}
-          onEdit={() => setEditingRow(row)}
+          onEdit={() => setEditingRow(liveRow)}
           onWorkflow={(targetModuleId, created) => {
             // A freshly created document opens right here in the drawer.
             if (targetModuleId === "__open__" && created) {
@@ -847,7 +907,9 @@ export function Workspace({ module }: { module: Module }) {
               void navigate({ to: "/workspace/$module", params: { module: "inbox" } });
               return;
             }
-            const workflowRow = row;
+            // The drawer is only rendered when liveRow exists, and liveRow is
+            // always the freshest copy of that record.
+            const workflowRow = liveRow!;
             const targetModuleMeta = modules.find((m) => m.id === targetModuleId);
             if (!targetModuleMeta) return;
             // Converting a lead to a booking is a one-click action: the booking
@@ -869,7 +931,9 @@ export function Workspace({ module }: { module: Module }) {
                 phone: workflowRow.phone,
                 source: workflowRow.source,
                 notes: data.notes ?? "",
-                extra: workflowRow.extra ?? {},
+                // Carry the source record's reference (e.g. the quotation this
+                // booking was converted from) alongside its own extras.
+                extra: { ...(workflowRow.extra ?? {}), ...(data.extra ?? {}) },
               };
               void createRecord("bookings", createdRow).then((saved) => {
                 if (!saved) return;
@@ -1073,12 +1137,23 @@ function Inbox({ tab }: { tab: string }) {
 }
 
 function InboxThreads({ tab }: { tab: string }) {
-  const { status } = useCRM();
+  const { status, user, settings, getRows } = useCRM();
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState(tab);
   const [draft, setDraft] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pending, setPending] = useState<MessageDto[]>([]);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newBusy, setNewBusy] = useState(false);
+  const [newForm, setNewForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    channel: "Email" as "Email" | "WhatsApp" | "Phone",
+    subject: "",
+    message: "",
+  });
+  const customers = getRows("customers");
   /**
    * A record's side panel can hand this page a contact ("email Priya about
    * LD-2402"). The conversation for that contact opens straight away, with
@@ -1099,6 +1174,8 @@ function InboxThreads({ tab }: { tab: string }) {
   const conversations = page?.items ?? [];
   const { data: channels } = useApiQuery(() => fetchConversationChannels(), [], status === "ready");
   const { data: templates } = useApiQuery(() => fetchMessageTemplates(), [], status === "ready");
+  // Live channel state: a scanned WhatsApp number sends instead of queueing.
+  const { data: channelStatus } = useApiQuery(() => fetchChannelStatus(), [], status === "ready");
 
   // Pick up the hand-off from a record's side panel and open that contact.
   useEffect(() => {
@@ -1166,11 +1243,198 @@ function InboxThreads({ tab }: { tab: string }) {
     }
   };
 
-  if (status === "ready" && !active && !focus) return <EmptyState />;
+  /** Inserts a house-style reply, greeting the person already on screen. */
+  const insertTemplate = (template: (typeof COMMS_TEMPLATES)[number]) => {
+    setDraft(
+      fillCommsTemplate(template.body, {
+        name: active?.contactName ?? focus?.name,
+        agent: user?.name,
+        company: settings.orgName,
+      }),
+    );
+  };
+
+  /** Starts a brand-new thread with a real contact (or a typed one). */
+  const startNewThread = async () => {
+    if (!newForm.name.trim()) {
+      toast.error("Add the contact name");
+      return;
+    }
+    if (newForm.channel === "Email" && !newForm.email.trim()) {
+      toast.error("Add the email address for an email thread");
+      return;
+    }
+    if (newForm.channel !== "Email" && !newForm.phone.trim()) {
+      toast.error("Add the phone number with country code");
+      return;
+    }
+    setNewBusy(true);
+    try {
+      const created = await createConversation({
+        contactName: newForm.name.trim(),
+        channel: newForm.channel,
+        ...(newForm.email.trim() ? { contactEmail: newForm.email.trim() } : {}),
+        ...(newForm.phone.trim() ? { contactPhone: newForm.phone.trim() } : {}),
+        subject:
+          newForm.subject.trim() || `${newForm.channel} conversation — ${newForm.name.trim()}`,
+      });
+      if (newForm.message.trim()) {
+        await sendConversationMessage(created.id, newForm.message.trim());
+      }
+      setActiveId(created.id);
+      setPending([]);
+      setNewOpen(false);
+      setNewForm({ name: "", email: "", phone: "", channel: "Email", subject: "", message: "" });
+      reloadConversations();
+      toast.success(
+        newForm.message.trim() ? "Conversation started and message sent" : "Conversation started",
+      );
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not start the conversation"));
+    } finally {
+      setNewBusy(false);
+    }
+  };
+
+  const newConversationDialog = (
+    <Sheet
+      open={newOpen}
+      onClose={() => setNewOpen(false)}
+      title="New conversation"
+      description="Pick a customer or type a new contact. The first message leaves through the channel you choose."
+      width={560}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setNewOpen(false)}>
+            Cancel
+          </Button>
+          <Button disabled={newBusy} onClick={() => void startNewThread()}>
+            <Send size={14} /> {newBusy ? "Starting…" : "Start conversation"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <label className="grid gap-1 text-xs font-semibold text-muted">
+          Contact name
+          <input
+            list="inbox-customers"
+            value={newForm.name}
+            onChange={(e) => {
+              const match = customers.find((c) => c.name === e.target.value);
+              setNewForm({
+                ...newForm,
+                name: e.target.value,
+                ...(match
+                  ? {
+                      email: newForm.email || match.email || "",
+                      phone: newForm.phone || match.phone || "",
+                    }
+                  : {}),
+              });
+            }}
+            placeholder="e.g. Priya Mehta"
+          />
+          <datalist id="inbox-customers">
+            {customers.slice(0, 200).map((c) => (
+              <option key={c.id} value={c.name} />
+            ))}
+          </datalist>
+        </label>
+
+        <label className="grid gap-1 text-xs font-semibold text-muted">
+          Channel
+          <select
+            value={newForm.channel}
+            onChange={(e) =>
+              setNewForm({
+                ...newForm,
+                channel: e.target.value as "Email" | "WhatsApp" | "Phone",
+              })
+            }
+          >
+            <option value="Email">Email</option>
+            <option value="WhatsApp">WhatsApp</option>
+            <option value="Phone">Phone (log a call)</option>
+          </select>
+        </label>
+
+        {newForm.channel === "Email" && (
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            Subject
+            <input
+              value={newForm.subject}
+              onChange={(e) => setNewForm({ ...newForm, subject: e.target.value })}
+              placeholder="e.g. Your Dubai itinerary"
+            />
+          </label>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            Email{newForm.channel === "Email" ? "" : " (optional)"}
+            <input
+              type="email"
+              value={newForm.email}
+              onChange={(e) => setNewForm({ ...newForm, email: e.target.value })}
+              placeholder="customer@example.com"
+            />
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-muted">
+            Phone{newForm.channel === "Email" ? " (optional)" : ""}
+            <input
+              value={newForm.phone}
+              onChange={(e) => setNewForm({ ...newForm, phone: e.target.value })}
+              placeholder="+91 98765 43210"
+            />
+          </label>
+        </div>
+
+        <label className="grid gap-1 text-xs font-semibold text-muted">
+          First message
+          <textarea
+            rows={6}
+            value={newForm.message}
+            onChange={(e) => setNewForm({ ...newForm, message: e.target.value })}
+            placeholder="Hi Priya, thank you for reaching out — here is the plan I mentioned…"
+          />
+          <span className="text-[11px] font-normal text-muted">
+            Leave it empty to start the thread and write later.
+          </span>
+        </label>
+      </div>
+    </Sheet>
+  );
+
+  // A workspace with no threads still needs a way to write the first one.
+  if (status === "ready" && !active && !focus)
+    return (
+      <>
+        <EmptyState
+          title="No conversations yet"
+          description="Start with a customer — an email or a WhatsApp message goes out from this workspace."
+          action={
+            <Button onClick={() => setNewOpen(true)}>
+              <MessageCircle size={15} /> New conversation
+            </Button>
+          }
+        />
+        {newConversationDialog}
+      </>
+    );
 
   return (
     <div className="inbox-workspace">
+      {newConversationDialog}
       <div className="conversation-list">
+        <Button
+          size="sm"
+          variant="outline"
+          style={{ marginBottom: 8, width: "100%" }}
+          onClick={() => setNewOpen(true)}
+        >
+          <Plus size={14} /> New conversation
+        </Button>
         <div className="search-field">
           <Search size={16} />
           <input
@@ -1238,11 +1502,14 @@ function InboxThreads({ tab }: { tab: string }) {
             <span className="chat-date">Ready to talk</span>
             <p className="cost-disclaimer">
               This is {focus.name}
-              {focus.module ? ` from the ${focus.module} workspace` : ""}. Their email and phone
-              are above — pick a channel and write the first message.
+              {focus.module ? ` from the ${focus.module} workspace` : ""}. Their email and phone are
+              above — pick a channel and write the first message.
             </p>
           </div>
-          <div className="template-chips" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}>
+          <div
+            className="template-chips"
+            style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}
+          >
             <Button size="sm" variant="outline" onClick={startConversation}>
               <Mail size={13} /> Open {focus.channel} thread
             </Button>
@@ -1256,7 +1523,11 @@ function InboxThreads({ tab }: { tab: string }) {
               </a>
             )}
             {focus.phone && (
-              <a href={`tel:${focus.phone}`} className="message-compose-link" title={`Call ${focus.phone}`}>
+              <a
+                href={`tel:${focus.phone}`}
+                className="message-compose-link"
+                title={`Call ${focus.phone}`}
+              >
                 <Phone size={13} /> {focus.phone}
               </a>
             )}
@@ -1296,18 +1567,60 @@ function InboxThreads({ tab }: { tab: string }) {
               <p className="cost-disclaimer">No messages yet. Write the first reply below.</p>
             )}
           </div>
-          {templates && templates.length > 0 && (
-            <div
-              className="template-chips"
-              style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}
+          <div
+            className="template-chips"
+            style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}
+          >
+            <span
+              style={{
+                width: "100%",
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--faint)",
+              }}
             >
-              {templates.map((tpl) => (
-                <Button key={tpl.id} size="sm" variant="outline" onClick={() => setDraft(tpl.body)}>
-                  {tpl.name}
-                </Button>
-              ))}
-            </div>
-          )}
+              Professional replies
+            </span>
+            {COMMS_TEMPLATES.filter(
+              (tpl) => tpl.channel === "Any" || tpl.channel === active.channel,
+            ).map((tpl) => (
+              <Button
+                key={tpl.name}
+                size="sm"
+                variant="outline"
+                title={`${tpl.channel}${tpl.subject ? ` · ${tpl.subject}` : ""}`}
+                onClick={() => insertTemplate(tpl)}
+              >
+                {tpl.channel === "WhatsApp" ? <MessageCircle size={13} /> : <Mail size={13} />}
+                {tpl.name}
+              </Button>
+            ))}
+            {templates?.map((tpl) => (
+              <Button key={tpl.id} size="sm" variant="ghost" onClick={() => setDraft(tpl.body)}>
+                {tpl.name}
+              </Button>
+            ))}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              padding: "0 16px 4px",
+              fontSize: 11,
+              color: "var(--muted)",
+            }}
+          >
+            <span>
+              Replying on <strong style={{ color: "var(--text)" }}>{active.channel}</strong>
+              {active.channel === "WhatsApp" &&
+                !channelStatus?.whatsapp?.web?.linked &&
+                " · queued until a number is linked in Settings"}
+            </span>
+            <span>{draft.trim() ? `${draft.trim().length} characters` : ""}</span>
+          </div>
           <form
             className="message-compose"
             onSubmit={(e) => {
@@ -1436,6 +1749,24 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
       });
   };
 
+  /** Server-rendered Excel / PDF of exactly the report on screen. */
+  const downloadReportFile = async (format: "xlsx" | "pdf") => {
+    try {
+      const blob = await downloadReport(reportKey, apiFilters, format);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${reportKey}-report-${new Date().toISOString().slice(0, 10)}.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(format === "xlsx" ? "Excel workbook downloaded" : "PDF downloaded");
+    } catch (err) {
+      toast.error(
+        errorMessage(err, `Could not build the ${format === "xlsx" ? "Excel" : "PDF"} file`),
+      );
+    }
+  };
+
   const saveView = (title: string) => {
     void createSavedReport({ title, report: reportKey, filters: apiFilters })
       .then(() => {
@@ -1470,7 +1801,21 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
           <option>Packages</option>
         </select>
         <Button variant="outline" onClick={exportReport}>
-          <ArrowDownToLine /> Export report
+          <ArrowDownToLine /> CSV
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void downloadReportFile("xlsx")}
+          title="Excel workbook: summary, records and every breakdown"
+        >
+          <FileSpreadsheet /> Excel
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => void downloadReportFile("pdf")}
+          title="Printable PDF of this report"
+        >
+          <FileText /> PDF
         </Button>
         {tab !== "Saved reports" && (
           <Button variant="outline" onClick={() => saveView(`${tab} performance summary`)}>
@@ -1591,6 +1936,8 @@ function Integrations({ tab }: { tab: string }) {
   const { status } = useCRM();
   const [active, setActive] = useState<IntegrationDto | null>(null);
   const [environment, setEnvironment] = useState<"Sandbox" | "Production">("Sandbox");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
 
   // Supplier/business connections and outbound webhooks are workspace data.
@@ -1604,6 +1951,11 @@ function Integrations({ tab }: { tab: string }) {
     [],
     status === "ready" && tab === "API & webhooks",
   );
+  const { data: deliveries, reload: reloadDeliveries } = useApiQuery(
+    () => fetchWebhookDeliveries(50),
+    [],
+    status === "ready" && tab === "Connection logs",
+  );
   const list = integrations ?? [];
   const filtered =
     tab === "Business apps"
@@ -1614,10 +1966,15 @@ function Integrations({ tab }: { tab: string }) {
 
   const connect = () => {
     if (!active) return;
-    void connectIntegration(active.id, { environment })
+    void connectIntegration(active.id, {
+      environment,
+      config: { apiKey: apiKey.trim(), apiSecret: apiSecret.trim() },
+    })
       .then(() => {
         toast.success(`${active.provider} connected (${environment})`);
         setActive(null);
+        setApiKey("");
+        setApiSecret("");
         reloadIntegrations();
       })
       .catch((e) => toast.error(errorMessage(e, "Could not connect")));
@@ -1721,10 +2078,7 @@ function Integrations({ tab }: { tab: string }) {
           </div>
         </>
       ) : tab === "Connection logs" ? (
-        <EmptyState
-          title="No connection activity"
-          description="Connection and webhook activity will be listed here."
-        />
+        <WebhookLog deliveries={deliveries ?? []} onRetried={reloadDeliveries} />
       ) : (
         <div className="integration-grid">
           {filtered.map((c, i) => (
@@ -1759,7 +2113,11 @@ function Integrations({ tab }: { tab: string }) {
       <Dialog
         open={Boolean(active)}
         onOpenChange={(o) => {
-          if (!o) setActive(null);
+          if (!o) {
+            setActive(null);
+            setApiKey("");
+            setApiSecret("");
+          }
         }}
       >
         <DialogContent>
@@ -1779,6 +2137,24 @@ function Integrations({ tab }: { tab: string }) {
               <option>Production</option>
             </select>
           </label>
+          <label className="setting-row">
+            API Key
+            <input
+              type="text"
+              placeholder="Enter your API key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+          </label>
+          <label className="setting-row">
+            API Secret
+            <input
+              type="password"
+              placeholder="Enter your API secret"
+              value={apiSecret}
+              onChange={(e) => setApiSecret(e.target.value)}
+            />
+          </label>
           <div className="note-box">
             Live supplier access requires authorised credentials and a commercial agreement. This
             workspace records the connection intent and audit trail.
@@ -1792,42 +2168,235 @@ function Integrations({ tab }: { tab: string }) {
   );
 }
 
-function Itinerary() {
-  const { settings } = useCRM();
+/**
+ * The webhook delivery log.
+ *
+ * "We never got the event" is the only conversation an integrator has, so the
+ * screen answers three questions in order: did it go, what did the other side
+ * say, and can I send it again without asking a developer.
+ */
+function WebhookLog({
+  deliveries,
+  onRetried,
+}: {
+  deliveries: WebhookDeliveryDto[];
+  onRetried: () => void;
+}) {
+  const [onlyFailed, setOnlyFailed] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const failed = deliveries.filter((d) => d.status !== "success");
+  const rows = onlyFailed ? failed : deliveries;
+
+  const retry = (id: string) => {
+    setBusy(id);
+    void retryWebhookDelivery(id)
+      .then((result) => {
+        toast.success(
+          result.status === "success"
+            ? `Delivered again (${result.responseCode ?? "200"})`
+            : `Still failing (${result.responseCode ?? "no response"})`,
+        );
+        onRetried();
+      })
+      .catch((err) => toast.error(errorMessage(err, "Could not resend the event")))
+      .finally(() => setBusy(null));
+  };
+
+  if (deliveries.length === 0) {
+    return (
+      <EmptyState
+        title="Nothing sent yet"
+        description="When a webhook fires, every attempt shows up here with the response your endpoint sent back."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={onlyFailed ? "outline" : "default"}
+          onClick={() => setOnlyFailed(false)}
+        >
+          All {deliveries.length}
+        </Button>
+        <Button
+          size="sm"
+          variant={onlyFailed ? "default" : "outline"}
+          onClick={() => setOnlyFailed(true)}
+        >
+          Failed {failed.length}
+        </Button>
+        <span className="text-xs text-muted">
+          {failed.length === 0
+            ? "Everything your endpoints received went through."
+            : "A failed delivery means the endpoint did not answer 2xx — your data was not lost."}
+        </span>
+      </div>
+
+      <ul className="grid gap-2">
+        {rows.map((delivery) => (
+          <li key={delivery.id} className="glass-card p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className={`inline-flex size-2.5 shrink-0 rounded-full ${
+                  delivery.status === "success" ? "bg-pine" : "bg-tomato"
+                }`}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong className="text-sm">{delivery.event}</strong>
+                  <span className="text-xs text-faint">
+                    {delivery.responseCode ? `HTTP ${delivery.responseCode}` : "no response"}
+                  </span>
+                  {!delivery.active && (
+                    <span className="status status-warning">
+                      <span /> Paused
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 truncate text-xs text-muted">{delivery.url}</p>
+              </div>
+              <span className="text-xs text-faint">
+                {new Date(delivery.createdAt).toLocaleString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy === delivery.id}
+                onClick={() => retry(delivery.id)}
+              >
+                <Send /> {busy === delivery.id ? "Sending…" : "Send again"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setExpanded(expanded === delivery.id ? null : delivery.id)}
+              >
+                {expanded === delivery.id ? "Hide payload" : "Payload"}
+              </Button>
+            </div>
+            {expanded === delivery.id && (
+              <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-well p-2 text-[11px] leading-relaxed text-muted">
+                {delivery.payload}
+              </pre>
+            )}
+          </li>
+        ))}
+        {rows.length === 0 && (
+          <li className="glass-card p-4 text-sm text-muted">
+            No failed deliveries — nothing to fix here.
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+}
+
+function Itinerary({ rows }: { rows: RecordRow[] }) {
+  const { settings, createRecord, updateRecord } = useCRM();
   const currency = settings.currency;
-  const [title, setTitle] = useState("Bali Bliss Escape");
-  const [days, setDays] = useState([
-    {
-      title: "Arrival in Bali",
-      description: "Private airport transfer and check-in at your Ubud hotel.",
-      cost: 18000,
-    },
-    {
-      title: "Ubud cultural discovery",
-      description: "Tegallalang rice terraces, temple visit and local lunch.",
-      cost: 12000,
-    },
-    {
-      title: "Ubud to Seminyak",
-      description: "Waterfall excursion and scenic private transfer.",
-      cost: 16000,
-    },
-    {
-      title: "Uluwatu & sunset",
-      description: "Uluwatu Temple, Kecak dance and seaside dinner.",
-      cost: 15000,
-    },
-    {
-      title: "A day at your own pace",
-      description: "Enjoy the beach or add an optional island excursion.",
-      cost: 8000,
-    },
-    { title: "Departure", description: "Breakfast, checkout and airport transfer.", cost: 9000 },
-  ]);
-  const [hotel, setHotel] = useState(70000);
-  const [markup, setMarkup] = useState(20);
+
+  // Load from an existing draft quotation if one exists, otherwise use sensible defaults.
+  const draftQuote = rows.find((r) => r.status === "Draft");
+  const savedItinerary = (draftQuote?.extra as Record<string, unknown> | undefined)?.[
+    "itinerary"
+  ] as
+    | {
+        title?: string;
+        days?: Array<{ title: string; description: string; cost: number }>;
+        hotel?: number;
+        markup?: number;
+        travellers?: number;
+      }
+    | undefined;
+
+  const [title, setTitle] = useState(savedItinerary?.title ?? "Bali Bliss Escape");
+  const [days, setDays] = useState(
+    savedItinerary?.days ?? [
+      {
+        title: "Arrival in Bali",
+        description: "Private airport transfer and check-in at your Ubud hotel.",
+        cost: 18000,
+      },
+      {
+        title: "Ubud cultural discovery",
+        description: "Tegallalang rice terraces, temple visit and local lunch.",
+        cost: 12000,
+      },
+      {
+        title: "Ubud to Seminyak",
+        description: "Waterfall excursion and scenic private transfer.",
+        cost: 16000,
+      },
+      {
+        title: "Uluwatu & sunset",
+        description: "Uluwatu Temple, Kecak dance and seaside dinner.",
+        cost: 15000,
+      },
+      {
+        title: "A day at your own pace",
+        description: "Enjoy the beach or add an optional island excursion.",
+        cost: 8000,
+      },
+      { title: "Departure", description: "Breakfast, checkout and airport transfer.", cost: 9000 },
+    ],
+  );
+  const [hotel, setHotel] = useState(savedItinerary?.hotel ?? 70000);
+  const [markup, setMarkup] = useState(savedItinerary?.markup ?? 20);
+  const [travellers, setTravellers] = useState(savedItinerary?.travellers ?? 2);
   const [preview, setPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
   const cost = days.reduce((a, d) => a + d.cost, 0) + hotel;
+  const sellingPrice = Math.round(cost * (1 + markup / 100));
+
+  const saveDraft = async () => {
+    setSaving(true);
+    try {
+      const itineraryData = { title, days, hotel, markup, travellers };
+      if (draftQuote) {
+        await updateRecord("quotations", {
+          ...draftQuote,
+          extra: { ...(draftQuote.extra ?? {}), itinerary: itineraryData } as unknown as Record<
+            string,
+            string | number
+          >,
+          amount: sellingPrice,
+        });
+      } else {
+        await createRecord("quotations", {
+          id: `QT-${Date.now().toString(36).toUpperCase().slice(-6)}`,
+          name: title,
+          detail: `${days.length}-day itinerary · ${travellers} travellers`,
+          destination: "Bali, Indonesia",
+          owner: "",
+          branch: "",
+          date: new Date().toISOString().slice(0, 10),
+          amount: sellingPrice,
+          currency,
+          status: "Draft",
+          email: "",
+          phone: "",
+          source: "Itinerary builder",
+          notes: "",
+          extra: { itinerary: itineraryData } as unknown as Record<string, string | number>,
+        });
+      }
+      toast.success("Itinerary saved as a draft quotation");
+    } catch (e) {
+      toast.error(errorMessage(e, "Could not save the itinerary"));
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div className="itinerary-workspace">
       <div className="itinerary-editor">
@@ -1955,12 +2524,8 @@ function Itinerary() {
         <p className="cost-disclaimer">
           Before taxes, commissions and fees. Tax treatment is configured by your finance team.
         </p>
-        <Button
-          onClick={() => {
-            toast.success("Itinerary draft saved for this visit");
-          }}
-        >
-          <Check /> Save draft
+        <Button onClick={saveDraft} disabled={saving}>
+          <Check /> {saving ? "Saving…" : "Save draft"}
         </Button>
         <Button variant="outline" onClick={() => setPreview(true)}>
           <FileText /> Preview proposal
@@ -2235,7 +2800,15 @@ const allModules = findModule("leads")
     ]
   : [];
 
-function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; userLanguage: Language; setUserLanguage: (v: Language) => void }) {
+function SettingsPanel({
+  tab,
+  userLanguage,
+  setUserLanguage,
+}: {
+  tab: string;
+  userLanguage: Language;
+  setUserLanguage: (v: Language) => void;
+}) {
   const {
     settings,
     updateSettings,
@@ -2243,7 +2816,6 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
     fields,
     addField,
     removeField,
-    resetDemoData,
     user,
     reload,
     status: authStatus,
@@ -2471,25 +3043,30 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
               <Check /> Update password
             </Button>
           </div>
-        <h3>Language</h3>
-        <label className="setting-row">
-          Display language
-          <select
-            value={userLanguage}
-            onChange={(e) => {
-              const next = e.target.value as Language;
-              setUserLanguage(next);
-              localStorage.setItem("travo.language", next);
-            }}
-          >
-            {Object.entries(LANGUAGES).map(([key, info]) => (
-              <option key={key} value={key}>
-                {info.native} ({info.label})
-              </option>
-            ))}
-          </select>
-        </label>
+          <h3>Language</h3>
+          <label className="setting-row">
+            Display language
+            <select
+              value={userLanguage}
+              onChange={(e) => {
+                const next = e.target.value as Language;
+                setUserLanguage(next);
+                localStorage.setItem("travo.language", next);
+              }}
+            >
+              {Object.entries(LANGUAGES).map(([key, info]) => (
+                <option key={key} value={key}>
+                  {info.native} ({info.label})
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="setting-hint">
+            Notifications use this language today. The rest of the workspace is still in English
+            while translations are completed — we say so instead of pretending.
+          </p>
         </form>
+        <TwoFactorPanel enabled={authStatus === "ready"} />
       </div>
     );
 
@@ -2613,13 +3190,13 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
     return (
       <div className="settings-workspace">
         <h2>Security preferences</h2>
-        <p>These preferences are stored for this browser. Account security itself is enforced by the server.</p>
+        <p>What this browser should remember while you work.</p>
         {(
           [
             [
               "twoFactor",
-              "Two-factor authentication",
-              "Require a second verification step at sign-in.",
+              "Two-factor authentication (not available yet)",
+              "Not switched on yet. Sign-in is protected by your password, refresh-token rotation and per-account rate limits until 2FA ships.",
             ],
             ["mask", "Mask sensitive traveller data", "Hide passport numbers in list views."],
             ["quiet", "Quiet hours", "Pause non-urgent alerts outside work hours."],
@@ -2634,6 +3211,7 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
               <input
                 type="checkbox"
                 aria-label={title}
+                disabled={key === "twoFactor"}
                 checked={security[key]}
                 onChange={(e) =>
                   updateSettings({ security: { ...security, [key]: e.target.checked } })
@@ -2643,6 +3221,10 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
             </label>
           </div>
         ))}
+        <p className="cost-disclaimer">
+          These switches are remembered in this browser. The real rules — who can see which branch,
+          which records and which actions — are enforced by the server on every request.
+        </p>
         <div className="dialog-actions">
           <Button onClick={() => toast.success("Preferences saved")}>
             <Check /> Save preferences
@@ -2650,6 +3232,8 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
         </div>
       </div>
     );
+
+  if (tab === "Recycle bin") return <RecycleBin />;
 
   if (tab === "Tax settings")
     return (
@@ -2686,6 +3270,25 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
             />
           </label>
           <label>
+            TCS % (section 206C(1G))
+            <input
+              type="number"
+              min="0"
+              max="30"
+              step="0.1"
+              value={settings.tcsPercent}
+              onChange={(e) => updateSettings({ tcsPercent: Number(e.target.value) || 0 })}
+            />
+          </label>
+          <label>
+            TCS note on the invoice
+            <input
+              value={settings.tcsNote}
+              placeholder="e.g. TCS collected on international packages"
+              onChange={(e) => updateSettings({ tcsNote: e.target.value })}
+            />
+          </label>
+          <label>
             Invoice prefix
             <input
               value={settings.invoicePrefix}
@@ -2717,6 +3320,12 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
             </select>
           </label>
         </div>
+        <p className="mt-3 text-sm text-muted">
+          Leave TCS at 0 unless you collect it. When it is above zero every GST invoice prints a
+          separate TCS line under the tax, and the Tax &amp; GST working paper reports it apart from
+          GST — because it is money held for the government, not income. A single invoice can
+          override the rate by storing <code>tcsRate</code> in its extra fields.
+        </p>
         <div className="fx-rates-block">
           <h3>FX rates (INR per unit)</h3>
           <p>
@@ -2755,9 +3364,9 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
       <div className="settings-workspace">
         <h2>Email &amp; WhatsApp</h2>
         <p>
-          Connect YOUR OWN accounts so enquiries, quotations and invoices really reach the
-          customer. Gmail needs an app password (Google Account → Security → 2-Step
-          Verification → App passwords).
+          Connect YOUR OWN accounts so enquiries, quotations and invoices really reach the customer.
+          Gmail needs an app password (Google Account → Security → 2-Step Verification → App
+          passwords).
         </p>
         {channelStatus?.email.configured ? (
           <div className="branch-list" style={{ marginBottom: 16 }}>
@@ -2780,8 +3389,8 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
               <div>
                 <h3>Email is not connected</h3>
                 <p>
-                  Messages are still written to the outbox and queued — nothing is lost, but
-                  nothing is delivered until you connect an account.
+                  Messages are still written to the outbox and queued — nothing is lost, but nothing
+                  is delivered until you connect an account.
                 </p>
               </div>
               <Status value="Not connected" />
@@ -2900,10 +3509,13 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
           )}
         </div>
 
-        <h3 style={{ marginTop: 28 }}>WhatsApp Business</h3>
+        <WhatsAppConnect />
+
+        <h3 style={{ marginTop: 28 }}>WhatsApp Business (Cloud API)</h3>
         <p>
-          Use Meta&apos;s WhatsApp Cloud API. Add your permanent access token and phone number
-          ID below — messages then leave the system for real.
+          Optional for agencies on Meta&apos;s official API. Add your permanent access token and
+          phone number ID — messages then leave the system for real. The scanned number above is
+          used first when it is linked.
         </p>
         <div className="form-grid">
           <label>
@@ -3409,12 +4021,16 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
     return (
       <div className="settings-workspace">
         <h2>Company admin</h2>
-        <p>Organisation-level controls for {settings.orgName}. The Traveldesk platform console lives in its own portal.</p>
+        <p>
+          Organisation-level controls for {settings.orgName}. The Traveldesk platform console lives
+          in its own portal.
+        </p>
         <div className="subscription-summary">
           <div>
             <h3>{settings.orgName}</h3>
             <p>
-              {settings.employees.length} team members A� {settings.branches.length} branches A� {settings.currency}
+              {settings.employees.length} team members A� {settings.branches.length} branches A�{" "}
+              {settings.currency}
             </p>
           </div>
           <Status value="Active" />
@@ -3443,11 +4059,6 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
               ))}
             </tbody>
           </table>
-        </div>
-        <div className="dialog-actions">
-          <Button variant="outline" onClick={() => { resetDemoData(); toast.success("Workspace data reloaded"); }}>
-            <Trash2 /> Reload demo data
-          </Button>
         </div>
       </div>
     );
@@ -3726,11 +4337,10 @@ function SettingsPanel({ tab, userLanguage, setUserLanguage }: { tab: string; us
         <Button
           variant="outline"
           onClick={() => {
-            resetDemoData();
-            toast.success("Workspace data reloaded");
+            void reload().then(() => toast.success("Workspace refreshed"));
           }}
         >
-          <Trash2 /> Reload workspace data
+          <RefreshCw /> Refresh workspace
         </Button>
         <Button
           disabled={savingBilling}
@@ -3792,11 +4402,23 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
         <form className="flight-search-form" onSubmit={(e) => void runSearch(e)}>
           <label>
             From (IATA)
-            <input value={from} onChange={(e) => setFrom(e.target.value.toUpperCase())} required maxLength={3} pattern="[A-Za-z]{3}" />
+            <input
+              value={from}
+              onChange={(e) => setFrom(e.target.value.toUpperCase())}
+              required
+              maxLength={3}
+              pattern="[A-Za-z]{3}"
+            />
           </label>
           <label>
             To (IATA)
-            <input value={to} onChange={(e) => setTo(e.target.value.toUpperCase())} required maxLength={3} pattern="[A-Za-z]{3}" />
+            <input
+              value={to}
+              onChange={(e) => setTo(e.target.value.toUpperCase())}
+              required
+              maxLength={3}
+              pattern="[A-Za-z]{3}"
+            />
           </label>
           <label>
             Departure
@@ -3840,10 +4462,16 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
             </h3>
             {result.offers.map((offer, i) => (
               <div className="flight-result" key={`${offer.airline}-${i}`}>
-                <span className={`airline-logo tone-${i % 3}`}>{offer.airline.slice(0, 2).toUpperCase()}</span>
+                <span className={`airline-logo tone-${i % 3}`}>
+                  {offer.airline.slice(0, 2).toUpperCase()}
+                </span>
                 <div>
                   <h4>{offer.airline}</h4>
-                  <small>{offer.seatsLeft != null ? `${offer.seatsLeft} seats left` : "Availability live"}</small>
+                  <small>
+                    {offer.seatsLeft != null
+                      ? `${offer.seatsLeft} seats left`
+                      : "Availability live"}
+                  </small>
                 </div>
                 <div className="flight-times">
                   <strong>{offer.departure.time.slice(11, 16)}</strong>
@@ -3853,20 +4481,22 @@ function FlightSearch({ rows, onOpen }: { rows: RecordRow[]; onOpen: (r: RecordR
                   <strong>{offer.arrival.time.slice(11, 16)}</strong>
                 </div>
                 <div>
-                  <strong>
-                    {money(offer.price, offer.currency || currency)}
-                  </strong>
+                  <strong>{money(offer.price, offer.currency || currency)}</strong>
                   <small>per traveller · live fare</small>
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    const match = rows.find((r) => r.destination.toLowerCase().includes(to.toLowerCase()));
-                    if (match) onOpen(match);
-                    else toast.info("Save these details against a booking once the customer chooses a fare.");
+                  onClick={async () => {
+                    const fareLine = `${offer.airline} · ${from}→${to} · ${offer.departure.time.slice(11, 16)}–${offer.arrival.time.slice(11, 16)} · ${money(offer.price, offer.currency || currency)} per traveller`;
+                    try {
+                      await navigator.clipboard.writeText(fareLine);
+                      toast.success("Fare copied — paste it into a quote or booking note.");
+                    } catch {
+                      toast.info(fareLine);
+                    }
                   }}
                 >
-                  View details
+                  Copy fare
                 </Button>
               </div>
             ))}
@@ -4096,10 +4726,7 @@ function TemplatesPanel() {
   return (
     <div className="settings-workspace">
       <h2>Message templates</h2>
-      <p>
-        The replies you send every day. They show up as one-tap chips inside any
-        conversation.
-      </p>
+      <p>The replies you send every day. They show up as one-tap chips inside any conversation.</p>
       <div className="form-grid">
         <label>
           Channel
@@ -4188,11 +4815,15 @@ function ConsentPanel() {
   const rows = consents ?? [];
   const customers = getRows("customers");
 
-  const save = async (contactEmail: string, contactName: string, values: {
-    email: boolean;
-    whatsapp: boolean;
-    calls: boolean;
-  }) => {
+  const save = async (
+    contactEmail: string,
+    contactName: string,
+    values: {
+      email: boolean;
+      whatsapp: boolean;
+      calls: boolean;
+    },
+  ) => {
     setBusy(true);
     try {
       await saveConsent({
@@ -4224,8 +4855,8 @@ function ConsentPanel() {
     <div className="settings-workspace">
       <h2>Consent</h2>
       <p>
-        What each customer agreed to. Only message a contact on the channels they
-        ticked � that is what keeps you compliant.
+        What each customer agreed to. Only message a contact on the channels they ticked � that is
+        what keeps you compliant.
       </p>
       <div className="form-grid">
         <label>
@@ -4238,11 +4869,7 @@ function ConsentPanel() {
         </label>
         <label>
           Customer name
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Optional"
-          />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Optional" />
         </label>
       </div>
       <div className="dialog-actions">
@@ -4313,7 +4940,10 @@ function ConsentPanel() {
             {customers.slice(0, 12).map((customer) => {
               const existing = rows.find((r) => r.contactEmail === customer.email);
               return (
-                <div key={customer.id} className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-glass-2 px-3 py-2">
+                <div
+                  key={customer.id}
+                  className="flex items-center justify-between gap-2 rounded-2xl border border-line bg-glass-2 px-3 py-2"
+                >
                   <div className="min-w-0">
                     <div className="truncate text-xs font-semibold">{customer.name}</div>
                     <div className="truncate text-[11px] text-muted">
