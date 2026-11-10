@@ -163,6 +163,28 @@ async function refreshSession(): Promise<boolean> {
   }
 }
 
+/**
+ * A request that never reached the API is not a server error and not a wrong
+ * password — saying "Failed to fetch" hides that. This is the sentence the
+ * sign-in card shows instead, with the address the browser actually tried.
+ */
+const unreachable = () =>
+  new ApiError(
+    0,
+    "network_error",
+    `Can't reach the server at ${API_BASE_URL}. Check your internet connection and that the API is running, then try again.`,
+  );
+
+/** `withRetry`, but a dead network reads as a sentence rather than "Failed to fetch". */
+async function sendWithRetry(send: () => Promise<Response>, useAuth: boolean): Promise<Response> {
+  try {
+    return await withRetry(send, useAuth);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw unreachable();
+  }
+}
+
 /** Performs a request and returns the unwrapped `data` payload. */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
@@ -185,7 +207,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     return fetch(buildUrl(path, options.query), init);
   };
 
-  let response = await withRetry(send, useAuth);
+  let response: Response;
+  try {
+    response = await sendWithRetry(send, useAuth);
+  } catch {
+    throw unreachable();
+  }
 
   if (response.status === 401 && useAuth) {
     refreshInFlight =
@@ -194,7 +221,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         refreshInFlight = null;
       });
     const refreshed = await refreshInFlight;
-    if (refreshed) response = await withRetry(send, useAuth);
+    if (refreshed) {
+      try {
+        response = await sendWithRetry(send, useAuth);
+      } catch {
+        throw unreachable();
+      }
+    }
   }
 
   const text = await response.text();
@@ -240,14 +273,14 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     return fetch(buildUrl(path), { method: "POST", headers, body: form, credentials: "include" });
   };
 
-  let response = await withRetry(send, useAuth);
+  let response = await sendWithRetry(send, useAuth);
   if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
         refreshInFlight = null;
       });
-    if (await refreshInFlight) response = await withRetry(send, useAuth);
+    if (await refreshInFlight) response = await sendWithRetry(send, useAuth);
   }
 
   const text = await response.text();
@@ -285,14 +318,14 @@ export async function apiDownload(path: string, query?: Query): Promise<string> 
     return fetch(buildUrl(path, query), { method: "GET", headers, credentials: "include" });
   };
 
-  let response = await withRetry(send, useAuth);
+  let response = await sendWithRetry(send, useAuth);
   if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
         refreshInFlight = null;
       });
-    if (await refreshInFlight) response = await withRetry(send, useAuth);
+    if (await refreshInFlight) response = await sendWithRetry(send, useAuth);
   }
   if (!response.ok)
     throw new ApiError(response.status, `HTTP_${response.status}`, response.statusText);
@@ -309,14 +342,14 @@ export async function apiBlob(path: string, query?: Query): Promise<Blob> {
     return fetch(buildUrl(path, query), { method: "GET", headers, credentials: "include" });
   };
 
-  let response = await withRetry(send, useAuth);
+  let response = await sendWithRetry(send, useAuth);
   if (response.status === 401) {
     refreshInFlight =
       refreshInFlight ??
       refreshSession().finally(() => {
         refreshInFlight = null;
       });
-    if (await refreshInFlight) response = await withRetry(send, useAuth);
+    if (await refreshInFlight) response = await sendWithRetry(send, useAuth);
   }
   if (!response.ok)
     throw new ApiError(response.status, `HTTP_${response.status}`, response.statusText);
