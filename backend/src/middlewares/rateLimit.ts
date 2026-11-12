@@ -71,6 +71,24 @@ export const authLimiter = rateLimit({
 });
 
 /**
+ * Public lead form: unauthenticated and writes a row, so it gets its own
+ * budget per address. Ten enquiries an hour is generous for a real traveller
+ * and useless for a form-spam script.
+ */
+export const leadFormLimiter = rateLimit({
+  ...base,
+  windowMs: 60 * 60_000,
+  max: 10,
+  message: {
+    success: false,
+    error: {
+      code: "too_many_requests",
+      message: "Too many enquiries from this address. Please email us directly.",
+    },
+  },
+});
+
+/**
  * Customer-portal lookup is unauthenticated and accepts an email + reference.
  * Cap it hard so a reference cannot be brute-forced.
  */

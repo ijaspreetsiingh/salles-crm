@@ -69,13 +69,30 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((cells) => cells.some((value) => value.trim() !== ""));
 }
 
+/** One RFC-4180 header line, without a trailing newline. */
+export function csvHeader(columns: Array<{ key: string; label: string }>): string {
+  return columns.map((column) => escapeCell(column.label)).join(",");
+}
+
+/**
+ * One RFC-4180 data line, without a trailing newline.
+ *
+ * Exported separately from `toCsv` so a large export can be written batch by
+ * batch. Building a 100,000-row string in memory is exactly the kind of thing
+ * that takes the whole API process down with it.
+ */
+export function csvRow(
+  row: Record<string, CsvValue>,
+  columns: Array<{ key: string; label: string }>,
+): string {
+  return columns.map((column) => escapeCell(row[column.key])).join(",");
+}
+
 /** Serialises rows into an RFC-4180 CSV string. */
 export function toCsv(
   rows: Array<Record<string, CsvValue>>,
   columns?: Array<{ key: string; label: string }>,
 ): string {
   const cols = columns ?? (rows[0] ? Object.keys(rows[0]).map((key) => ({ key, label: key })) : []);
-  const header = cols.map((c) => escapeCell(c.label)).join(",");
-  const body = rows.map((row) => cols.map((c) => escapeCell(row[c.key])).join(","));
-  return [header, ...body].join("\n");
+  return [csvHeader(cols), ...rows.map((row) => csvRow(row, cols))].join("\n");
 }

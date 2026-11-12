@@ -234,8 +234,28 @@ export function computeInvoiceGst(input: {
   };
 }
 
+export type CreditNoteGst = {
+  reference: string;
+  invoiceReference: string;
+  amount: number;
+  gstRate: number;
+  customerGstin: string;
+  date: string;
+};
+
 export type Gstr1Report = {
   period: { from: string; to: string };
+  /** Table 9B: credit notes issued in the period. */
+  creditNotes: Array<{
+    creditNoteNumber: string;
+    invoiceNumber: string;
+    date: string;
+    taxable: number;
+    igst: number;
+    cgst: number;
+    sgst: number;
+    total: number;
+  }>;
   /** Table 4A: registered buyers, one row per invoice. */
   b2b: Array<{
     gstin: string;
@@ -286,6 +306,8 @@ export type Gstr1Report = {
 export function buildGstr1(
   invoices: InvoiceGst[],
   period: { from: string; to: string },
+  creditNotes: CreditNoteGst[] = [],
+  sellerState = "",
 ): Gstr1Report {
   const b2b: Gstr1Report["b2b"] = [];
   const b2cMap = new Map<string, Gstr1Report["b2cs"][number]>();
@@ -356,8 +378,40 @@ export function buildGstr1(
     b2cMap.set(key, row);
   }
 
+  /*
+   * Credit notes reduce the tax already reported on their original invoice.
+   * They get their own 9B rows and are netted out of the totals; leaving them
+   * out overstates both turnover and GST payable.
+   */
+  const creditNoteRows: Gstr1Report["creditNotes"] = creditNotes.map((note) => {
+    const rate = Number(note.gstRate) || 0;
+    const total = roundMoney(note.amount);
+    const taxable = rate > 0 ? roundMoney(total / (1 + rate / 100)) : total;
+    const tax = roundMoney(total - taxable);
+    const buyerState = stateCodeFromGstin(note.customerGstin);
+    const interState = Boolean(buyerState) && Boolean(sellerState) && buyerState !== sellerState;
+    return {
+      creditNoteNumber: note.reference,
+      invoiceNumber: note.invoiceReference,
+      date: note.date,
+      taxable,
+      igst: interState ? tax : 0,
+      cgst: interState ? 0 : roundMoney(tax / 2),
+      sgst: interState ? 0 : roundMoney(tax - roundMoney(tax / 2)),
+      total,
+    };
+  });
+  for (const note of creditNoteRows) {
+    totals.taxable = roundMoney(totals.taxable - note.taxable);
+    totals.igst = roundMoney(totals.igst - note.igst);
+    totals.cgst = roundMoney(totals.cgst - note.cgst);
+    totals.sgst = roundMoney(totals.sgst - note.sgst);
+    totals.tax = roundMoney(totals.tax - note.igst - note.cgst - note.sgst);
+  }
+
   return {
     period,
+    creditNotes: creditNoteRows,
     b2b,
     b2cs: [...b2cMap.values()].sort(
       (a, b) => a.placeOfSupply.localeCompare(b.placeOfSupply) || a.rate - b.rate,
@@ -398,6 +452,7 @@ export function computePurchaseGst(input: {
 export type Gstr3bReport = {
   period: { from: string; to: string };
   outward: { taxable: number; igst: number; cgst: number; sgst: number; tax: number };
+  creditNotes: { taxable: number; igst: number; cgst: number; sgst: number; tax: number; count: number };
   zeroRated: { taxable: number; exports: number };
   itc: { taxable: number; igst: number; cgst: number; sgst: number; tax: number; bills: number };
   /** Negative means credit carried forward. */
@@ -418,6 +473,7 @@ export function buildGstr3b(
   purchases: Array<PurchaseGst & { reference: string }>,
   period: { from: string; to: string },
   sellerState: string,
+  creditNotes: CreditNoteGst[] = [],
 ): Gstr3bReport {
   const issues: Gstr3bReport["issues"] = [];
   const outward = { taxable: 0, igst: 0, cgst: 0, sgst: 0, tax: 0 };
@@ -434,6 +490,31 @@ export function buildGstr3b(
     outward.cgst = roundMoney(outward.cgst + invoice.cgst);
     outward.sgst = roundMoney(outward.sgst + invoice.sgst);
     outward.tax = roundMoney(outward.tax + invoice.tax);
+  }
+
+  const creditNoteTotals = { taxable: 0, igst: 0, cgst: 0, sgst: 0, tax: 0, count: 0 };
+  for (const note of creditNotes) {
+    const rate = Number(note.gstRate) || 0;
+    const total = roundMoney(note.amount);
+    const taxable = rate > 0 ? roundMoney(total / (1 + rate / 100)) : total;
+    const tax = roundMoney(total - taxable);
+    const buyerState = stateCodeFromGstin(note.customerGstin);
+    const interState =
+      Boolean(buyerState) && Boolean(sellerState) && buyerState !== sellerState;
+    const igst = interState ? tax : 0;
+    const cgst = interState ? 0 : roundMoney(tax / 2);
+    const sgst = interState ? 0 : roundMoney(tax - cgst);
+    creditNoteTotals.taxable = roundMoney(creditNoteTotals.taxable + taxable);
+    creditNoteTotals.igst = roundMoney(creditNoteTotals.igst + igst);
+    creditNoteTotals.cgst = roundMoney(creditNoteTotals.cgst + cgst);
+    creditNoteTotals.sgst = roundMoney(creditNoteTotals.sgst + sgst);
+    creditNoteTotals.tax = roundMoney(creditNoteTotals.tax + tax);
+    creditNoteTotals.count += 1;
+    outward.taxable = roundMoney(outward.taxable - taxable);
+    outward.igst = roundMoney(outward.igst - igst);
+    outward.cgst = roundMoney(outward.cgst - cgst);
+    outward.sgst = roundMoney(outward.sgst - sgst);
+    outward.tax = roundMoney(outward.tax - tax);
   }
 
   const itc = { taxable: 0, igst: 0, cgst: 0, sgst: 0, tax: 0, bills: 0 };
@@ -468,6 +549,7 @@ export function buildGstr3b(
   return {
     period,
     outward,
+    creditNotes: creditNoteTotals,
     zeroRated,
     itc,
     net: { ...net, tax: roundMoney(net.igst + net.cgst + net.sgst) },
@@ -521,6 +603,26 @@ export function gstr1Csv(report: Gstr1Report): string {
         row.cgst,
         row.sgst,
         "",
+      ]
+        .map(csvCell)
+        .join(","),
+    );
+  }
+  for (const row of report.creditNotes) {
+    lines.push(
+      [
+        "9B Credit note",
+        "",
+        "",
+        "",
+        row.creditNoteNumber,
+        row.date,
+        "",
+        row.taxable,
+        row.igst,
+        row.cgst,
+        row.sgst,
+        row.total,
       ]
         .map(csvCell)
         .join(","),

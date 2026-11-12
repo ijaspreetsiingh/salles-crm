@@ -32,3 +32,10 @@ export const randomToken = (bytes = 32): string => crypto.randomBytes(bytes).toS
 
 export const sha256 = (value: string): string =>
   crypto.createHash("sha256").update(value).digest("hex");
+
+/** Generates a CUID-style collision-resistant unique id (25 chars). */
+export function cuid(): string {
+  const timestamp = Date.now().toString(36);
+  const randomPart = crypto.randomBytes(10).toString("base64url").slice(0, 16);
+  return `c${timestamp}${randomPart}`.slice(0, 25);
+}

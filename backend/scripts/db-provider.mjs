@@ -21,6 +21,35 @@ if (target !== "sqlite" && target !== "postgres") {
   process.exit(1);
 }
 
+/*
+ * SQLite is no longer a supported target.
+ *
+ * The money model is built on native `DECIMAL(14,2)` columns so a receipt, a
+ * ledger total and a GST invoice agree to the paisa. Prisma rejects
+ * `@db.Decimal` on the SQLite connector, so switching back leaves a schema that
+ * cannot even be generated — the flip used to "succeed" and then fail hours
+ * later with a confusing validation error.
+ *
+ * Refusing here is the honest behaviour. Existing SQLite installs move to
+ * Postgres once with `scripts/migrate-sqlite-to-postgres.mjs`.
+ */
+if (target === "sqlite") {
+  console.error(
+    [
+      "SQLite is not supported by this schema.",
+      "",
+      "Money is stored as DECIMAL(14,2) for exact arithmetic, and Prisma's SQLite",
+      "connector cannot represent that native type. Use PostgreSQL:",
+      "",
+      "  docker compose -f docker-compose.dev.yml up -d",
+      "  DATABASE_URL=postgres://traveldesk:traveldesk@localhost:5432/traveldesk npm run db:migrate",
+      "",
+      "Carrying an old SQLite file across? Run scripts/migrate-sqlite-to-postgres.mjs once.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
 const source = await readFile(schemaPath, "utf8");
 const next = source.replace(/(provider\s*=\s*")(sqlite|postgres)(")/, `$1${target}$3`);
 if (next === source) {

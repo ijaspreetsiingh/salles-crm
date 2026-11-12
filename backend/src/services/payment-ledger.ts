@@ -52,17 +52,19 @@ export async function ledgerTotals(input: LedgerScope): Promise<LedgerTotals> {
   return prisma.$transaction((tx) => ledgerTotalsInTx(tx, input));
 }
 
-/** Same as `ledgerTotals`, inside an existing transaction. */
-export async function ledgerTotalsInTx(tx: Tx, input: LedgerScope): Promise<LedgerTotals> {
-  const rows = await tx.payment.findMany({
-    where: {
-      organizationId: input.organizationId,
-      moduleId: input.moduleId,
-      recordReference: input.reference,
-      status: { in: ["paid", "recorded"] },
-    },
-    select: { amount: true, kind: true },
-  });
+/**
+ * Adds up one document's ledger rows.
+ *
+ * Pure on purpose: the same arithmetic decides the balance on an invoice, the
+ * "paid" status and what a refund does to it. Keeping it out of the query
+ * means it can be tested with the ugly numbers real receipts have —
+ * ₹33,333.33 split three ways, a refund that leaves half a paisa behind — and
+ * proved to never drift.
+ */
+export function computeLedgerTotals(
+  rows: Array<{ amount: number; kind: string }>,
+  total: number,
+): LedgerTotals {
   const received = sumMoney(
     rows.filter((row) => row.kind !== "refund").map((row) => row.amount),
   );
@@ -74,9 +76,23 @@ export async function ledgerTotalsInTx(tx: Tx, input: LedgerScope): Promise<Ledg
     received,
     refunded,
     net,
-    balance: Math.max(0, subtractMoney(input.total, net)),
+    balance: Math.max(0, subtractMoney(total, net)),
     count: rows.length,
   };
+}
+
+/** Same as `ledgerTotals`, inside an existing transaction. */
+export async function ledgerTotalsInTx(tx: Tx, input: LedgerScope): Promise<LedgerTotals> {
+  const rows = await tx.payment.findMany({
+    where: {
+      organizationId: input.organizationId,
+      moduleId: input.moduleId,
+      recordReference: input.reference,
+      status: { in: ["paid", "recorded"] },
+    },
+    select: { amount: true, kind: true },
+  });
+  return computeLedgerTotals(rows, input.total);
 }
 
 /**
@@ -308,7 +324,7 @@ export async function createLedgerPayment(input: {
     });
   }
 
-  return { payment: mapPayment(result.payment), totals: result.totals };
+  return { payment: mapPayment(result.payment), totals: result.totals, recordId: result.recordId };
 }
 
 export async function deleteLedgerPayment(input: { organizationId: string; paymentId: string }) {

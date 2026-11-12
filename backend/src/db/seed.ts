@@ -51,6 +51,7 @@ async function ensurePlatformAdmin(demoOrganizationId: string) {
         name: "Traveldesk Super Admin",
         passwordHash: await hashPassword(env.SEED_SUPER_ADMIN_PASSWORD),
         active: true,
+        emailVerified: true,
       },
     }));
 
@@ -209,6 +210,8 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
         phone: `+91 98${index}00 12${index}45`,
         passwordHash: await hashPassword(password),
         active: employee.active,
+        // Seeded accounts are operator-created, not self-registered.
+        emailVerified: true,
       },
     });
     userMap.set(employee.name, user.id);

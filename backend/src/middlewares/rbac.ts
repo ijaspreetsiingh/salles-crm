@@ -24,6 +24,7 @@ const BASE_MODULE: Record<string, string> = {
   comms: "inbox",
   conversations: "inbox",
   finance: "finance",
+  gst: "finance",
   payments: "finance",
   payables: "finance",
   expenses: "finance",

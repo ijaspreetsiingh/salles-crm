@@ -75,7 +75,14 @@ model Organization {
   hotelRates    HotelRate[]
   campaigns     Campaign[]
   sequences     Sequence[]
+  attendance    Attendance[]
+  creditNotes   CreditNote[]
   groupMembers  GroupMember[]
+  recordRelations RecordRelation[]
+  recordEvents  RecordEvent[]
+  savedViews    SavedView[]
+  favorites     Favorite[]
+  preferences   Preference[]
 }
 
 model User {
@@ -99,6 +106,10 @@ model User {
   /// SHA-256 hashes of one-time recovery codes (JSON array).
   twoFactorRecoveryCodes String @default("[]")
   lastLoginAt     DateTime?
+  /// Running count of failed sign-in attempts since the last success.
+  loginAttempts   Int       @default(0)
+  /// When set, the account is locked until this time (account lockout policy).
+  lockedUntil     DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -111,6 +122,10 @@ model User {
   records       Record[]       @relation("RecordOwner")
   attachments   Attachment[]
   savedReports  SavedReport[]
+  savedViews    SavedView[]
+  favorites     Favorite[]
+  preferences   Preference[]
+  recordEvents  RecordEvent[]
 }
 
 model Membership {
@@ -244,6 +259,15 @@ model Record {
   @@index([organizationId, status])
   @@index([organizationId, date])
   @@index([organizationId, ownerId])
+  // Trigram indexes: the workspace search uses ILIKE '%term%', which a btree
+  // index cannot serve. Without these every keystroke scans the whole tenant.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([detail(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([destination(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([email(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([notes(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([reference(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 /// Atomic, gap-free reference counter per organisation and module.
@@ -290,6 +314,7 @@ model Task {
 
   @@index([organizationId, date])
   @@index([organizationId, done])
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model CustomField {
@@ -330,6 +355,7 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([organizationId, moduleId])
   @@index([organizationId, recordId])
+  @@index([label(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model Notification {
@@ -374,6 +400,8 @@ model Conversation {
 
   @@index([organizationId, status])
   @@index([organizationId, channel])
+  @@index([contactName(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([contactEmail(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model Message {
@@ -746,6 +774,17 @@ model Payable {
   dueDate          DateTime?
   status           String    @default("due") // due | partial | paid
   notes            String    @default("")
+  /// Three-way match: purchase order → goods received note → supplier invoice.
+  /// All three amounts must agree before finance releases a payment.
+  poNumber         String    @default("")
+  poAmount         Decimal?  @db.Decimal(14, 2)
+  receivedAmount   Decimal?  @db.Decimal(14, 2)
+  invoiceNumber    String    @default("")
+  invoiceAmount    Decimal?  @db.Decimal(14, 2)
+  /// unmatched | matched | variance | missing_po | missing_grn
+  matchStatus      String    @default("unmatched")
+  matchNote        String    @default("")
+  matchedAt        DateTime?
   createdById      String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -822,6 +861,63 @@ model HotelRate {
   @@index([organizationId, active])
 }
 
+/// Daily attendance for the travel desk. One row per teammate per day, with
+/// the first check-in and last check-out; totals are derived, never stored.
+model Attendance {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  userName       String   @default("")
+  /// Local calendar day, YYYY-MM-DD.
+  date           String
+  checkIn        DateTime?
+  checkOut       DateTime?
+  /// Present | Half day | Leave | Holiday | Work from home
+  status         String   @default("Present")
+  notes          String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+  @@index([organizationId, userId])
+}
+
+/// A GST credit note against a customer invoice (sales return, cancellation,
+/// rate revision). It reduces the invoice's taxable value and the GST already
+/// reported, and keeps its own serial series so the return can reference it.
+model CreditNote {
+  id                  String    @id @default(cuid())
+  organizationId      String
+  reference           String
+  /// Original invoice reference (finance record), e.g. HT-INV-26-27-0007.
+  invoiceReference    String    @default("")
+  customerName        String    @default("")
+  customerGstin       String    @default("")
+  reason              String    @default("")
+  amount              Decimal   @default(0) @db.Decimal(14, 2)
+  currency            String    @default("INR")
+  gstRate             Decimal   @default(0) @db.Decimal(5, 2)
+  /// issued | applied | cancelled
+  status              String    @default("issued")
+  issuedOn            DateTime  @default(now())
+  appliedAt           DateTime?
+  /// Invoice that was reduced by this note, when it is applied.
+  appliesToReference  String    @default("")
+  createdById         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, reference])
+  @@index([organizationId, status])
+  @@index([organizationId, issuedOn])
+  @@index([organizationId, invoiceReference])
+}
+
 /// A marketing send to a group of records on one channel.
 ///
 /// The campaign keeps its audience rule, not a frozen list of people, so the
@@ -838,12 +934,14 @@ model Campaign {
   audienceModule String    @default("leads")
   /// JSON: { statuses: string[] }
   audience       String    @default("{}")
-  status         String    @default("draft") // draft | sending | sent | failed
+  status         String    @default("draft") // draft | sending | sent | failed | scheduled
   total          Int       @default(0)
   sent           Int       @default(0)
   failed         Int       @default(0)
   skipped        Int       @default(0)
   lastSentAt     DateTime?
+  /// When set, the campaign is scheduled to send at this UTC time (instead of immediately).
+  scheduledFor   DateTime?
   createdById    String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1139,4 +1237,136 @@ model FlightPNR {
 
   @@index([organizationId, status])
   @@index([ticketDeadline])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-module relations, activity timeline, saved views, favourites, prefs
+//
+// These five models replace the inferred (name-matching) links the product
+// used to rely on. A real travel agency's workflow is a chain: enquiry →
+// quote → booking → invoice → visa → flight → hotel. Making those links
+// explicit rows — not a guess — is what makes the journey rail, the customer
+// 360 page, and cross-module reporting trustworthy in production.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// An explicit, typed link between two records across modules.
+///
+/// `kind` describes the relationship: "quoted" (lead → quotation),
+/// "booked" (quotation → booking), "invoiced" (booking → invoice),
+/// "visa_for" (booking → visa), "flight_for", "hotel_for", "transfer_for",
+/// "paying_for" (customer → invoice), "escalated_to" (support → booking).
+/// The pair (fromId, toId, kind) is unique so a link cannot be created twice.
+model RecordRelation {
+  id             String   @id @default(cuid())
+  organizationId String
+  fromId         String
+  toId           String
+  /// The semantic type of this link (quoted | booked | invoiced | visa_for |
+  /// flight_for | hotel_for | transfer_for | paying_for | escalated_to | related)
+  kind           String   @default("related")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, kind])
+  @@index([organizationId, fromId])
+  @@index([organizationId, toId])
+  @@index([organizationId, kind])
+}
+
+/// One event in a record's activity timeline: a note, a call, an email, a
+/// status change, a field change, a payment — anything a person or the system
+/// did that matters to the record's story.
+///
+/// The audit log (AuditLog) tracks system events for compliance; RecordEvent
+/// is the user-facing timeline that a person reads in the record sheet. They
+/// are kept separate so deleting a timeline note does not tamper with the
+/// audit trail, and so the audit log can stay terse.
+model RecordEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  recordId       String
+  /// The user who performed the action, or null when the system did it.
+  actorId        String?
+  actorName     String   @default("System")
+  /// note | call | email | whatsapp | status_change | field_change | payment |
+  /// relation_added | relation_removed | created | imported
+  type           String
+  /// Human-readable body for notes, or a JSON diff for field changes.
+  body           String   @default("")
+  /// Structured metadata (field name → old/new value, call outcome, etc.).
+  meta           String   @default("{}")
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, recordId, createdAt])
+  @@index([organizationId, type])
+}
+
+/// A saved filter+sort+column configuration for one module, owned by one
+/// person or shared across the team.
+model SavedView {
+  id             String   @id @default(cuid())
+  organizationId String
+  /// null = organisation-wide (built-in demo views); a user id = personal.
+  userId         String?
+  moduleId       String
+  title          String
+  /// JSON: { status, owner, branch, source, from, to, q, tab }
+  filters        String   @default("{}")
+  /// JSON: { field, order }
+  sort           String   @default("{}")
+  /// JSON: ["reference","name","status", ...] — visible columns
+  columns        String   @default("[]")
+  /// A layout hint: "table" | "board" | "cards"
+  layout         String   @default("table")
+  isDefault      Boolean  @default(false)
+  isShared       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, moduleId, title])
+  @@index([organizationId, moduleId])
+  @@index([organizationId, userId])
+}
+
+/// A star on a record or a module, so a person can pin what they reach for
+/// every day.
+model Favorite {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  /// "record" or "module"
+  targetType     String
+  /// The record id or the module id, depending on targetType.
+  targetId       String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([organizationId, userId])
+  @@index([organizationId, targetType])
+}
+
+/// Per-user UI preferences, stored server-side so they survive a device
+/// switch and are consistent across sessions.
+model Preference {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  key            String
+  value          String   @default("")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, key])
+  @@index([organizationId, userId])
 }

@@ -62,6 +62,8 @@ type RuntimeContext = {
   owner: string;
   email: string;
   phone: string;
+  destination: string;
+  source: string;
   recordId: string | null;
 };
 
@@ -80,6 +82,15 @@ function conditionHolds(node: GraphNode, context: RuntimeContext): { ok: boolean
         } ${threshold}`,
       };
     }
+    case "amount_below": {
+      const threshold = Number(value) || 0;
+      return {
+        ok: context.amount < threshold,
+        why: `${context.recordName || "record"} is ${context.amount} — ${
+          context.amount < threshold ? "below" : "not below"
+        } ${threshold}`,
+      };
+    }
     case "status_is": {
       const wanted = value.toLowerCase();
       return {
@@ -87,11 +98,47 @@ function conditionHolds(node: GraphNode, context: RuntimeContext): { ok: boolean
         why: `status is "${context.status}"${wanted ? `, looking for "${value}"` : ""}`,
       };
     }
+    case "status_not": {
+      const unwanted = value.toLowerCase();
+      return {
+        ok: context.status.toLowerCase() !== unwanted,
+        why: `status is "${context.status}", excluding "${value}" — ${
+          context.status.toLowerCase() !== unwanted ? "passed" : "excluded"
+        }`,
+      };
+    }
+    case "owner_is": {
+      const wanted = value.toLowerCase();
+      return {
+        ok: context.owner.toLowerCase().includes(wanted),
+        why: `owner is "${context.owner}"${wanted ? `, looking for "${value}"` : ""}`,
+      };
+    }
     case "owner_empty":
       return {
         ok: !context.owner,
         why: context.owner ? `owned by ${context.owner}` : "no owner yet",
       };
+    case "destination_is": {
+      const wanted = value.toLowerCase();
+      // destination_is is evaluated by the record's context — we need the
+      // destination field, which we didn't capture in the context. Fall back
+      // to checking recordName if destination is empty.
+      const dest = text((context as unknown as Record<string, string>)["destination"], "");
+      return {
+        ok: dest.toLowerCase().includes(wanted) || context.recordName.toLowerCase().includes(wanted),
+        why: `destination contains "${value}" — ${
+          dest.toLowerCase().includes(wanted) ? "found" : "not found"
+        }`,
+      };
+    }
+    case "source_is": {
+      const source = text((context as unknown as Record<string, string>)["source"], "");
+      return {
+        ok: source.toLowerCase() === value.toLowerCase(),
+        why: `source is "${source}", looking for "${value}"`,
+      };
+    }
     case "always":
       return { ok: true, why: "always runs" };
     default:
@@ -195,6 +242,68 @@ async function runAction(node: GraphNode, context: RuntimeContext): Promise<stri
       });
       return `Status set to "${status}"`;
     }
+    case "send_alert": {
+      const message = text(config["message"], "Alert: review this record");
+      const channel = text(config["channel"], "email");
+      if (context.dryRun) return `Would send ${channel} alert: "${message}"`;
+      // Send via the right channel based on config.
+      if (channel === "whatsapp" && context.phone) {
+        await sendWhatsApp({
+          organizationId: context.organizationId,
+          to: context.phone,
+          body: message,
+          template: "alert",
+          userId: context.userId,
+          relatedReference: context.recordName,
+        });
+        return `WhatsApp alert sent to ${context.phone}`;
+      }
+      if (channel === "notification" || !context.email) {
+        await createNotification({
+          organizationId: context.organizationId,
+          title: "Automation alert",
+          body: message,
+          moduleId: context.moduleId,
+          level: "warning",
+        });
+        return "In-app alert sent to the team";
+      }
+      // Default: email alert.
+      await sendEmail({
+        organizationId: context.organizationId,
+        to: context.email,
+        subject: "Travel alert",
+        body: message,
+        template: "alert",
+        userId: context.userId,
+        relatedModule: context.moduleId,
+        relatedReference: context.recordName,
+      });
+      return `Email alert sent to ${context.email}`;
+    }
+    case "webhook": {
+      const url = text(config["url"]);
+      if (!url) return "Skipped — no webhook URL configured";
+      if (context.dryRun) return `Would POST to ${url}`;
+      try {
+        await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordId: context.recordId,
+            module: context.moduleId,
+            name: context.recordName,
+            status: context.status,
+            amount: context.amount,
+            triggeredBy: context.userName,
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+        return `Webhook called: ${url}`;
+      } catch {
+        return `Webhook failed: could not reach ${url}`;
+      }
+    }
     default:
       return `Unknown action "${node.kind}" — nothing done`;
   }
@@ -246,6 +355,8 @@ export async function runWorkflowGraph(input: {
     owner: record?.ownerName ?? "",
     email: record?.email ?? "",
     phone: record?.phone ?? "",
+    destination: record?.destination ?? "",
+    source: record?.source ?? "",
     recordId: record?.id ?? null,
   };
 

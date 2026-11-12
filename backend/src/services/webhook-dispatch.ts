@@ -15,12 +15,22 @@ import { deliverWebhook } from "./webhooks";
 
 /** Backoff schedule in minutes; the last entry repeats. */
 const BACKOFF_MINUTES = [1, 5, 15, 60, 240, 720];
-const MAX_ATTEMPTS = 8;
+export const WEBHOOK_MAX_ATTEMPTS = 8;
+
+/**
+ * How long to wait before retrying a failed delivery.
+ *
+ * Pure and exported so the schedule can be tested: a retry that fires a second
+ * too early is a rate-limit ban, and one that waits a fortnight is a silently
+ * dropped webhook. `attempts` is the number of tries already made.
+ */
+export function webhookBackoffMinutes(attempts: number): number {
+  const index = Math.max(0, Math.min(attempts, BACKOFF_MINUTES.length - 1));
+  return BACKOFF_MINUTES[index] ?? 720;
+}
 
 const backoffFor = (attempts: number) =>
-  new Date(
-    Date.now() + (BACKOFF_MINUTES[Math.min(attempts, BACKOFF_MINUTES.length - 1)] ?? 720) * 60_000,
-  );
+  new Date(Date.now() + webhookBackoffMinutes(attempts) * 60_000);
 
 export type WebhookEvent = {
   organizationId: string;
@@ -127,7 +137,7 @@ export async function attemptDelivery(deliveryId: string): Promise<void> {
     return;
   }
 
-  const exhausted = attempts >= MAX_ATTEMPTS;
+  const exhausted = attempts >= WEBHOOK_MAX_ATTEMPTS;
   await prisma.webhookDelivery.update({
     where: { id: delivery.id },
     data: {

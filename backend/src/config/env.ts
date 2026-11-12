@@ -72,6 +72,19 @@ const envSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().int().positive().default(15),
 
   /**
+   * ClamAV daemon for upload scanning. Empty = only the local EICAR test
+   * signature is rejected; a real deployment should point this at clamd.
+   */
+  CLAMAV_HOST: z.string().optional().default(""),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+  CLAMAV_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+
+  /** Optional Sentry error reporting. Empty = errors stay in local logs only. */
+  SENTRY_DSN: z.string().optional().default(""),
+  SENTRY_ENVIRONMENT: z.string().optional().default(""),
+  SENTRY_RELEASE: z.string().optional().default(""),
+
+  /**
    * Demo data is a development convenience. It must never land in a real
    * workspace by accident, so the default is "on in development, off in
    * production" and production additionally needs SEED_DEMO=true.
@@ -128,6 +141,21 @@ const envSchema = z.object({
    * either way — this flag only decides whether the role is forced.
    */
   TWO_FACTOR_ENFORCEMENT: bool(process.env.NODE_ENV === "production"),
+
+  /**
+   * Refuse a password sign-in until the address has been verified. On in
+   * production by default: an unverified address means password-reset mail and
+   * invoices go to whoever typed the address, not necessarily its owner.
+   * Existing sessions keep working until they expire; refresh is refused, so
+   * the gate closes within one access-token lifetime.
+   */
+  REQUIRE_EMAIL_VERIFICATION: bool(process.env.NODE_ENV === "production"),
+
+  /** Cloudflare Turnstile secret for the public lead form. Empty = no captcha. */
+  TURNSTILE_SECRET_KEY: z.string().optional().default(""),
+  /** Public Turnstile site key, returned with the hosted form metadata. */
+  TURNSTILE_SITE_KEY: z.string().optional().default(""),
+
   DIGEST_ENABLED: bool(true),
   DIGEST_CHECK_MINUTES: z.coerce.number().int().positive().default(15),
 

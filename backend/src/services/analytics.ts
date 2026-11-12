@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { parseJson } from "../lib/utils";
+import { convertToBase, fxContext, type FxContext } from "../lib/fx";
 
 type Filters = { branch?: string; from?: string; to?: string };
 
@@ -82,11 +83,45 @@ function lastMonths(count: number): string[] {
 
 const sum = (rows: Array<{ amount: number }>) => rows.reduce((total, r) => total + r.amount, 0);
 
+/**
+ * Converts rows into the workspace base currency before anything is added.
+ *
+ * A dashboard that adds $1,000 and ₹1,000 as "2,000" is not a rounding issue —
+ * it is a wrong number the owner will act on. Currencies with no configured
+ * rate are excluded and named in `missing`, so the screen can say which ones
+ * were not consolidated instead of inventing a rate.
+ */
+function toBaseRows<T extends { amount: number; currency: string; extra: string | null }>(
+  rows: T[],
+  ctx: FxContext,
+): { rows: T[]; missing: string[] } {
+  const converted: T[] = [];
+  const missing = new Set<string>();
+  for (const row of rows) {
+    const value = convertToBase(row.amount, row.currency, ctx);
+    if (value === null) {
+      missing.add((row.currency || "unknown").toUpperCase());
+      continue;
+    }
+    // Supplier cost lives inside `extra`; it must move with the sale, otherwise
+    // a foreign-currency booking shows a margin that mixes two currencies.
+    const extra = parseJson<Record<string, unknown>>(row.extra ?? "{}", {});
+    const rawCost = Number(extra.cost);
+    if (Number.isFinite(rawCost) && rawCost > 0) {
+      const convertedCost = convertToBase(rawCost, row.currency, ctx);
+      if (convertedCost !== null) extra.cost = convertedCost;
+    }
+    converted.push({ ...row, amount: value, extra: JSON.stringify(extra) } as T);
+  }
+  return { rows: converted, missing: [...missing] };
+}
+
 /** Aggregated metrics for the dashboard home. */
 export async function dashboardOverview(organizationId: string, filters: Filters) {
   const today = new Date().toISOString().slice(0, 10);
 
-  const [bookings, leads, quotations, finance, visa, tasks] = await Promise.all([
+  const fx = await fxContext(organizationId);
+  const [bookingsRaw, leadsRaw, quotations, financeRaw, visa, tasks] = await Promise.all([
     prisma.record.findMany({ where: recordFilter(organizationId, "bookings", filters) }),
     prisma.record.findMany({ where: recordFilter(organizationId, "leads", filters) }),
     prisma.record.findMany({ where: recordFilter(organizationId, "quotations", filters) }),
@@ -94,6 +129,16 @@ export async function dashboardOverview(organizationId: string, filters: Filters
     prisma.record.findMany({ where: recordFilter(organizationId, "visa", filters) }),
     prisma.task.findMany({ where: { organizationId, done: false } }),
   ]);
+
+  const bookingsBase = toBaseRows(bookingsRaw, fx);
+  const leadsBase = toBaseRows(leadsRaw, fx);
+  const financeBase = toBaseRows(financeRaw, fx);
+  const bookings = bookingsBase.rows;
+  const leads = leadsBase.rows;
+  const finance = financeBase.rows;
+  const missingCurrencies = [
+    ...new Set([...bookingsBase.missing, ...leadsBase.missing, ...financeBase.missing]),
+  ];
 
   const confirmedBookings = bookings.filter((b) =>
     ["Confirmed", "paid", "Paid"].includes(b.status),
@@ -195,6 +240,7 @@ export async function dashboardOverview(organizationId: string, filters: Filters
     attention: attention.slice(0, 6),
     byDestination: topBy(bookings, (r) => r.destination, 6),
     byOwner: topBy(bookings, (r) => r.ownerName, 6),
+    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies },
   };
 }
 
@@ -225,9 +271,12 @@ export async function buildReport(organizationId: string, report: string, filter
   };
 
   const moduleId = moduleByReport[report] ?? "bookings";
-  const rows = await prisma.record.findMany({
+  const fx = await fxContext(organizationId);
+  const rawRows = await prisma.record.findMany({
     where: recordFilter(organizationId, moduleId, filters),
   });
+  const base = toBaseRows(rawRows, fx);
+  const rows = base.rows;
 
   const wonRows = rows.filter((r) =>
     [
@@ -287,5 +336,6 @@ export async function buildReport(organizationId: string, report: string, filter
     byOwner: topBy(rows, (r) => r.ownerName, 8),
     byStatus: topBy(rows, (r) => r.status, 8),
     bySource: topBy(rows, (r) => r.source, 8),
+    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies: base.missing },
   };
 }

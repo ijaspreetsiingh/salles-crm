@@ -38,7 +38,25 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   // raw body, not with a browser session — there is no CSRF cookie to echo.
   if (req.path.startsWith("/webhooks")) return next();
 
-  const cookieToken = (req as Request & { cookies?: Record<string, string> }).cookies?.[CSRF_COOKIE];
+  /*
+   * CSRF only matters when the browser is riding a session cookie. A request
+   * that authenticates with an `Authorization: Bearer` token or an `x-api-key`
+   * header and carries no access-token cookie cannot be forged by another
+   * site: sending a custom header cross-origin needs a CORS preflight, which
+   * this server refuses for unknown origins.
+   *
+   * Without this exemption every documented server-to-server API call failed
+   * with `csrf_failed`, because a machine client has no cookie jar to echo a
+   * double-submit token from. The browser app still sends the cookie, so its
+   * writes stay protected.
+   */
+  const cookies = (req as Request & { cookies?: Record<string, string> }).cookies;
+  const hasSessionCookie = Boolean(cookies?.access_token);
+  const hasHeaderCredential =
+    /^Bearer\s+\S/i.test(req.header("authorization") ?? "") || Boolean(req.header("x-api-key"));
+  if (hasHeaderCredential && !hasSessionCookie) return next();
+
+  const cookieToken = cookies?.[CSRF_COOKIE];
   const headerToken = req.header(CSRF_HEADER);
   if (!cookieToken || !headerToken || cookieToken !== headerToken) {
     res.status(403).json({

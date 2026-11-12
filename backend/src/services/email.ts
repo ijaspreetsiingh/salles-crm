@@ -2,6 +2,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { prisma } from "../lib/prisma";
 import { stringifyJson } from "../lib/utils";
 import { resolveEmailAccount } from "./channels";
+import { eventEmailSent } from "./timeline";
 
 /**
  * Real email delivery with a safe fallback.
@@ -87,6 +88,30 @@ export async function sendEmail(input: OutboxEmail): Promise<{ status: string; i
       where: { id: row.id },
       data: { status: "sent", sentAt: new Date(), providerRef: info.messageId },
     });
+    // Timeline: write an email event on the linked record when a module-linked
+    // email is sent (invoice emails, quotation emails, campaign emails).
+    if (input.relatedModule && input.relatedReference) {
+      const record = await prisma.record.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          moduleId: input.relatedModule,
+          reference: input.relatedReference,
+          deletedAt: null,
+        },
+        select: { id: true },
+      }).catch(() => null);
+      if (record) {
+        void eventEmailSent(
+          input.organizationId,
+          record.id,
+          input.to,
+          input.subject,
+          "sent",
+          input.userId ?? null,
+          "System",
+        );
+      }
+    }
     return { status: "sent", id: row.id };
   } catch (error) {
     await prisma.emailOutbox.update({

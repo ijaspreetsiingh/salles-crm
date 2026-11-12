@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type { RecordRow } from "../lib/money";
-import { prisma } from "../lib/prisma";
+import { containsText, prisma } from "../lib/prisma";
 import { env } from "../config/env";
 import { parseJson, stringifyJson } from "../lib/utils";
 import type { ModuleDef } from "../domain/modules";
@@ -287,8 +287,8 @@ export function buildRecordWhere(
     query as Record<string, string | undefined>;
 
   if (status && status !== "all") where.status = { in: status.split(",") };
-  if (destination) where.destination = { contains: destination };
-  if (owner) where.ownerName = { contains: owner };
+  if (destination) where.destination = containsText(destination);
+  if (owner) where.ownerName = containsText(owner);
   if (source) where.source = { in: source.split(",") };
   if (tab && tab !== "all" && module.tabs.includes(tab)) where.tab = tab;
   if (from || to) {
@@ -301,20 +301,21 @@ export function buildRecordWhere(
 
   const freeText = search || q;
   if (freeText) {
+    const match = containsText(freeText);
     where.OR = [
-      { name: { contains: freeText } },
-      { reference: { contains: freeText } },
-      { destination: { contains: freeText } },
-      { email: { contains: freeText } },
-      { phone: { contains: freeText } },
-      { notes: { contains: freeText } },
-      { ownerName: { contains: freeText } },
-      { detail: { contains: freeText } },
+      { name: match },
+      { reference: match },
+      { destination: match },
+      { email: match },
+      { phone: match },
+      { notes: match },
+      { ownerName: match },
+      { detail: match },
       // Custom field values live in the `extra` JSON column, and so does the
       // list of references a merged-away duplicate used to answer to. Searching
       // the raw column means typing an old reference ("LD-2401") still finds
       // the record that absorbed it, and a custom field is searchable at all.
-      { extra: { contains: freeText } },
+      { extra: containsText(freeText) },
     ];
   }
 

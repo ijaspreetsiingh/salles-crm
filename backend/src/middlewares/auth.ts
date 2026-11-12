@@ -30,6 +30,30 @@ export async function permissionsForRole(organizationId: string, roleKey: string
 }
 
 /**
+ * Refuses a workspace whose subscription has lapsed.
+ *
+ * This lives in the shared auth middleware so it covers both ways into the
+ * API. The API-key path used to return before this check, which meant an
+ * expired customer could keep integrating and writing data forever through a
+ * key — the one path a billing system must not miss.
+ */
+async function assertSubscriptionActive(organizationId: string): Promise<void> {
+  if (!env.ENFORCE_SUBSCRIPTION) return;
+  const subscription = await prisma.subscription.findUnique({ where: { organizationId } });
+  if (!subscription) return;
+
+  const now = new Date();
+  const expiredTrial =
+    subscription.status === "trialing" &&
+    subscription.currentPeriodEnd !== null &&
+    subscription.currentPeriodEnd < now;
+  const inactive = subscription.status === "canceled" || subscription.status === "past_due";
+  if (expiredTrial || inactive) {
+    throw new ForbiddenError("Your subscription has expired. Please update your plan to continue.");
+  }
+}
+
+/**
  * Authenticates a request using either a JWT access token or an organisation API
  * key, then attaches the resolved auth context (tenant + role + permissions).
  */
@@ -48,6 +72,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       if (!apiKey || apiKey.keyHash !== sha256(token))
         throw new UnauthorizedError("Invalid API key");
 
+      await assertSubscriptionActive(apiKey.organizationId);
       await prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } });
 
       req.auth = {
@@ -101,25 +126,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       throw new UnauthorizedError("Your session has ended. Please sign in again.", "session_revoked");
     }
 
-    if (env.ENFORCE_SUBSCRIPTION) {
-      const subscription = await prisma.subscription.findUnique({
-        where: { organizationId: payload.org },
-      });
-      if (subscription) {
-        const now = new Date();
-        const expiredTrial =
-          subscription.status === "trialing" &&
-          subscription.currentPeriodEnd !== null &&
-          subscription.currentPeriodEnd < now;
-        const inactive =
-          subscription.status === "canceled" || subscription.status === "past_due";
-        if (expiredTrial || inactive) {
-          throw new ForbiddenError(
-            "Your subscription has expired. Please update your plan to continue.",
-          );
-        }
-      }
-    }
+    await assertSubscriptionActive(payload.org);
 
     const permissions = await permissionsForRole(payload.org, membership.roleKey);
 

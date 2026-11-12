@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import { env, isProd } from "../config/env";
 
 /** SQLite URLs look like `file:./data/traveldesk.db`; everything else is Postgres. */
@@ -39,6 +39,13 @@ function createClient() {
       record: { amount: moneyField("amount") },
       payment: { amount: moneyField("amount") },
       payable: {
+        amount: moneyField("amount"),
+        gstRate: moneyField("gstRate"),
+        poAmount: optionalMoneyField("poAmount"),
+        receivedAmount: optionalMoneyField("receivedAmount"),
+        invoiceAmount: optionalMoneyField("invoiceAmount"),
+      },
+      creditNote: {
         amount: moneyField("amount"),
         gstRate: moneyField("gstRate"),
       },
@@ -97,6 +104,21 @@ if (!isProd) globalForPrisma.prisma = prisma;
 export async function lockOrganization(tx: Tx, organizationId: string): Promise<void> {
   if (isSqlite) return; // SQLite serialises writers itself.
   await tx.$queryRaw`SELECT id FROM "Organization" WHERE id = ${organizationId} FOR UPDATE`;
+}
+
+/**
+ * Case-insensitive `contains` for a text column.
+ *
+ * SQLite's LIKE is already case-insensitive for ASCII, so `contains` finds
+ * "priya" in "Priya Mehta". Postgres's LIKE is not, and Postgres is the
+ * database we recommend for production: without this, every search box in the
+ * CRM silently stops matching unless the typist gets the capitalisation right.
+ *
+ * `mode: "insensitive"` is rejected by the SQLite connector, so the filter is
+ * built per provider rather than passed everywhere.
+ */
+export function containsText(value: string): Prisma.StringFilter {
+  return isSqlite ? { contains: value } : { contains: value, mode: "insensitive" };
 }
 
 /** Kept for callers that still want the raw (un-extended) client type. */

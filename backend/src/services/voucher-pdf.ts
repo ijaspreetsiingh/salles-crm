@@ -1,16 +1,15 @@
+/**
+ * Hotel Voucher PDF — the confirmation document a hotel asks for at check-in.
+ *
+ * Simpler than an invoice: hotel name, guest names, room details, dates,
+ * meal plan, booking reference and the agency's contact block. No tax
+ * computation — the voucher is a confirmation, not a financial document.
+ */
 import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma";
 import { parseJson } from "../lib/utils";
 import { NotFoundError } from "../lib/errors";
 
-/**
- * Hotel / service vouchers.
- *
- * A voucher is the piece of paper a guest hands over at check-in. It has to
- * exist before anyone travels, so it is generated from the booking itself —
- * guest name, hotel, room, dates, inclusions and the agency's contact — rather
- * than retyped into a Word template.
- */
 export async function generateVoucherPdf(input: {
   organizationId: string;
   recordId: string;
@@ -21,141 +20,88 @@ export async function generateVoucherPdf(input: {
   if (!organization) throw new NotFoundError("Organization");
 
   const record = await prisma.record.findFirst({
-    where: { id: input.recordId, organizationId: input.organizationId, deletedAt: null },
+    where: { id: input.recordId, organizationId: input.organizationId, moduleId: "hotels", deletedAt: null },
   });
-  if (!record) throw new NotFoundError("Booking");
+  if (!record) throw new NotFoundError("Hotel booking");
 
-  const extra = parseJson<Record<string, unknown>>(record.extra, {});
-  const meta = parseJson<Record<string, unknown>>(record.meta, {});
-  const voucherNo = `VCH-${record.reference.replace(/^[A-Z]+-/, "")}`;
+  const extra = parseJson<Record<string, unknown>>(record.extra as string, {});
 
-  // The traveller list travels with the booking when one was captured.
-  const travellers = Array.isArray(meta["travellers"])
-    ? (meta["travellers"] as Array<Record<string, unknown>>).map((t) => String(t["name"] ?? ""))
-    : [];
-  const hotelName = String(meta["hotel"] ?? extra["hotel"] ?? record.destination ?? "");
-  const roomType = String(meta["roomType"] ?? extra["roomType"] ?? "As per booking");
-  const mealPlan = String(meta["mealPlan"] ?? extra["mealPlan"] ?? "");
-  const checkIn = String(meta["checkIn"] ?? extra["checkIn"] ?? record.date ?? "");
-  const checkOut = String(meta["checkOut"] ?? extra["checkOut"] ?? "");
-  const nights = String(meta["nights"] ?? extra["nights"] ?? "");
-  const confirmation = String(meta["confirmation"] ?? extra["supplierRef"] ?? "");
+  // Get group members if this is a group booking
+  let guests: Array<{ name: string; roomType: string }> = [];
+  if (extra["groupId"]) {
+    const members = await prisma.groupMember.findMany({
+      where: { organizationId: input.organizationId, groupRecordId: String(extra["groupId"]), status: { not: "Cancelled" } },
+      orderBy: { name: "asc" },
+      take: 50,
+    });
+    guests = members.map((m) => ({ name: m.name, roomType: m.roomType }));
+  }
+  if (guests.length === 0 && record.name) {
+    guests = [{ name: record.name, roomType: String(extra["roomType"] ?? "Double") }];
+  }
 
-  const doc = new PDFDocument({ size: "A4", margin: 48 });
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
   const filename = `voucher-${record.reference}.pdf`;
 
-  doc.rect(0, 0, doc.page.width, 96).fill("#2f5c50");
-  doc.fillColor("#fbf8f2").font("Helvetica-Bold").fontSize(20).text(organization.name, 48, 34);
-  doc.font("Helvetica").fontSize(9).fillColor("#dfeae5").text("Hotel / service voucher", 48, 62);
+  // Header
+  doc.fontSize(18).font("Helvetica-Bold").fillColor("#17191a").text(organization.name, 50, 50);
+  doc.fontSize(8).fillColor("#555555");
+  if (organization.address) doc.text(organization.address, 50, doc.y + 2);
+  const contact: string[] = [];
+  if (organization.supportEmail) contact.push(`Email: ${organization.supportEmail}`);
+  if (organization.phone) contact.push(`Phone: ${organization.phone}`);
+  if (contact.length) doc.text(contact.join("  |  "), 50, doc.y + 2);
 
-  doc
-    .fillColor("#fbf8f2")
-    .font("Helvetica-Bold")
-    .fontSize(16)
-    .text("VOUCHER", 0, 40, {
-      width: doc.page.width - 48,
-      align: "right",
-    });
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text(voucherNo, 0, 64, { width: doc.page.width - 48, align: "right" });
+  doc.moveDown(2);
 
-  doc.fillColor("#17191a").font("Helvetica").fontSize(9);
-  let y = 130;
+  // Voucher title
+  doc.fontSize(16).font("Helvetica-Bold").fillColor("#2f5c50").text("HOTEL VOUCHER", { align: "center" });
+  doc.fontSize(9).fillColor("#555555");
+  doc.text(`Voucher No: ${record.reference}`, { align: "center" });
+  doc.text(`Date: ${new Date().toLocaleDateString("en-IN")}`, { align: "center" });
+  doc.moveDown(1.5);
 
-  const row = (label: string, value: string) => {
-    if (!value) return;
-    doc
-      .font("Helvetica-Bold")
-      .fillColor("#7a7a7a")
-      .fontSize(8)
-      .text(label.toUpperCase(), 48, y, { width: 140 });
-    doc
-      .font("Helvetica")
-      .fillColor("#17191a")
-      .fontSize(10)
-      .text(value, 190, y - 1, { width: 350 });
-    y += 22;
-  };
+  // Hotel details box
+  const boxY = doc.y;
+  doc.rect(50, boxY, 495, 100).fillColor("#f8f9fa").fill();
+  doc.fillColor("#17191a").font("Helvetica-Bold").fontSize(10);
+  doc.text("Hotel Details", 60, boxY + 8);
+  doc.font("Helvetica").fontSize(9).fillColor("#555555");
+  doc.text(`Hotel: ${extra["hotelName"] ?? record.name}`, 60, boxY + 24);
+  doc.text(`Address: ${extra["hotelAddress"] ?? record.destination ?? ""}`, 60, boxY + 36);
+  doc.text(`Check-in: ${extra["checkIn"] ?? record.date ?? "—"}`, 60, boxY + 48);
+  doc.text(`Check-out: ${extra["checkOut"] ?? "—"}`, 60, boxY + 60);
+  doc.text(`Rooms: ${guests.length} · Meal Plan: ${extra["mealPlan"] ?? "CP"}`, 60, boxY + 72);
+  doc.text(`Booking Ref: ${extra["supplierReference"] ?? "Manual booking"}`, 60, boxY + 84);
 
-  row("Voucher no", voucherNo);
-  row("Booking reference", record.reference);
-  row("Guest", record.name);
-  row("Contact", [record.phone, record.email].filter(Boolean).join(" · "));
-  if (travellers.length) row("Travellers", travellers.join(", "));
-  if (hotelName) row("Property", hotelName);
-  if (record.destination) row("Destination", record.destination);
-  if (roomType) row("Room", `${roomType}${mealPlan ? ` · ${mealPlan}` : ""}`);
-  if (checkIn) row("Check-in", checkIn);
-  if (checkOut) row("Check-out", checkOut);
-  if (nights) row("Nights", nights);
-  if (confirmation) row("Supplier confirmation", confirmation);
-  row("Status", record.status);
+  doc.moveDown(4);
 
-  y += 10;
-  doc
-    .moveTo(48, y)
-    .lineTo(doc.page.width - 48, y)
-    .strokeColor("#dddddd")
-    .stroke();
-  y += 18;
+  // Guest list
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#17191a").text("Guest Names", 50, doc.y);
+  doc.font("Helvetica").fontSize(9).fillColor("#555555");
+  let guestY = doc.y + 4;
+  guests.slice(0, 20).forEach((g, i) => {
+    doc.text(`${i + 1}. ${g.name} (${g.roomType})`, 60, guestY);
+    guestY += 14;
+  });
+  if (guests.length > 20) {
+    doc.text(`... and ${guests.length - 20} more guests`, 60, guestY);
+  }
 
-  doc.font("Helvetica-Bold").fontSize(11).fillColor("#17191a").text("Inclusions", 48, y);
-  y += 18;
-  doc.font("Helvetica").fontSize(10).fillColor("#333333");
-  const inclusions =
-    record.detail ||
-    (Array.isArray(meta["inclusions"]) ? (meta["inclusions"] as unknown[]).join("\n") : "") ||
-    "Room as booked, applicable taxes, and the services listed on the quotation.";
-  doc.text(String(inclusions).slice(0, 1200), 48, y, { width: doc.page.width - 96 });
-  y = doc.y + 18;
+  doc.moveDown(2);
 
-  doc
-    .moveTo(48, y)
-    .lineTo(doc.page.width - 48, y)
-    .strokeColor("#dddddd")
-    .stroke();
-  y += 18;
+  // Notes / special requests
+  if (record.notes) {
+    doc.fontSize(10).font("Helvetica-Bold").fillColor("#17191a").text("Special Requests", 50, doc.y);
+    doc.font("Helvetica").fontSize(9).fillColor("#555555").text(record.notes, 50, doc.y + 4, { width: 495 });
+    doc.moveDown(1);
+  }
 
-  doc.font("Helvetica-Bold").fontSize(10).text("Important", 48, y);
-  y += 16;
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .fillColor("#555555")
-    .text(
-      [
-        "Present this voucher at check-in along with a government photo id for each guest.",
-        "Standard check-in is from 14:00 and check-out is by 11:00 unless the hotel says otherwise.",
-        "Any extra service taken at the property is settled by the guest directly with the hotel.",
-        record.notes ? `Notes: ${record.notes}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      48,
-      y,
-      { width: doc.page.width - 96 },
-    );
+  // Footer
+  const footerY = doc.page.height - 80;
+  doc.fontSize(8).fillColor("#777777");
+  doc.text(`Generated by ${organization.name} on ${new Date().toLocaleString("en-IN")}`, 50, footerY, { width: 495 });
+  doc.text("This voucher confirms your hotel booking. Please present it at check-in.", 50, footerY + 12, { width: 495 });
 
-  const footerY = doc.page.height - 88;
-  doc
-    .fontSize(8)
-    .fillColor("#777777")
-    .text(`Issued by ${organization.name} on ${new Date().toLocaleString("en-IN")}`, 48, footerY);
-  const contact = [
-    organization.supportEmail ? `Email: ${organization.supportEmail}` : "",
-    organization.phone ? `Phone: ${organization.phone}` : "",
-    organization.address ?? "",
-  ]
-    .filter(Boolean)
-    .join("  |  ");
-  if (contact) doc.text(contact, 48, footerY + 12, { width: doc.page.width - 96 });
-  doc.text(
-    "This is a computer-generated voucher and does not require a signature.",
-    48,
-    footerY + 26,
-  );
-
-  return { filename, stream: doc, voucherNo };
+  return { filename, stream: doc, voucherNo: record.reference };
 }

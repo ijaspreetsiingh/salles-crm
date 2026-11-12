@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "HotelAllotment" (
+CREATE TABLE IF NOT EXISTS "HotelAllotment" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "hotelName" TEXT NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE "HotelAllotment" (
 );
 
 -- CreateTable
-CREATE TABLE "GroupMember" (
+CREATE TABLE IF NOT EXISTS "GroupMember" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "groupRecordId" TEXT NOT NULL,
@@ -47,7 +47,7 @@ CREATE TABLE "GroupMember" (
 );
 
 -- CreateTable
-CREATE TABLE "VisaChecklistItem" (
+CREATE TABLE IF NOT EXISTS "VisaChecklistItem" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "recordId" TEXT NOT NULL,
@@ -63,7 +63,7 @@ CREATE TABLE "VisaChecklistItem" (
 );
 
 -- CreateTable
-CREATE TABLE "AgentAccount" (
+CREATE TABLE IF NOT EXISTS "AgentAccount" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "recordId" TEXT NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE "AgentAccount" (
 );
 
 -- CreateTable
-CREATE TABLE "ChatChannel" (
+CREATE TABLE IF NOT EXISTS "ChatChannel" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE "ChatChannel" (
 );
 
 -- CreateTable
-CREATE TABLE "ChatMember" (
+CREATE TABLE IF NOT EXISTS "ChatMember" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "channelId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -110,7 +110,7 @@ CREATE TABLE "ChatMember" (
 );
 
 -- CreateTable
-CREATE TABLE "ChatMessage" (
+CREATE TABLE IF NOT EXISTS "ChatMessage" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "channelId" TEXT NOT NULL,
     "senderId" TEXT NOT NULL,
@@ -127,7 +127,7 @@ CREATE TABLE "ChatMessage" (
 );
 
 -- CreateTable
-CREATE TABLE "AgentCommission" (
+CREATE TABLE IF NOT EXISTS "AgentCommission" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "organizationId" TEXT NOT NULL,
     "agentAccountId" TEXT NOT NULL,
@@ -146,55 +146,55 @@ CREATE TABLE "AgentCommission" (
 );
 
 -- CreateIndex
-CREATE INDEX "HotelAllotment_organizationId_hotelName_idx" ON "HotelAllotment"("organizationId", "hotelName");
+CREATE INDEX IF NOT EXISTS "HotelAllotment_organizationId_hotelName_idx" ON "HotelAllotment"("organizationId", "hotelName");
 
 -- CreateIndex
-CREATE INDEX "HotelAllotment_organizationId_status_idx" ON "HotelAllotment"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "HotelAllotment_organizationId_status_idx" ON "HotelAllotment"("organizationId", "status");
 
 -- CreateIndex
-CREATE INDEX "HotelAllotment_organizationId_city_idx" ON "HotelAllotment"("organizationId", "city");
+CREATE INDEX IF NOT EXISTS "HotelAllotment_organizationId_city_idx" ON "HotelAllotment"("organizationId", "city");
 
 -- CreateIndex
-CREATE INDEX "GroupMember_organizationId_groupRecordId_idx" ON "GroupMember"("organizationId", "groupRecordId");
+CREATE INDEX IF NOT EXISTS "GroupMember_organizationId_groupRecordId_idx" ON "GroupMember"("organizationId", "groupRecordId");
 
 -- CreateIndex
-CREATE INDEX "GroupMember_organizationId_status_idx" ON "GroupMember"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "GroupMember_organizationId_status_idx" ON "GroupMember"("organizationId", "status");
 
 -- CreateIndex
-CREATE INDEX "VisaChecklistItem_organizationId_recordId_idx" ON "VisaChecklistItem"("organizationId", "recordId");
+CREATE INDEX IF NOT EXISTS "VisaChecklistItem_organizationId_recordId_idx" ON "VisaChecklistItem"("organizationId", "recordId");
 
 -- CreateIndex
-CREATE INDEX "VisaChecklistItem_organizationId_status_idx" ON "VisaChecklistItem"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "VisaChecklistItem_organizationId_status_idx" ON "VisaChecklistItem"("organizationId", "status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "AgentAccount_recordId_key" ON "AgentAccount"("recordId");
+CREATE UNIQUE INDEX IF NOT EXISTS "AgentAccount_recordId_key" ON "AgentAccount"("recordId");
 
 -- CreateIndex
-CREATE INDEX "AgentAccount_organizationId_status_idx" ON "AgentAccount"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "AgentAccount_organizationId_status_idx" ON "AgentAccount"("organizationId", "status");
 
 -- CreateIndex
-CREATE INDEX "AgentAccount_organizationId_kycStatus_idx" ON "AgentAccount"("organizationId", "kycStatus");
+CREATE INDEX IF NOT EXISTS "AgentAccount_organizationId_kycStatus_idx" ON "AgentAccount"("organizationId", "kycStatus");
 
 -- CreateIndex
-CREATE INDEX "ChatChannel_organizationId_idx" ON "ChatChannel"("organizationId");
+CREATE INDEX IF NOT EXISTS "ChatChannel_organizationId_idx" ON "ChatChannel"("organizationId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ChatChannel_organizationId_name_key" ON "ChatChannel"("organizationId", "name");
+CREATE UNIQUE INDEX IF NOT EXISTS "ChatChannel_organizationId_name_key" ON "ChatChannel"("organizationId", "name");
 
 -- CreateIndex
-CREATE INDEX "ChatMember_channelId_idx" ON "ChatMember"("channelId");
+CREATE INDEX IF NOT EXISTS "ChatMember_channelId_idx" ON "ChatMember"("channelId");
 
 -- CreateIndex
-CREATE INDEX "ChatMember_userId_idx" ON "ChatMember"("userId");
+CREATE INDEX IF NOT EXISTS "ChatMember_userId_idx" ON "ChatMember"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "ChatMember_channelId_userId_key" ON "ChatMember"("channelId", "userId");
+CREATE UNIQUE INDEX IF NOT EXISTS "ChatMember_channelId_userId_key" ON "ChatMember"("channelId", "userId");
 
 -- CreateIndex
-CREATE INDEX "ChatMessage_channelId_createdAt_idx" ON "ChatMessage"("channelId", "createdAt");
+CREATE INDEX IF NOT EXISTS "ChatMessage_channelId_createdAt_idx" ON "ChatMessage"("channelId", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "AgentCommission_organizationId_status_idx" ON "AgentCommission"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "AgentCommission_organizationId_status_idx" ON "AgentCommission"("organizationId", "status");
 
 -- CreateIndex
-CREATE INDEX "AgentCommission_agentAccountId_idx" ON "AgentCommission"("agentAccountId");
+CREATE INDEX IF NOT EXISTS "AgentCommission_agentAccountId_idx" ON "AgentCommission"("agentAccountId");

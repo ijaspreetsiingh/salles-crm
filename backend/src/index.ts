@@ -7,6 +7,7 @@ import { seed } from "./db/seed";
 import { startDigestScheduler, stopDigestScheduler } from "./services/digest";
 import { startFollowUpScheduler, stopFollowUpScheduler } from "./services/followups";
 import { startWebhookScheduler, stopWebhookScheduler } from "./services/webhook-dispatch";
+import { startCampaignScheduler, stopCampaignScheduler } from "./services/campaign-scheduler";
 import { initSocket } from "./lib/socket";
 
 async function bootstrap() {
@@ -59,10 +60,10 @@ async function bootstrap() {
   // (RUN_SCHEDULERS=false on the rest) so nothing is sent twice.
   if (env.RUN_SCHEDULERS) {
     startDigestScheduler();
-    // Automated follow-ups: hourly check for stale leads, overdue invoices, etc.
     startFollowUpScheduler();
-    // Webhook deliveries that failed get retried with backoff.
     startWebhookScheduler();
+    // Picks up campaigns scheduled for a future time and fires them when due.
+    startCampaignScheduler();
   } else {
     logger.info("In-process schedulers disabled (RUN_SCHEDULERS=false)");
   }
@@ -79,6 +80,7 @@ async function bootstrap() {
     stopDigestScheduler();
     stopFollowUpScheduler();
     stopWebhookScheduler();
+    stopCampaignScheduler();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);
