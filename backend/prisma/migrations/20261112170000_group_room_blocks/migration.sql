@@ -61,15 +61,24 @@ BEGIN
           "roomType", "roomsHeld", "notes", "createdAt", "updatedAt"
         )
         SELECT
-          md5(random()::text || clock_timestamp()::text || rec."id"),
+          md5(random()::text || clock_timestamp()::text || rec."id" || (block->>'allotmentId')),
           rec."organizationId",
           rec."id",
           a."id",
           COALESCE(NULLIF(block->>'hotelName', ''), a."hotelName"),
           COALESCE(NULLIF(block->>'roomType', ''), a."roomType"),
-          GREATEST(COALESCE((block->>'roomsHeld')::int, 1), 1),
+          -- Casts are guarded, not attempted-and-caught: one malformed value
+          -- must not roll back the other blocks of the same group.
+          GREATEST(
+            CASE WHEN block->>'roomsHeld' ~ '^[0-9]{1,4}$'
+                 THEN (block->>'roomsHeld')::int ELSE 1 END,
+            1
+          ),
           COALESCE(block->>'notes', ''),
-          COALESCE((block->>'linkedAt')::timestamp, now()),
+          -- Keep the real link date when it is the ISO string the old code
+          -- wrote, otherwise fall back to now.
+          CASE WHEN block->>'linkedAt' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+               THEN (block->>'linkedAt')::timestamp ELSE now() END,
           now()
         FROM "HotelAllotment" a
         WHERE a."id" = block->>'allotmentId'

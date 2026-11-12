@@ -6,7 +6,6 @@ import { requireAuth } from "../middlewares/auth";
 import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { BadRequestError, ConflictError, NotFoundError } from "../lib/errors";
-import { parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 import { applyBranchScope } from "../services/records";
 
