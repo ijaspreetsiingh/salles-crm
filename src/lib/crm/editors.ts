@@ -365,7 +365,7 @@ export const editorSpecs: Record<string, EditorSpec> = {
       {
         key: "rooming",
         title: "Rooming list",
-        hint: "How the group sleeps. The room count is written back to the group so the room block stays accurate.",
+        hint: "How the group sleeps. This is a plan — rooms are actually held against a hotel contract, not here.",
         addLabel: "Add room type",
         columns: [
           { key: "roomType", label: "Room type", type: "text", placeholder: "Twin sharing" },
@@ -377,7 +377,11 @@ export const editorSpecs: Record<string, EditorSpec> = {
           const typed = nonEmpty(rows, "roomType");
           if (typed.length === 0) return {};
           return {
-            roomBlocks: typed.reduce((total, row) => total + (Number(row.rooms) || 0), 0),
+            // Named for what it is: a count of rooms this group plans to use,
+            // derived from the grid below. It is not the same thing as the room
+            // blocks held against a hotel contract, and it must not be read as
+            // "rooms confirmed".
+            plannedRooms: typed.reduce((total, row) => total + (Number(row.rooms) || 0), 0),
             confirmedPax: typed.reduce(
               (total, row) => total + (Number(row.rooms) || 0) * (Number(row.occupancy) || 0),
               0,

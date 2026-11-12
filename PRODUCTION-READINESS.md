@@ -219,10 +219,15 @@ TEST_DATABASE_URL=postgresql://postgres@localhost:55434/traveldesk_fresh?schema=
 ```
 
 **Is pass ke checks:** backend `tsc --noEmit` 0, `npm run build` 0; default `npm test`
-**158 passed / 11 skipped**, disposable Postgres par **169 passed / 0 failed**;
-frontend `tsc --noEmit` 0, `npm run build` 0; fresh Postgres 18 par **11 migrations**
-apply, seed complete (160 demo records / 25 modules), login 200 `emailVerified: true`,
-`db:drift` 0.
+**190 passed / 11 skipped** (DB-backed files skip bina `TEST_DATABASE_URL`);
+frontend `tsc --noEmit` 0, `npm run build` 0, **176 passed**; schema par **14
+migrations**, `prisma validate` OK, seed complete (160 demo records / 25 modules),
+login 200 `emailVerified: true`, `db:drift` 0.
+
+**Migration replay:** local dev DB `db push` par chalti hai (`CREATE DATABASE`
+rights nahi hain), is liye nayi refresh-procedural migration ek scratch schema me
+alag se replay karke verify ki gayi — valid block imported, unknown contract
+skipped, non-array/non-JSON `roomBlocks` skipped, teen foreign keys bane.
 
 ## 2. Module-by-module audit — real company kahan atkegi
 
@@ -285,7 +290,8 @@ transfer par; conflict 409 + doosre transfer ka reference. **P1 → done.**
 
 **Groups & MICE** — delegates, rooming list, manifest, auto-rooms, room blocks.
 **Room blocks ab dedicated `GroupRoomBlock` table me hain:** real foreign keys,
-conditional room claim ek hi transaction me, delete by id. **P1 → done.**
+conditional room claim ek hi transaction me, delete by id. Rooming grid ka count
+ab "Rooms planned" kehlata hai, taaki held rooms se confuse na ho. **P1 → done.**
 
 **Trip operations** — departures, manifests, incidents, deadlines, vouchers.
 **Gap:** "arrivals today" `extra` string match par depend karta hai (fragile).

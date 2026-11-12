@@ -1220,7 +1220,7 @@ export const schemas: Record<string, ModuleSchema> = {
       { title: "Group", keys: ["name", "destination", "extra:groupType", "status"] },
       {
         title: "Departure",
-        keys: ["date", "extra:return", "extra:pax", "extra:confirmedPax", "extra:roomBlocks"],
+        keys: ["date", "extra:return", "extra:pax", "extra:confirmedPax", "extra:plannedRooms"],
       },
       { title: "Budget", keys: ["amount", "extra:costPerPax"] },
       { title: "Ownership", keys: ["owner", "branch"] },
