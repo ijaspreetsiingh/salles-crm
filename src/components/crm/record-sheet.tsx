@@ -46,6 +46,7 @@ import { fetchLedger, fetchReceipt, removePayment } from "@/lib/api/payments";
 import { QuickPaymentForm } from "./quick-payment";
 import { PackagePlanSection } from "./package-builder";
 import { GroupDelegatesSection } from "./group-delegates";
+import { GroupRoomBlocksSection } from "./group-room-blocks";
 import { ActivityTimeline } from "./activity-timeline";
 import { FavoriteButton } from "./favorite-button";
 import { fetchRelations, linkRecords, unlinkRecords, type RecordRelationEdge, type RelationKind } from "@/lib/api/relations";
@@ -481,7 +482,11 @@ export function RecordSheet({
 
           {/* Delegates — the traveller list, rooming list and manifest */}
           {step === "record" && module.id === "groups" && (
-            <GroupDelegatesSection recordId={row.id} />
+            <>
+              <GroupDelegatesSection recordId={row.id} />
+              {/* Rooms held — blocks this group has taken out of a hotel contract */}
+              <GroupRoomBlocksSection recordId={row.id} />
+            </>
           )}
 
           {/* Module-specific money actions */}

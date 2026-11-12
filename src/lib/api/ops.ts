@@ -209,6 +209,54 @@ export const fetchGroupManifest = (recordId: string) =>
   apiRequest<ManifestDto>(`/groups/${recordId}/manifest`);
 
 /* ------------------------------------------------------------------ *
+ * Groups — rooms held against a hotel contract
+ *
+ * A room block is not the rooming list. The rooming list says how the group
+ * sleeps; a block says how many rooms this group has taken out of a hotel's
+ * contracted allocation, which is what stops the same rooms being promised to
+ * two group trips.
+ * ------------------------------------------------------------------ */
+
+export type RoomBlockDto = {
+  id: string;
+  allotmentId: string;
+  hotelName: string;
+  roomType: string;
+  roomsHeld: number;
+  notes: string;
+  linkedAt: string;
+  /** The contract as it stands now, or null if it has been deleted since. */
+  allotment: {
+    id: string;
+    hotelName: string;
+    city: string;
+    roomType: string;
+    mealPlan: string;
+    contractFrom: string;
+    contractTo: string;
+    totalRooms: number;
+    usedRooms: number;
+    availableRooms: number;
+    status: string;
+  } | null;
+};
+
+export const fetchRoomBlocks = (recordId: string) =>
+  apiRequest<RoomBlockDto[]>(`/groups/${recordId}/room-blocks`);
+
+/** Claims rooms out of a contract for this group. Fails when they are gone. */
+export const holdRoomBlock = (
+  recordId: string,
+  body: { allotmentId: string; roomsHeld: number; notes?: string },
+) => apiRequest<RoomBlockDto>(`/groups/${recordId}/room-blocks`, { method: "POST", body });
+
+/** Releases a block and puts its rooms back on the contract. */
+export const releaseRoomBlock = (recordId: string, blockId: string) =>
+  apiRequest<{ removed: boolean }>(`/groups/${recordId}/room-blocks/${blockId}`, {
+    method: "DELETE",
+  });
+
+/* ------------------------------------------------------------------ *
  * Visa checklists
  * ------------------------------------------------------------------ */
 
