@@ -4,7 +4,6 @@ import {
   ArrowDownToLine,
   ArrowRight,
   ArrowUpRight,
-  Bell,
   Check,
   CheckCheck,
   ChevronDown,
@@ -49,17 +48,18 @@ import {
 import { RecordSheet } from "./record-sheet";
 import { RecordCards } from "./record-cards";
 import { RowMenu } from "./row-menu";
-import { NotificationBell, type Notification } from "./notification-bell";
 import { Btn, FilterMenu, Kbd, Segmented, Sheet } from "./ui";
 import { Page, PageIdentity } from "./page";
 import { Ledger } from "./archetypes/ledger";
 import { Pipeline } from "./archetypes/pipeline";
 import { Work } from "./archetypes/work";
+import { Attendance } from "./attendance";
 import { FirstRunWizard } from "./firstrun";
 import { HelpPanel } from "./help";
 import { guideFor } from "@/lib/crm/guide";
 import { plain, plainModule } from "@/lib/crm/language";
 import { t, detectLanguage, type Language, LANGUAGES } from "@/lib/crm/i18n";
+import { SavedViewsMenu } from "./saved-views-menu";
 import {
   exportRows,
   findModule,
@@ -94,6 +94,22 @@ import { TeamChat } from "./team-chat";
 import { PNRQueue } from "./pnr-queue";
 import { RecycleBin } from "./recycle-bin";
 import { Campaigns } from "./campaigns-panel";
+import { CorporatePanel } from "./corporate-panel";
+import { TransfersPanel } from "./transfers-panel";
+import { SuppliersPanel } from "./suppliers-panel";
+import { OperationsPanel } from "./operations-panel";
+import { DistributionPanel } from "./distribution-panel";
+import {
+  CampaignSegments, CampaignCoupons, CampaignAttribution,
+  FlightAncillaries, FlightReissuesRefunds,
+  PackageDepartures, PackageSeasonalRates,
+  VisaInsurance, VisaAppointments, VisaAdvisories,
+  SupportRefunds, SupportKB, SupportFeedback,
+  AgentKYC,
+  FinanceLedger, FinanceReceivablesAging,
+  SalesIntelligence, OperationsInsights,
+  TeamChatSearch, TeamChatFiles,
+} from "./extension-panels";
 import { TwoFactorPanel } from "./two-factor";
 import { WebsitePanel } from "./website-panel";
 import { ROLE_KEY_BY_LABEL } from "@/lib/api/crm";
@@ -169,9 +185,6 @@ import {
   type RoleDto,
   type WorkflowDto,
   type FlightSearchResult,
-  fetchNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
 } from "@/lib/api/modules";
 import { toast } from "sonner";
 import {
@@ -285,17 +298,14 @@ export function Workspace({ module }: { module: Module }) {
   const [help, setHelp] = useState(false);
   const offered = useRef(false);
 
-  /** Real-time notifications via SSE. */
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  /** The person's chosen language — drives every label on the screen. */
   const [userLanguage, setUserLanguage] = useState<Language>("en");
-  const [showNotifications, setShowNotifications] = useState(false);
 
   const rows = getRows(module.id, tab);
   const tabDef = getTabDef(schema, tab);
   const activeView = usesModuleTabs ? undefined : guide.views.find((v) => v.label === tab);
 
-  /** Language preference + the real notification tray from the API. */
+  /** Remember the person's language choice, falling back to their browser. */
   useEffect(() => {
     const stored = localStorage.getItem("travo.language");
     if (
@@ -306,61 +316,7 @@ export function Workspace({ module }: { module: Module }) {
     } else {
       setUserLanguage(detectLanguage());
     }
-
-    // One authenticated read of the tray. The app polls it with the rest of
-    // the workspace instead of holding an EventSource open on a route the
-    // server never implemented.
-    let cancelled = false;
-    fetchNotifications()
-      .then((tray) => {
-        if (cancelled) return;
-        const items: Notification[] = (tray.items ?? []).map((n) => ({
-          ...n,
-          moduleId: n.moduleId ?? "",
-          recordId: n.recordId ?? "",
-          level: (["info", "warning", "danger", "success"] as const).includes(
-            n.level as "info" | "warning" | "danger" | "success",
-          )
-            ? (n.level as Notification["level"])
-            : "info",
-        }));
-        setNotifications(items);
-        setUnreadCount(tray.unread ?? 0);
-      })
-      .catch(() => {
-        // The tray is supplementary; the workspace works without it.
-      });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
-
-  const handleMarkRead = async (id: string) => {
-    try {
-      await markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-      setUnreadCount((prev) => Math.max(0, prev - 1));
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleMarkAllRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleOpenNotification = (n: Notification) => {
-    if (n.moduleId) {
-      void navigate({ to: `/workspace/$module`, params: { module: n.moduleId } });
-    }
-  };
 
   // A view narrows by status; a search never changes the headline numbers.
   const scoped = useMemo(() => {
@@ -413,7 +369,9 @@ export function Workspace({ module }: { module: Module }) {
   const kpis = schema.kpis.map((kpi) => ({ ...kpi, display: kpi.value(scoped, kpiContext) }));
 
   const special =
-    module.id === "assistant"
+    module.id === "attendance"
+      ? "attendance"
+      : module.id === "assistant"
       ? "assistant"
       : module.id === "inbox"
         ? "inbox"
@@ -459,6 +417,7 @@ export function Workspace({ module }: { module: Module }) {
   const boardStages = schema.boardStatuses ?? [];
 
   const isSpecialView =
+    module.id === "attendance" ||
     module.id === "assistant" ||
     module.id === "inbox" ||
     module.id === "integrations" ||
@@ -478,7 +437,20 @@ export function Workspace({ module }: { module: Module }) {
     (module.id === "hotels" &&
       (tab === "Rate plans" || tab === "Hotels" || tab === "Room inventory")) ||
     (module.id === "campaigns" && tab === "Campaigns") ||
-    (module.id === "distribution" && tab === "Website pages");
+    (module.id === "campaigns" && (tab === "Segments" || tab === "Referrals & coupons" || tab === "Attribution")) ||
+    (module.id === "companies" && (tab === "Travel requests" || tab === "Cost centres" || tab === "Policies" || tab === "Approvals")) ||
+    (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers" || tab === "Rail, bus & cruise")) ||
+    (module.id === "suppliers" && (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) ||
+    (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations" || tab === "Manifests")) ||
+    (module.id === "flights" && (tab === "Ancillaries" || tab === "Reissues & refunds" || tab === "Tickets")) ||
+    (module.id === "packages" && (tab === "Fixed departures" || tab === "Seasonal rates")) ||
+    (module.id === "visa" && (tab === "Insurance" || tab === "Appointments" || tab === "Travel advisories")) ||
+    (module.id === "support" && (tab === "Refund requests" || tab === "Knowledge base" || tab === "Feedback" || tab === "Escalations")) ||
+    (module.id === "agents" && (tab === "KYC approvals" || tab === "Credit limits" || tab === "Sub-agents" || tab === "Distributors")) ||
+    (module.id === "finance" && (tab === "Ledger" || tab === "Receivables")) ||
+    (module.id === "assistant" && (tab === "Sales intelligence" || tab === "Operations insights")) ||
+    (module.id === "team-chat") ||
+    (module.id === "distribution");
 
   // A brand-new workspace does not show an empty table. It sits the person
   // down and walks them through making their first record. Pages with their own
@@ -499,6 +471,7 @@ export function Workspace({ module }: { module: Module }) {
   }, [rows.length, query, statusFilter.length, owner, status, isSpecialView, recordsLoading]);
 
   const specialBody = (() => {
+    if (module.id === "attendance") return <Attendance tab={tab} />;
     if (module.id === "assistant") return <Assistant tab={tab} />;
     if (module.id === "inbox") return <Inbox tab={tab} />;
     if (module.id === "team-chat") return <TeamChat />;
@@ -526,6 +499,43 @@ export function Workspace({ module }: { module: Module }) {
       return <HotelSearch />;
     if (module.id === "hotels" && tab === "Rate plans") return <HotelRates />;
     if (module.id === "campaigns" && tab === "Campaigns") return <Campaigns />;
+    // Corporate travel — travel requests, cost centres, policy
+    if (module.id === "companies") return <CorporatePanel />;
+    // Transfers — vehicle fleet + driver roster
+    if (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers")) return <TransfersPanel />;
+    // Suppliers — contracts, purchase orders, settlements
+    if (module.id === "suppliers" && (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) return <SuppliersPanel />;
+    // Operations — incidents + deadlines (manifests use the generic list)
+    if (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations")) return <OperationsPanel />;
+    // Distribution — CMS pages, destinations, B2B portal
+    if (module.id === "distribution") return <DistributionPanel />;
+    // Campaigns extensions
+    if (module.id === "campaigns" && tab === "Segments") return <CampaignSegments />;
+    if (module.id === "campaigns" && tab === "Referrals & coupons") return <CampaignCoupons />;
+    if (module.id === "campaigns" && tab === "Attribution") return <CampaignAttribution />;
+    // Flights extensions
+    if (module.id === "flights" && tab === "Ancillaries") return <FlightAncillaries />;
+    if (module.id === "flights" && tab === "Reissues & refunds") return <FlightReissuesRefunds />;
+    // Packages extensions
+    if (module.id === "packages" && tab === "Fixed departures") return <PackageDepartures />;
+    if (module.id === "packages" && tab === "Seasonal rates") return <PackageSeasonalRates />;
+    // Visa extensions
+    if (module.id === "visa" && tab === "Insurance") return <VisaInsurance />;
+    if (module.id === "visa" && tab === "Appointments") return <VisaAppointments />;
+    if (module.id === "visa" && tab === "Travel advisories") return <VisaAdvisories />;
+    // Support extensions
+    if (module.id === "support" && tab === "Refund requests") return <SupportRefunds />;
+    if (module.id === "support" && tab === "Knowledge base") return <SupportKB />;
+    if (module.id === "support" && tab === "Feedback") return <SupportFeedback />;
+    // Finance extensions
+    if (module.id === "finance" && tab === "Ledger") return <FinanceLedger />;
+    if (module.id === "finance" && tab === "Receivables") return <FinanceReceivablesAging />;
+    // AI assistant extensions
+    if (module.id === "assistant" && tab === "Sales intelligence") return <SalesIntelligence />;
+    if (module.id === "assistant" && tab === "Operations insights") return <OperationsInsights />;
+    // Team chat extensions
+    if (module.id === "team-chat" && tab === "Channels") return <TeamChatSearch />;
+    if (module.id === "team-chat" && tab === "Direct messages") return <TeamChatFiles />;
     if (module.id === "distribution" && tab === "Website pages") return <WebsitePanel />;
     return null;
   })();
@@ -629,19 +639,6 @@ export function Workspace({ module }: { module: Module }) {
                     >
                       Export
                     </Btn>
-                    <Btn
-                      size="md"
-                      tone={unreadCount > 0 ? "danger" : "secondary"}
-                      icon={<Bell className="size-5" />}
-                      onClick={() => setShowNotifications(true)}
-                      aria-label="Notifications"
-                      title={`Notifications (${unreadCount})`}
-                    >
-                      {unreadCount > 0 ? `Notifications (${unreadCount})` : "Notifications"}
-                      {unreadCount > 0 ? (
-                        <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-destructive border border-background" />
-                      ) : null}
-                    </Btn>
                     <Btn size="md" tone="primary" icon={<Plus />} onClick={() => openCreate()}>
                       {guide.primary}
                     </Btn>
@@ -688,6 +685,48 @@ export function Workspace({ module }: { module: Module }) {
                     value={date}
                     options={["This week", "This month", "Last month", "This year", "All time"]}
                     onChange={setDate}
+                  />
+                  <SavedViewsMenu
+                    moduleId={module.id}
+                    currentFilters={{ status: statusFilter, owner, date, tab }}
+                    currentSort={sort ? { key: sort.key, dir: sort.dir } : {}}
+                    currentColumns={[]}
+                    currentLayout={view === "board" ? "board" : view === "cards" || view === "grid" ? "cards" : "table"}
+                    onApply={(savedView) => {
+                      const f = savedView.filters as Record<string, unknown>;
+                      // Restore status filter
+                      if (Array.isArray(f["status"])) setStatusFilter(f["status"] as string[]);
+                      else setStatusFilter([]);
+                      // Restore owner
+                      if (typeof f["owner"] === "string") setOwner(f["owner"]);
+                      else setOwner("All owners");
+                      // Restore date range
+                      if (typeof f["date"] === "string") setDate(f["date"]);
+                      else setDate("All time");
+                      // Restore tab — only if the tab still exists in this module's options
+                      if (typeof f["tab"] === "string" && tabOptions.includes(f["tab"] as string)) {
+                        setTab(f["tab"] as string);
+                      }
+                      // Restore sort
+                      const s = savedView.sort as Record<string, unknown>;
+                      if (typeof s["key"] === "string" && isSortableKey(s["key"])) {
+                        setSort({ key: s["key"], dir: s["dir"] === "desc" ? "desc" : "asc" });
+                      } else {
+                        setSort(null);
+                      }
+                      // Restore layout
+                      if (savedView.layout) {
+                        setView(
+                          savedView.layout === "board"
+                            ? "board"
+                            : savedView.layout === "cards"
+                              ? module.id === "customers" ? "grid" : "cards"
+                              : "list",
+                        );
+                      }
+                      // Clear search query so we see the full filtered set
+                      setQuery("");
+                    }}
                   />
                   {canBoard ? (
                     <Segmented
@@ -996,14 +1035,6 @@ export function Workspace({ module }: { module: Module }) {
         open={help}
         onClose={() => setHelp(false)}
         onStart={() => setWizard(true)}
-      />
-      <NotificationBell
-        notifications={notifications}
-        unreadCount={unreadCount}
-        onMarkRead={handleMarkRead}
-        onMarkAllRead={handleMarkAllRead}
-        lang={userLanguage}
-        onOpenNotification={handleOpenNotification}
       />
     </>
   );
@@ -2888,7 +2919,7 @@ function SettingsPanel({
   }, [channelStatus]);
 
   // Live billing: plan, usage counters and issued invoices for the organisation.
-  const { data: subscription, reload: reloadSubscription } = useApiQuery(
+  const { data: subscription, reload: reloadSubscription, loading: billingLoading } = useApiQuery(
     () => fetchSubscription(),
     [],
     authStatus === "ready",
@@ -3065,6 +3096,10 @@ function SettingsPanel({
                 const next = e.target.value as Language;
                 setUserLanguage(next);
                 localStorage.setItem("travo.language", next);
+                // Persist to server so preference survives device switches.
+                import("@/lib/api/preferences").then(({ setPreference }) =>
+                  setPreference("language", next).catch(() => {})
+                ).catch(() => {});
               }}
             >
               {Object.entries(LANGUAGES).map(([key, info]) => (
@@ -3226,9 +3261,18 @@ function SettingsPanel({
                 aria-label={title}
                 disabled={key === "twoFactor"}
                 checked={security[key]}
-                onChange={(e) =>
-                  updateSettings({ security: { ...security, [key]: e.target.checked } })
-                }
+                onChange={(e) => {
+                  updateSettings({ security: { ...security, [key]: e.target.checked } });
+                  // Sync non-twoFactor prefs to server so they survive device switches.
+                  if (key !== "twoFactor") {
+                    import("@/lib/api/preferences").then(({ setPreference }) =>
+                      setPreference(
+                        key === "quiet" ? "notifyDigest" : "density",
+                        e.target.checked ? "true" : "false",
+                      ).catch(() => {})
+                    ).catch(() => {});
+                  }
+                }}
               />
               <span />
             </label>
@@ -3238,11 +3282,7 @@ function SettingsPanel({
           These switches are remembered in this browser. The real rules — who can see which branch,
           which records and which actions — are enforced by the server on every request.
         </p>
-        <div className="dialog-actions">
-          <Button onClick={() => toast.success("Preferences saved")}>
-            <Check /> Save preferences
-          </Button>
-        </div>
+        <p className="text-xs text-muted">Changes save automatically.</p>
       </div>
     );
 
@@ -3364,11 +3404,7 @@ function SettingsPanel({
             ))}
           </div>
         </div>
-        <div className="dialog-actions">
-          <Button onClick={() => toast.success("Tax settings saved")}>
-            <Check /> Save preferences
-          </Button>
-        </div>
+        <p className="text-xs text-muted">Changes save automatically.</p>
       </div>
     );
 
@@ -3807,11 +3843,7 @@ function SettingsPanel({
             />
           </label>
         </div>
-        <div className="dialog-actions">
-          <Button onClick={() => toast.success("Organisation profile saved")}>
-            <Check /> Save preferences
-          </Button>
-        </div>
+        <p className="text-xs text-muted">Changes save automatically.</p>
       </div>
     );
 
@@ -4356,13 +4388,10 @@ function SettingsPanel({
           <RefreshCw /> Refresh workspace
         </Button>
         <Button
-          disabled={savingBilling}
-          onClick={() => {
-            reloadSubscription();
-            toast.success("Billing refreshed");
-          }}
+          disabled={billingLoading}
+          onClick={() => reloadSubscription()}
         >
-          <Check /> Refresh billing
+          <RefreshCw /> {billingLoading ? "Refreshing…" : "Refresh billing"}
         </Button>
       </div>
     </div>

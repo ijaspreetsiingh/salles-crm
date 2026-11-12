@@ -38,7 +38,6 @@ import { toRecordRow, toTask } from "@/lib/api/crm";
 import { findModule, modules } from "@/lib/crm/catalog";
 import {
   activeKeyFor,
-  buildGoShortcuts,
   buildNavEntries,
   buildSidebarGroups,
   CORE_MODULE_IDS,
@@ -58,9 +57,11 @@ import { SetupWizard, useSetupWizard } from "./setup-wizard";
 import {
   fetchNotifications,
   markAllNotificationsRead,
+  markNotificationRead,
   searchWorkspace,
   type SearchResponseDto,
 } from "@/lib/api/modules";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Avatar, IconBtn, Kbd, Sheet } from "./ui";
 import { cn } from "@/lib/utils";
 
@@ -450,8 +451,43 @@ export function CRMShell({ children }: { children: ReactNode }) {
     status === "ready",
   );
   const unread = tray?.unread ?? 0;
+  const [notifyOpen, setNotifyOpen] = useState(false);
+  const notifyItems = tray?.items ?? [];
+  const notifyDerived = tray?.derived ?? [];
+
+  /** Open the record a notification is about, and clear its unread dot. */
+  const openNotification = (n: { id: string; read: boolean; moduleId: string | null }) => {
+    setNotifyOpen(false);
+    if (!n.read) {
+      void markNotificationRead(n.id)
+        .then(() => reloadTray())
+        .catch(() => undefined);
+    }
+    if (n.moduleId) {
+      void navigate({ to: "/workspace/$module", params: { module: n.moduleId } });
+    }
+  };
 
   /* --------------------------------------------------------- keyboard */
+
+  /**
+   * Open a sidebar destination.
+   *
+   * Some entries are real standalone screens (Today is `/`, Tasks is
+   * `/tasks`, Your team is `/team`) and some are workspace modules. The entry
+   * already knows which it is via `to`, so this is the one place that decides
+   * — the palette and the "g" shortcuts both go through it, so they can never
+   * drift apart.
+   */
+  const openNavEntry = useCallback(
+    (entry: NavEntry) => {
+      if (entry.to === "/tasks") void navigate({ to: "/tasks" });
+      else if (entry.to === "/team") void navigate({ to: "/team" });
+      else if (entry.to === "/") void navigate({ to: "/" });
+      else void navigate({ to: "/workspace/$module", params: { module: entry.moduleId } });
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -490,19 +526,19 @@ export function CRMShell({ children }: { children: ReactNode }) {
         return;
       }
       if (pendingGo.current === "g") {
-        const destination = buildGoShortcuts(enabledModuleIds, permissions?.modules ?? "*")[
-          event.key
-        ];
         pendingGo.current = null;
-        if (destination) {
+        const entry = buildNavEntries(enabledModuleIds, permissions?.modules ?? "*").find(
+          (e) => e.go === event.key,
+        );
+        if (entry) {
           event.preventDefault();
-          void navigate({ to: "/workspace/$module", params: { module: destination } });
+          openNavEntry(entry);
         }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate, enabledModuleIds]);
+  }, [enabledModuleIds, permissions, openNavEntry]);
 
   useEffect(() => {
     if (paletteOpen) {
@@ -548,10 +584,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
           subtitle: "Open this page",
           icon: <e.icon className="size-4" />,
           run: () => {
-            if (e.to === "/tasks") void navigate({ to: "/tasks" });
-            else if (e.to === "/team") void navigate({ to: "/team" });
-            else if (e.to === "/") void navigate({ to: "/" });
-            else void navigate({ to: "/workspace/$module", params: { module: e.moduleId } });
+            openNavEntry(e);
           },
         })),
     };
@@ -689,6 +722,7 @@ export function CRMShell({ children }: { children: ReactNode }) {
     settings.employees,
     getRows,
     navigate,
+    openNavEntry,
     visibleModules,
     enabledModuleIds,
   ]);
@@ -906,16 +940,79 @@ export function CRMShell({ children }: { children: ReactNode }) {
               <CircleHelp />
             </IconBtn>
 
-            <IconBtn
-              label="Notifications"
-              onClick={() => {
-                void navigate({ to: "/workspace/$module", params: { module: "inbox" } });
-                markAllRead();
-              }}
-            >
-              <Bell />
-              {unread > 0 && <span className="notify-dot" />}
-            </IconBtn>
+            <Popover open={notifyOpen} onOpenChange={setNotifyOpen}>
+              <PopoverTrigger
+                aria-label="Notifications"
+                title="Notifications"
+                className={cn(
+                  "relative grid size-9 shrink-0 place-items-center rounded-full border border-transparent text-muted transition-all duration-150 hover:bg-well hover:text-foreground",
+                  "[&_svg]:size-4",
+                )}
+              >
+                <Bell />
+                {unread > 0 && <span className="notify-dot" />}
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80 p-0">
+                <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+                  <strong className="text-sm">Notifications</strong>
+                  {unread > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => markAllRead()}
+                      className="text-xs font-medium text-muted transition-colors hover:text-foreground"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-96 overflow-y-auto p-2">
+                  {notifyItems.length === 0 && notifyDerived.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-sm text-muted">
+                      Nothing needs you right now.
+                    </p>
+                  ) : (
+                    <>
+                      {notifyItems.map((n) => (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => openNotification(n)}
+                          className={cn(
+                            "flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-well",
+                            !n.read && "bg-well/60",
+                          )}
+                        >
+                          <span className="flex items-center gap-2">
+                            <strong className="text-sm">{n.title}</strong>
+                            {!n.read && <span className="size-1.5 rounded-full bg-destructive" />}
+                          </span>
+                          {n.body && (
+                            <span className="text-xs text-muted line-clamp-2">{n.body}</span>
+                          )}
+                        </button>
+                      ))}
+                      {notifyDerived.map((d, i) => (
+                        <button
+                          key={`derived-${i}`}
+                          type="button"
+                          onClick={() => {
+                            setNotifyOpen(false);
+                            void navigate({
+                              to: "/workspace/$module",
+                              params: { module: d.moduleId },
+                            });
+                          }}
+                          className="flex w-full flex-col gap-0.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-well"
+                        >
+                          <strong className="text-sm">{d.title}</strong>
+                          {d.body && <span className="text-xs text-muted line-clamp-2">{d.body}</span>}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
 
             <button
               type="button"

@@ -129,6 +129,7 @@ export function Pipeline({
           return (
             <section
               key={stage}
+              aria-label={`${stage} column — ${(byStage[stage] ?? []).length} records`}
               className={cn(
                 "flex w-[286px] shrink-0 flex-col rounded-[var(--r-card)] border p-3 transition-all duration-150",
                 isOver ? "border-pine bg-glass-3 shadow-pop" : "border-line bg-glass",
@@ -185,6 +186,9 @@ export function Pipeline({
                   <article
                     key={row.id}
                     draggable
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`${row.name} — ${row.status} — ${money(row.amount, currency)}`}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", row.id);
                       e.dataTransfer.effectAllowed = "move";
@@ -198,8 +202,28 @@ export function Pipeline({
                       setFocused(row);
                       onOpen(row);
                     }}
+                    onKeyDown={(e) => {
+                      // Enter / Space → open the record
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpen(row);
+                      }
+                      // Arrow keys → move between stages
+                      if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && onMove) {
+                        const idx = stages.indexOf(row.status);
+                        const nextIdx =
+                          e.key === "ArrowRight"
+                            ? Math.min(idx + 1, stages.length - 1)
+                            : Math.max(idx - 1, 0);
+                        const nextStage = stages[nextIdx];
+                        if (nextStage && nextStage !== row.status) {
+                          e.preventDefault();
+                          onMove(row, nextStage);
+                        }
+                      }
+                    }}
                     className={cn(
-                      "group cursor-pointer rounded-[18px] border border-line bg-glass-3 p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-pop",
+                      "group cursor-pointer rounded-[18px] border border-line bg-glass-3 p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       dragging === row.id && "opacity-40",
                     )}
                   >
@@ -242,6 +266,10 @@ export function Pipeline({
       </div>
 
       {footer}
+
+      <p className="mt-2 px-1 text-[11px] text-faint" aria-live="polite">
+        Tip: Select a card and use ← → arrow keys to move it between stages. Press Enter to open.
+      </p>
     </div>
   );
 }

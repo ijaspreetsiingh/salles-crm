@@ -9,11 +9,15 @@ import {
   ExternalLink,
   ExternalLink as LinkOut,
   FileText,
+  Link2,
+  Link2Off,
+  Loader2,
   Mail,
   MessageSquare,
   Pencil,
   Phone,
   Plus,
+  Star,
   Trash2,
   UserCheck,
   Wallet,
@@ -23,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet } from "./ui";
 import { Avatar, CustomerLinkPicker, Status, labelForKey, readField } from "./common";
 import { JourneyRail } from "./journey";
-import { buildJourney } from "@/lib/crm/journey";
+import { buildJourney, buildJourneyFromRelations } from "@/lib/crm/journey";
 import { money, type Module, type RecordRow, modules } from "@/lib/crm/catalog";
 import { getSchema, type FieldDef } from "@/lib/crm/schema";
 import { useCRM } from "@/lib/crm/store";
@@ -42,6 +46,11 @@ import { fetchLedger, fetchReceipt, removePayment } from "@/lib/api/payments";
 import { QuickPaymentForm } from "./quick-payment";
 import { PackagePlanSection } from "./package-builder";
 import { GroupDelegatesSection } from "./group-delegates";
+import { ActivityTimeline } from "./activity-timeline";
+import { FavoriteButton } from "./favorite-button";
+import { fetchRelations, linkRecords, unlinkRecords, type RecordRelationEdge, type RelationKind } from "@/lib/api/relations";
+import { findModule } from "@/lib/crm/catalog";
+import { IRNPanel } from "./irn-panel";
 
 /** Status pills that mean "this customer could pay us" — profile entry points. */
 const PROFILE_MODULES = new Set(["customers", "leads"]);
@@ -94,6 +103,7 @@ export function RecordSheet({
    */
   const [step, setStep] = useState<"record" | "create" | "link">("record");
   const [createKind, setCreateKind] = useState<"quotations" | "proposals">("quotations");
+  const [sheetTab, setSheetTab] = useState<"details" | "timeline" | "relations">("details");
 
   const moneyModule = module.id === "finance" || module.id === "bookings";
   const { data: ledger, reload: reloadLedger } = useApiQuery(
@@ -133,12 +143,31 @@ export function RecordSheet({
     [schema, row, currency],
   );
 
-  // The journey: related records in travel order.
-  const journey = useMemo(() => {
+  // The journey: start with the fast name-match guess, then upgrade to real
+  // RecordRelation rows once the async fetch completes. This way the rail
+  // is never blank — it shows a reasonable guess instantly, then corrects
+  // itself silently if the guess was wrong.
+  const nameMatchJourney = useMemo(() => {
     const all: Record<string, RecordRow[]> = {};
     for (const m of modules) all[m.id] = getRows(m.id);
     return buildJourney(row, module.id, all);
   }, [row, module.id, getRows]);
+
+  const [journey, setJourney] = useState(nameMatchJourney);
+
+  // Sync the name-match fallback when the row or module changes.
+  useEffect(() => {
+    setJourney(nameMatchJourney);
+  }, [nameMatchJourney]);
+
+  // After first paint, fetch real RecordRelation rows and upgrade the rail.
+  useEffect(() => {
+    let cancelled = false;
+    buildJourneyFromRelations(row, module.id).then((real) => {
+      if (!cancelled && real) setJourney(real);
+    }).catch(() => { /* keep name-match */ });
+    return () => { cancelled = true; };
+  }, [row.id, module.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Follow-ups pinned to this record.
   const recordTasks = useMemo(
@@ -256,6 +285,7 @@ export function RecordSheet({
             <div className="record-sheet__hero-side">
               <strong>{money(row.amount, currency)}</strong>
               <Status value={row.status} />
+              <FavoriteButton targetType="record" targetId={row.id} size="sm" />
               {row.customerType && (
                 <span className="inline-flex items-center rounded-md bg-secondary/10 px-2.5 py-0.5 text-xs font-medium text-secondary">
                   {row.customerType}
@@ -264,9 +294,49 @@ export function RecordSheet({
             </div>
           </div>
 
+          {/* Sheet navigation tabs */}
+          <div className="flex gap-1 rounded-xl border border-line bg-glass-2 p-1" role="tablist" aria-label="Record sections">
+            {(["details", "timeline", "relations"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={sheetTab === t}
+                onClick={() => setSheetTab(t)}
+                className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  sheetTab === t
+                    ? "bg-background shadow-sm"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {t === "details" ? "Details" : t === "timeline" ? "Activity" : "Links"}
+              </button>
+            ))}
+          </div>
+
+          {/* Timeline tab */}
+          {sheetTab === "timeline" && (
+            <ActivityTimeline recordId={row.id} currentUserId={user?.id ?? null} />
+          )}
+
+          {/* Relations tab */}
+          {sheetTab === "relations" && (
+            <RelationsPanel
+              recordId={row.id}
+              onOpenRecord={(relatedId, relatedModuleId) => {
+                // Navigate to the related record's module so the user can open it.
+                // We hand off via onWorkflow with the moduleId — the workspace
+                // will switch to that module where the user can find the record.
+                if (relatedModuleId) {
+                  onWorkflow(relatedModuleId);
+                  toast.info(`Navigate to ${relatedModuleId} and search for ${relatedId}`);
+                }
+              }}
+            />
+          )}
+
           {/* Contact row — email/WhatsApp open Communications with this contact */}
-          {(row.email || contactPhone) && (
-            <div className="record-sheet__contact">
+          {(row.email || contactPhone) && (            <div className="record-sheet__contact">
               {row.email && (
                 <>
                   <button
@@ -484,6 +554,7 @@ export function RecordSheet({
                   </button>
                 )}
               </div>
+              <IRNPanel invoiceRecordId={row.id} invoiceReference={row.id} />
             </section>
           )}
 
@@ -1191,5 +1262,156 @@ function CreateDocumentForm({
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ====================================================================== *
+ * Relations panel — explicit cross-module links for the journey rail.
+ * ====================================================================== */
+import { useEffect } from "react";
+
+const KIND_LABELS: Record<RelationKind, string> = {
+  quoted: "Quoted",
+  booked: "Booked",
+  invoiced: "Invoiced",
+  visa_for: "Visa for",
+  flight_for: "Flight for",
+  hotel_for: "Hotel for",
+  transfer_for: "Transfer for",
+  paying_for: "Payment for",
+  escalated_to: "Escalated to",
+  related: "Related",
+};
+
+function RelationsPanel({
+  recordId,
+  onOpenRecord,
+}: {
+  recordId: string;
+  onOpenRecord: (id: string, moduleId: string) => void;
+}) {
+  const [edges, setEdges] = useState<RecordRelationEdge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [linkId, setLinkId] = useState("");
+  const [linkKind, setLinkKind] = useState<RelationKind>("related");
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchRelations(recordId)
+      .then(({ edges: e }) => setEdges(e))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [recordId]);
+
+  const handleLink = async () => {
+    if (!linkId.trim() || adding) return;
+    setAdding(true);
+    try {
+      const created = await linkRecords({ fromId: recordId, toId: linkId.trim(), kind: linkKind });
+      const optimisticEdge: RecordRelationEdge = {
+        id: created.id,
+        kind: linkKind,
+        direction: "from",
+        relatedId: linkId.trim(),
+        related: null,
+        createdAt: created.createdAt,
+      };
+      setEdges((prev) => [...prev, optimisticEdge]);
+      setLinkId("");
+      toast.success("Record linked");
+      fetchRelations(recordId).then(({ edges: e }) => setEdges(e)).catch(() => {});
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not link the records"));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleUnlink = async (edge: RecordRelationEdge) => {
+    setEdges((prev) => prev.filter((e) => e.id !== edge.id));
+    try {
+      await unlinkRecords(edge.id);
+      toast.success("Link removed");
+    } catch (err) {
+      setEdges((prev) => [...prev, edge]);
+      toast.error(errorMessage(err, "Could not remove the link"));
+    }
+  };
+
+  return (
+    <section aria-label="Linked records" className="grid gap-4">
+      <p className="text-xs text-muted">
+        Link this record to related records across modules — the journey rail reads these real links
+        instead of guessing from names.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={linkId}
+          onChange={(e) => setLinkId(e.target.value)}
+          placeholder="Record ID (e.g. BK-2401)"
+          className="flex-1 min-w-0 rounded-xl border border-line bg-glass-2 px-3 py-1.5 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Record ID to link"
+          onKeyDown={(e) => { if (e.key === "Enter") void handleLink(); }}
+        />
+        <select
+          value={linkKind}
+          onChange={(e) => setLinkKind(e.target.value as RelationKind)}
+          aria-label="Relation kind"
+          className="rounded-xl border border-line bg-glass-2 px-2 py-1.5 text-xs"
+        >
+          {(Object.keys(KIND_LABELS) as RelationKind[]).map((k) => (
+            <option key={k} value={k}>{KIND_LABELS[k]}</option>
+          ))}
+        </select>
+        <Button size="sm" disabled={adding || !linkId.trim()} onClick={() => void handleLink()}>
+          {adding ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+          Link
+        </Button>
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="size-4 animate-spin text-muted" aria-label="Loading links" />
+        </div>
+      ) : edges.length === 0 ? (
+        <p className="rounded-xl border border-line bg-glass-2 p-4 text-center text-xs text-muted">
+          No links yet. Paste a record ID above to create the first one.
+        </p>
+      ) : (
+        <ul className="grid gap-2" role="list">
+          {edges.map((edge) => {
+            const relatedMod = edge.related ? findModule(edge.related.moduleId) : null;
+            return (
+              <li key={edge.id} className="flex items-center gap-2 rounded-xl border border-line bg-glass-2 px-3 py-2">
+                <span className="shrink-0 text-[11px] font-semibold text-muted">
+                  {KIND_LABELS[edge.kind as RelationKind] ?? edge.kind}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-semibold">
+                    {edge.related?.name ?? edge.relatedId}
+                  </span>
+                  {edge.related && (
+                    <span className="block text-[11px] text-muted">
+                      {relatedMod?.name ?? edge.related.moduleId} · {edge.related.reference} · {edge.related.status}
+                    </span>
+                  )}
+                </div>
+                <span className="shrink-0 text-[11px] text-faint">
+                  {edge.direction === "from" ? "→" : "←"}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Remove link"
+                  className="shrink-0 text-muted hover:text-destructive"
+                  onClick={() => void handleUnlink(edge)}
+                >
+                  <Link2Off className="size-3.5" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

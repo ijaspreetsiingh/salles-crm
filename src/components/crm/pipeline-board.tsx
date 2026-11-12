@@ -391,23 +391,15 @@ export function PipelineBoard({ rows, schema, currency, owners, noun, onUpdate, 
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Button
-                className="rounded-full"
-                onClick={() => {
-                  toast.success(`${selected.id} saved`);
-                  setSelectedId(null);
-                }}
-              >
-                Save & close
-              </Button>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 className="rounded-full"
                 onClick={() => setSelectedId(null)}
               >
-                Back to board
+                Done
               </Button>
+              <span className="text-xs text-muted">Changes save as you make them.</span>
             </div>
           </aside>
         </>
