@@ -233,6 +233,15 @@ const TRANSFER_TYPES = ["Airport pickup", "Private transfer", "City tour", "Airp
 const DOC_TYPES = ["Passport", "Visa", "Insurance policy", "Travel consent"];
 const TRAVELLERS = [6, 4, 8, 5, 4, 6, 10, 7];
 
+/**
+ * Trip lengths, in days, paired with DATE_OFFSETS below.
+ *
+ * The pair at index 2 leaves six days ago and flies for six days, so it lands
+ * today — a demo workspace where "arrivals today" is genuinely empty looks
+ * broken rather than quiet.
+ */
+const OPS_DAYS = [7, 5, 6, 4, 3, 8, 10, 6];
+
 export const isoOffset = (days: number) => {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -242,6 +251,8 @@ export const isoOffset = (days: number) => {
 const detailFor = (module: ModuleDef, tab: string | undefined, name: string, i: number) => {
   if (module.id === "flights") return FLIGHT_DETAILS[i] ?? "";
   if (module.id === "transfers") return `${TRANSFER_TYPES[i % 4]} · ${(i % 3) + 2} passengers`;
+  // Trips state their own length so the return date below matches the detail.
+  if (module.id === "operations") return `${(i % 3) + 2} travellers · ${OPS_DAYS[i]} days`;
   if (tab === "Documents") return `${DOC_TYPES[i % 4]} · ${name}`;
   return `${(i % 3) + 2} travellers · ${TRAVELLERS[i]} days`;
 };
@@ -261,6 +272,8 @@ export type SeedRecord = {
   phone: string;
   source: string;
   notes: string;
+  /** Module-specific extra JSON. Trips need a return date; most modules do not. */
+  extra?: Record<string, unknown>;
 };
 
 /** Builds eight demo records for a module — identical to the frontend seed. */
@@ -286,6 +299,14 @@ export function buildModuleRecords(module: ModuleDef): SeedRecord[] {
       source: SOURCES[i % SOURCES.length] ?? "Website",
       notes:
         "Customer prefers a morning departure. Follow up with the supplier for final confirmation.",
+      ...(module.id === "operations"
+        ? {
+            extra: {
+              pax: (i % 3) + 2,
+              returnDate: isoOffset((DATE_OFFSETS[i] ?? 0) + (OPS_DAYS[i] ?? 6)),
+            },
+          }
+        : {}),
     };
   });
 }

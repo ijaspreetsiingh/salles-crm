@@ -20,6 +20,7 @@ import { NotFoundError } from "../lib/errors";
 import { cuid, parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 import { eventCreated, eventStatusChange } from "../services/timeline";
+import { pickArrivals, tripReturnDate } from "../services/trip-dates";
 
 const router = Router();
 router.use(requireAuth);
@@ -337,7 +338,7 @@ router.get(
     const today = new Date().toISOString().slice(0, 10);
     const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 
-    const [departuresToday, arrivalsToday, activeTrips, openIncidents, pnrDeadlines, openTasks] = await Promise.all([
+    const [departuresToday, tripCandidates, activeTrips, openIncidents, pnrDeadlines, openTasks] = await Promise.all([
       // Departures today
       prisma.record.findMany({
         where: { organizationId, moduleId: "operations", tab: "Departures", date: today, status: { in: ["Upcoming", "Confirmed"] }, deletedAt: null },
@@ -345,17 +346,31 @@ router.get(
         take: 50,
         select: { id: true, reference: true, name: true, destination: true, date: true, status: true },
       }),
-      // Arrivals today (trips ending today)
+      /*
+       * Arrivals today.
+       *
+       * A trip ends on the return date recorded on the trip itself. The old
+       * query searched the whole `extra` blob for today's date as text, which
+       * matched any field holding that date and missed every trip whose date
+       * was written differently — the list showed trips that were not arriving
+       * and hid trips that were.
+       *
+       * A trip has no arrival column, so the date still lives in `extra`; but
+       * it is parsed from named keys and compared here rather than guessed at
+       * in SQL. Bounded by the statuses that can be ending, and ordered newest
+       * first so a busy workspace keeps the recent trips.
+       */
       prisma.record.findMany({
-        where: { organizationId, moduleId: "operations", tab: "Departures", deletedAt: null,
-          OR: [
-            { extra: { contains: today }, status: "In progress" },
-            { status: "Completed", date: today },
-          ],
+        where: {
+          organizationId,
+          moduleId: "operations",
+          tab: "Departures",
+          deletedAt: null,
+          status: { in: ["Upcoming", "In progress", "Delayed", "Completed"] },
         },
-        orderBy: { name: "asc" },
-        take: 50,
-        select: { id: true, reference: true, name: true, destination: true, status: true },
+        orderBy: [{ date: "desc" }, { name: "asc" }],
+        take: 1000,
+        select: { id: true, reference: true, name: true, destination: true, date: true, status: true, extra: true },
       }),
       // Active trips (in progress)
       prisma.record.findMany({
@@ -387,11 +402,33 @@ router.get(
       }),
     ]);
 
+    const arrivals = pickArrivals(tripCandidates, today);
+    const arrivalsToday = arrivals.arriving.map((trip) => ({
+      id: trip.id,
+      reference: trip.reference,
+      name: trip.name,
+      destination: trip.destination,
+      /** Departure day, kept beside the arrival day so the screen can say "3 of 8 nights". */
+      date: trip.date,
+      returnDate: tripReturnDate(trip.extra),
+      status: trip.status,
+    }));
+    const arrivalsUndated = arrivals.undated.map((trip) => ({
+      id: trip.id,
+      reference: trip.reference,
+      name: trip.name,
+      destination: trip.destination,
+      date: trip.date,
+      status: trip.status,
+    }));
+
     return ok(res, {
       date: today,
       summary: {
         departuresToday: departuresToday.length,
         arrivalsToday: arrivalsToday.length,
+        /** Trips on the road whose return day nobody wrote down. */
+        arrivalsUndated: arrivalsUndated.length,
         activeTrips: activeTrips.length,
         openIncidents: openIncidents.length,
         pnrDeadlines: pnrDeadlines.length,
@@ -399,6 +436,7 @@ router.get(
       },
       departuresToday,
       arrivalsToday,
+      arrivalsUndated,
       activeTrips,
       openIncidents: openIncidents.map((i) => ({
         id: i.id, reference: i.reference, title: i.name, status: i.status, description: (i.notes ?? "").slice(0, 100),

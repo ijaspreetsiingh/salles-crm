@@ -1248,6 +1248,13 @@ export const schemas: Record<string, ModuleSchema> = {
       { key: "name", label: "Trip / departure", type: "text", required: true, group: "Trip" },
       { key: "destination", label: "Destination", type: "text", group: "Trip" },
       { key: "date", label: "Departure date", type: "date", group: "Trip" },
+      /*
+       * A trip had a departure day but no day it comes back, which is why the
+       * ops screen had to guess "arrivals today" by searching the whole record
+       * for today's date. Without this field there is nothing to be right
+       * about: the desk could not tell a driver when to be at the airport.
+       */
+      extra({ key: "returnDate", label: "Return date", type: "date" }, "Trip"),
       extra({ key: "pax", label: "Travellers", type: "number" }, "Trip"),
       extra(
         { label: "Manifest", type: "select", options: ["Pending", "Shared", "Verified"] },
@@ -1276,6 +1283,7 @@ export const schemas: Record<string, ModuleSchema> = {
       col("name", "Trip"),
       col("destination", "Destination"),
       col("date", "Departure", "date"),
+      { ...col("extra:returnDate", "Returns", "date"), sortable: false },
       { ...col("extra:pax", "Pax", "chip"), sortable: false },
       { ...col("extra:manifest", "Manifest", "chip"), sortable: false },
       { ...col("extra:vouchers", "Vouchers", "chip"), sortable: false },
@@ -1289,7 +1297,7 @@ export const schemas: Record<string, ModuleSchema> = {
       kpiSum("In-flight value", "Upcoming and active trips", ["Upcoming", "In progress"], "ink"),
     ],
     detailSections: [
-      { title: "Trip", keys: ["name", "destination", "date", "extra:pax"] },
+      { title: "Trip", keys: ["name", "destination", "date", "extra:returnDate", "extra:pax"] },
       {
         title: "Operations",
         keys: ["extra:manifest", "extra:vouchers", "extra:onTripContact", "extra:incidents"],
@@ -1298,6 +1306,7 @@ export const schemas: Record<string, ModuleSchema> = {
     ],
     tips: [
       "Har departure ka manifest Verified karo travel se pehle.",
+      'Return date zaroor bharo — "aaj kaun laut raha hai" list usi se banti hai, guess se nahi.',
       "Vouchers All hone ke baad hi status In progress karo.",
       "Incident aaya to yahin note karo — history ban jayegi.",
     ],

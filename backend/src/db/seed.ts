@@ -234,7 +234,7 @@ export async function seed(options: { reset?: boolean } = {}): Promise<void> {
       organizationId: organization.id,
       ownerId: userMap.get(record.ownerName) ?? null,
       branchId: branchMap.get(record.branchName) ?? null,
-      extra: stringifyJson({}),
+      extra: stringifyJson(record.extra ?? {}),
       meta: stringifyJson({}),
     })),
   );
