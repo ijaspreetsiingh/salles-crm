@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "./ui";
 import { Avatar, CustomerLinkPicker, Status, labelForKey, readField } from "./common";
+import { slaState, slaStateLabel } from "@/lib/crm/sla";
 import { JourneyRail } from "./journey";
 import { buildJourney, buildJourneyFromRelations } from "@/lib/crm/journey";
 import { money, type Module, type RecordRow, modules } from "@/lib/crm/catalog";
@@ -139,7 +140,14 @@ export function RecordSheet({
         .filter(({ value }) => value !== "" && value !== null && value !== undefined)
         .map(({ field, value }) => ({
           label: labelForKey(field.key, schema.fields),
-          value: field.key === "amount" ? money(Number(value) || 0, currency) : String(value),
+          value:
+            module.id === "support" && field.key === "date"
+              ? `${String(value)} — ${slaStateLabel(
+                  slaState({ status: row.status, extra: row.extra ?? {}, date: String(value) }),
+                )}`
+              : field.key === "amount"
+                ? money(Number(value) || 0, currency)
+                : String(value),
         })),
     [schema, row, currency],
   );

@@ -489,3 +489,16 @@ export async function openVoucher(recordId: string) {
   // Give the new tab a moment to take the blob before releasing it.
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+/* ------------------------------------------------------------------ *
+ * Support SLA
+ *
+ * Escalates breached support tickets (Open → Escalated) and notifies the
+ * team. Meant to be called on a schedule so breached tickets don't sit
+ * unnoticed.
+ * ------------------------------------------------------------------ */
+
+export const escalateBreachedSla = () =>
+  apiRequest<{ escalated: number }>("/support/sla/escalate-breached", {
+    method: "POST",
+  });

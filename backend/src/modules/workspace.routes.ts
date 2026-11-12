@@ -17,7 +17,7 @@ import {
   reserveDepartureCapacity,
 } from "../services/departure-capacity";
 import { assertSegregationOfDuties } from "../services/sod";
-import { stringifyJson } from "../lib/utils";
+import { stringifyJson, parseJson } from "../lib/utils";
 import { MODULES, moduleGroups } from "../domain/modules";
 import { hasPermission } from "../domain/rbac";
 import {
@@ -32,6 +32,7 @@ import {
 } from "../services/records";
 import { recordAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
+import { applySlaOnCreate, slaDueDate } from "../services/sla";
 import { importRecords } from "../services/import";
 import { buildAttention } from "../services/attention";
 import { findDuplicateGroups, mergeRecords } from "../services/duplicates";
@@ -504,7 +505,11 @@ router.post(
     // Invoices are numbered per financial year instead of from a running
     // module counter, so the series stays audit-ready.
     const invoicePrefix = module.id === "finance" ? await invoiceNumberPrefix(organizationId) : "";
-    const recordDate = body.date ?? new Date().toISOString().slice(0, 10);
+    const recordDate =
+      (body.date ??
+        (module.id === "support"
+          ? applySlaOnCreate("support", extraJson, new Date().toISOString())
+          : new Date().toISOString().slice(0, 10))) ?? new Date().toISOString().slice(0, 10);
     let record = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const reference =
@@ -711,6 +716,23 @@ router.patch(
           )
         : null;
 
+    /*
+     * Support tickets: when the priority changes, recompute the SLA due date
+     * from the priority window. An explicitly set date always wins — the auto
+     * SLA only fills in when nobody chose a date.
+     */
+    let slaDate: string | undefined = body.date;
+    if (
+      module.id === "support" &&
+      body.date === undefined &&
+      body.extra !== undefined
+    ) {
+      const nextPriority = String(
+        (parseJson<Record<string, unknown>>(nextExtra, {}).priority ?? "Normal"),
+      );
+      slaDate = slaDueDate(nextPriority, existing.createdAt.toISOString());
+    }
+
     let record;
     try {
       record = await prisma.record.update({
@@ -719,7 +741,7 @@ router.patch(
           name: body.name,
           detail: body.detail,
           destination: body.destination,
-          date: body.date,
+          date: slaDate,
           amount: body.amount,
           currency: body.currency === "" ? "" : body.currency,
           status: body.status,

@@ -300,6 +300,8 @@ export const destinations = [
 
 export type RecordRow = {
   id: string;
+  /** The module this row belongs to (e.g. "support", "bookings"). */
+  moduleId?: string;
   name: string;
   detail: string;
   destination: string;

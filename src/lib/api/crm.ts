@@ -198,6 +198,7 @@ export const ROLE_KEY_BY_LABEL: Record<string, string> = Object.fromEntries(
 export function toRecordRow(dto: RecordDto): RecordRow {
   const row: RecordRow = {
     id: dto.reference || dto.id,
+    moduleId: dto.moduleId,
     name: dto.name ?? "",
     detail: dto.detail ?? "",
     destination: dto.destination ?? "",

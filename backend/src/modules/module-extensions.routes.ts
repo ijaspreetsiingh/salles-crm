@@ -20,6 +20,7 @@ import { cuid, parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
 import { eventCreated, eventStatusChange } from "../services/timeline";
+import { escalateBreachedTickets } from "../services/sla";
 import PDFDocument from "pdfkit";
 
 const router = Router();
@@ -210,6 +211,24 @@ router.post("/flights/ancillaries", requirePermission("create"), validate(ancill
   }});
   return created(res, { id: record.id });
 }));
+
+/**
+ * Support SLA breach check.
+ *
+ * Finds every open support ticket whose SLA due date has passed, escalates it
+ * (Open → Escalated) and notifies the team. Returns how many tickets were
+ * escalated. Meant to be called on a schedule (e.g. every hour) so breached
+ * tickets don't sit unnoticed.
+ */
+router.post(
+  "/support/sla/escalate-breached",
+  requirePermission("edit"),
+  asyncHandler(async (req, res) => {
+    const escalated = await escalateBreachedTickets(req.auth!.organizationId);
+    return ok(res, { escalated });
+  }),
+);
+
 
 const reissueRefundSchema = z.object({
   flightRecordId: z.string().min(1),

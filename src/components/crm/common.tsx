@@ -33,6 +33,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatDay, money, modules, type Module, type RecordRow } from "@/lib/crm/catalog";
+import { slaState, slaStateLabel } from "@/lib/crm/sla";
 import { buildJourney } from "@/lib/crm/journey";
 import { statusGuide } from "@/lib/crm/language";
 import { getSchema, type ColumnDef, type FieldDef } from "@/lib/crm/schema";
@@ -326,6 +327,25 @@ export function CellValue({
     case "money":
       return <span className="amount-cell">{money(Number(raw) || 0, currency)}</span>;
     case "date":
+      // Support tickets show SLA state on their due date cell.
+      if (row.moduleId === "support" && column.key === "date") {
+        const state = slaState({
+          status: row.status,
+          extra: row.extra ?? {},
+          date: String(raw),
+        });
+        const tone =
+          state === "breached"
+            ? "text-destructive"
+            : state === "due soon"
+              ? "text-amber-600"
+              : "text-foreground";
+        return (
+          <span className={tone} title={slaStateLabel(state)}>
+            {raw === "" ? "—" : `${formatDay(String(raw))} ${state === "breached" ? "⚠" : state === "due soon" ? "⏰" : ""}`}
+          </span>
+        );
+      }
       return (
         <span className={raw === "" ? "muted-dash" : ""}>
           {raw === "" ? "—" : formatDay(String(raw))}
