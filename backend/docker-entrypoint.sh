@@ -11,9 +11,11 @@ if echo "${DATABASE_URL:-}" | grep -Eq '^postgres(ql)?://'; then
   echo "→ Applying database migrations (Postgres) ..."
   npx prisma migrate deploy
 else
-  # SQLite is the local/dev engine, where push remains acceptable.
-  echo "→ Preparing SQLite database (dev) ..."
-  npx prisma db push --skip-generate
+  # No silent SQLite fallback in a container: a file inside the image or an
+  # ephemeral volume looks like a working CRM until the next deploy wipes it.
+  echo "✖ DATABASE_URL must be a postgres:// URL. SQLite is not supported by this schema" >&2
+  echo "  (money columns use DECIMAL(14,2), which Prisma's SQLite connector cannot represent)." >&2
+  exit 1
 fi
 
 if [ "${SEED_ON_START}" = "true" ]; then

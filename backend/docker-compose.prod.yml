@@ -165,10 +165,16 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgres://traveldesk:traveldesk-change-me@postgres:5432/traveldesk}
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY}
       BACKUPS_TO_KEEP: ${BACKUPS_TO_KEEP:-14}
+      UPLOAD_DIR: /app/data/uploads
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_MINUTE: ${BACKUP_MINUTE:-0}
+      RUN_NOW: "true"
+      TZ: ${TZ:-Asia/Kolkata}
     volumes:
       - traveldesk-data:/app/data:ro
       - ./backups:/app/data/backups
-    entrypoint: ["sh", "-c", "npm run db:backup && crond -f"]
+    # A real daily schedule, not a shell one-liner that runs once and exits.
+    entrypoint: ["node", "scripts/backup-scheduler.mjs"]
     depends_on:
       api:
         condition: service_healthy

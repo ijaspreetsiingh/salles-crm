@@ -5,7 +5,12 @@ entire CRM/ERP that the existing frontend renders — leads, customers, quotatio
 flights, hotels, visa, finance, B2B agents, automation, reports, the AI assistant and the
 organisation settings — behind a multi-tenant, role-based, audit-logged REST API.
 
-> **Stack:** Node.js 20 · TypeScript · Express · Prisma · **SQLite** · JWT + bcrypt · Zod · Pino · Docker
+> **Stack:** Node.js 20 · TypeScript · Express · Prisma · **PostgreSQL** · JWT + bcrypt · Zod · Pino · Docker
+
+> **Database:** PostgreSQL only. Money columns are native `DECIMAL(14,2)` so
+> receipts, ledgers and GST invoices agree to the paisa, and Prisma's SQLite
+> connector cannot represent that type. `npm run db:sqlite` refuses on purpose;
+> an old SQLite install moves across once with `scripts/migrate-sqlite-to-postgres.mjs`.
 
 ---
 
@@ -13,9 +18,12 @@ organisation settings — behind a multi-tenant, role-based, audit-logged REST A
 
 ```bash
 cd backend
-cp .env.example .env          # already provided in dev
+# 1) PostgreSQL (skip if you already have a server)
+docker compose -f docker-compose.dev.yml up -d
+
+cp .env.example .env          # set DATABASE_URL to your postgres:// URL
 npm install
-npm run prisma:push           # creates data/traveldesk.db from the Prisma schema
+npm run db:migrate            # applies prisma/migrations
 npm run seed                  # seeds the demo organisation (Horizon Travel)
 npm run dev                   # http://localhost:4000/api/v1
 ```
@@ -37,8 +45,9 @@ The seed also prints a one-time API key (`tdk_…`) you can use for machine-to-m
 | `npm run build`         | `prisma generate` + TypeScript compile to `dist` |
 | `npm start`             | Run the compiled server                        |
 | `npm run seed`          | Idempotent demo seed                           |
-| `npm run prisma:push`   | Push the Prisma schema to SQLite               |
-| `npm run prisma:studio` | Browse the SQLite data in Prisma Studio        |
+| `npm run db:migrate`    | Apply versioned migrations (`prisma migrate deploy`) |
+| `npm run db:baseline`   | Mark a pre-migration database as `0_init` |
+| `npm run prisma:studio` | Browse the Postgres data in Prisma Studio       |
 | `npm run db:reset`      | Force-reset the database                       |
 | `npm test`              | Vitest + Supertest smoke suite                 |
 | `npm run typecheck`     | TypeScript type check                          |
@@ -47,7 +56,11 @@ The seed also prints a one-time API key (`tdk_…`) you can use for machine-to-m
 
 ## 2. Docker
 
-Everything runs in a single container with a named volume so the SQLite file survives rebuilds.
+The API container is built against the PostgreSQL Prisma engine and refuses to
+start without a `postgres://` `DATABASE_URL`. Uploads live on the
+`traveldesk-data` volume; the database lives in the `postgres` service's own
+volume. A local database inside the API container would be lost on every
+deploy, so there is no fallback.
 
 ```bash
 cd backend
@@ -55,8 +68,9 @@ docker compose up --build
 # → http://localhost:4000/api/v1/health
 ```
 
-On first boot the entrypoint runs `prisma db push` and (when `SEED_ON_START=true`) seeds the demo
-data automatically.
+On first boot the entrypoint runs `prisma migrate deploy` (all versioned migrations) and, when
+`SEED_ON_START=true`, seeds the demo data automatically. It never runs `db push`, so a container
+restart cannot rewrite a production schema without a migration record.
 
 Override secrets for a real deployment:
 
@@ -88,7 +102,7 @@ src/
 ├── routes/index.ts          # mounts every router under /api/v1
 ├── db/                      # seed data + seed runner
 └── types/express.d.ts       # request augmentation (auth context)
-prisma/schema.prisma         # full data model (SQLite)
+prisma/schema.prisma         # full data model (PostgreSQL)
 ```
 
 ### Design principles
@@ -113,7 +127,7 @@ See [`.env.example`](.env.example) for the full list. Key ones:
 
 | Variable                        | Description                                        |
 | ------------------------------- | -------------------------------------------------- |
-| `DATABASE_URL`                  | SQLite file (`file:./data/traveldesk.db`)          |
+| `DATABASE_URL`                  | PostgreSQL URL (`postgres://user:pass@host:5432/db`) |
 | `JWT_ACCESS_SECRET`             | Signing key for access tokens (min 16 chars)       |
 | `JWT_REFRESH_SECRET`            | Signing key for refresh tokens (min 16 chars)      |
 | `ACCESS_TOKEN_TTL`              | Access token lifetime (default `15m`)              |

@@ -2,7 +2,7 @@
   "name": "traveldesk-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Enterprise SaaS backend for the Traveldesk travel business workspace (Node.js + Express + Prisma + SQLite).",
+  "description": "Enterprise SaaS backend for the Traveldesk travel business workspace (Node.js + Express + Prisma + PostgreSQL).",
   "license": "UNLICENSED",
   "main": "dist/index.js",
   "engines": {
@@ -13,21 +13,26 @@
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "seed": "tsx src/db/seed.ts",
+    "seed:e2e": "tsx src/db/seed-e2e.ts",
     "start:seed": "node dist/db/seed.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "db:reset": "prisma db push --force-reset",
     "db:backup": "node scripts/db-backup.mjs",
+    "backup:schedule": "node scripts/backup-scheduler.mjs",
     "db:pg": "node scripts/db-provider.mjs postgres && echo 'Now set DATABASE_URL to a postgres:// URL and run: npm run prisma:push'",
-    "db:sqlite": "node scripts/db-provider.mjs sqlite && echo 'Now set DATABASE_URL to file:./data/traveldesk.db and run: npm run prisma:push'",
+    "db:sqlite": "node scripts/db-provider.mjs sqlite",
     "test": "vitest run",
+    "test:db": "vitest run tests/money-db.test.ts tests/production-api.test.ts tests/backup.test.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:baseline": "prisma migrate resolve --applied 0_init",
-    "db:drift": "prisma migrate diff --from-url \"file:./data/traveldesk.db\" --to-schema-datamodel prisma/schema.prisma --exit-code"
+    "db:drift": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code",
+    "db:migrate:status": "prisma migrate status",
+    "start:prod": "prisma migrate deploy && node dist/index.js"
   },
   "prisma": {
     "seed": "tsx src/db/seed.ts"

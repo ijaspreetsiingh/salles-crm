@@ -20,6 +20,9 @@ payments, flights, AI, backups and the platform super admin.
 | `LLM_API_KEY` | Real AI assistant + itinerary generation | Assistant answers from built-in rules and says so in the UI |
 | `CORS_ORIGINS` | Frontend origins allowed | Default localhost set only |
 | `APP_URL` | Public API URL used in emails/links | Default `http://localhost:4000` |
+| `REQUIRE_EMAIL_VERIFICATION` | `true` par unverified password login/refresh 403; resend endpoint + login UI | Unverified accounts can sign in |
+| `TURNSTILE_SECRET_KEY` / `TURNSTILE_SITE_KEY` | Cloudflare Turnstile on the public lead form (optional) | Honeypot + timing + duplicate throttle still active |
+| `BACKUP_ENCRYPTION_KEY` | 32+ char key for encrypted DB + uploads backups; **required** | Backup script warns loudly and writes plain text |
 
 No key makes the app break — every integration degrades to a clearly-labelled
 queued/mock mode so the CRM stays honest about what actually went out.
@@ -69,9 +72,41 @@ npm run db:drift                              # fails if the database and schema
 Deploy order: run `db:migrate` **before** starting the new build, so the old
 process never sees a column it does not know about.
 
-### Quick start (SQLite — dev/small offices)
+### Regression tests (including database flows)
+
+`npm test` runs the pure suite; database tests skip unless pointed at a
+disposable database. The DB suite covers agent credit, erasure, lead-form spam,
+attendance, credit notes + GST returns, 3-way match, email verification, the
+append-only audit trigger, trigram indexes and encrypted backup/restore.
+
 ```bash
 cd backend
+# create an empty DB, apply migrations, seed it, then:
+TEST_DATABASE_URL=postgresql://postgres@localhost:5432/traveldesk_test?schema=public \
+  TEST_OWNER_EMAIL=owner@horizontravel.in TEST_OWNER_PASSWORD='…' \
+  npm run test:db
+```
+
+Never point `TEST_DATABASE_URL` at a workspace with real data: the tests create
+agents, bookings, invoices and credit notes. `pg_dump` must be on `PATH` for the
+backup drill.
+
+### Quick start
+
+PostgreSQL is the only supported database. Money columns are native
+`DECIMAL(14,2)` (exact paisa arithmetic), and Prisma's SQLite connector cannot
+represent that native type — `npm run db:sqlite` refuses with an explanation
+rather than leaving a schema that will not generate.
+
+```bash
+cd backend
+# 1) Local PostgreSQL
+docker compose -f docker-compose.dev.yml up -d
+
+# 2) Point DATABASE_URL at it
+#    e.g. postgres://traveldesk:traveldesk@localhost:5432/traveldesk
+
+# 3) Create the schema and seed
 npm install
 npx prisma generate
 npm run db:migrate
@@ -79,21 +114,10 @@ npm run seed
 npm run dev
 ```
 
-### PostgreSQL (recommended for production)
+An installation that still holds its data in SQLite moves across once:
+
 ```bash
-# 1) Switch the Prisma provider (static by design)
-npm run db:pg            # edits prisma/schema.prisma to provider = "postgres"
-
-# 2) Point DATABASE_URL at your server
-#    e.g. postgres://traveldesk:PASSWORD@db.example.com:5432/traveldesk
-
-# 3) Create the schema and seed
-npx prisma generate
-npm run db:migrate
-npm run seed
-
-# Back to SQLite (dev):
-npm run db:sqlite
+node scripts/migrate-sqlite-to-postgres.mjs
 ```
 
 Docker one-liner with Postgres included:
@@ -109,14 +133,47 @@ Carrying *existing* SQLite data into Postgres is a one-time ETL: the schema is
 plain Prisma models, so a dump/restore script or `prisma` + JSON export does
 it — start clean if you have no production data yet.
 
-## 3. Backups
+## 3. Backups (database + uploads)
 
-- **SQLite:** `npm run db:backup` copies `data/traveldesk.db` (plus WAL
-  sidecars) into `data/backups/`, keeping the 14 newest by default
-  (`BACKUPS_TO_KEEP` to change). Put it in cron/systemd timer, e.g. daily.
-- **Postgres:** `pg_dump -Fc "$DATABASE_URL" > backup-$(date +%F).dump`
-  and restore with `pg_restore`. Recommended: run nightly, plus a second
-  off-box copy of the week's dumps.
+A database dump alone is not a backup: passport scans, tickets and invoice PDFs
+live under `UPLOAD_DIR`. `npm run db:backup` takes both in one run:
+
+- `pg_dump` → AES-256-GCM encrypted `traveldesk-<ts>.bak`
+- tar of `UPLOAD_DIR` → encrypted `traveldesk-uploads-<ts>.tar.gz.bak`
+- `traveldesk-manifest-<ts>.json` with SHA-256 and byte counts for both
+
+Requirements: `BACKUP_ENCRYPTION_KEY` (32+ chars) and `pg_dump` in `PATH`
+(the runtime image installs `postgresql-client`). Optional: `BACKUP_DIR`,
+`UPLOAD_DIR`, `BACKUPS_TO_KEEP` (default 14).
+
+Nightly schedule — either the compose `backup` service, or directly:
+
+```bash
+cd backend
+BACKUP_ENCRYPTION_KEY=… npm run db:backup:schedule
+# BACKUP_HOUR=2 BACKUP_MINUTE=0 TZ=Asia/Kolkata RUN_NOW=true
+```
+
+Restore drill (stop the API first):
+
+```bash
+BACKUP_ENCRYPTION_KEY=… node scripts/restore-backup.mjs \
+  --db data/backups/traveldesk-<ts>.bak \
+  --uploads data/backups/traveldesk-uploads-<ts>.tar.gz.bak \
+  --out restore-<ts>
+
+psql "$DATABASE_URL" < restore-<ts>/database.sql
+# archive contains data/uploads/…; extract at the project root that owns data/
+tar -xzf restore-<ts>/uploads.tar.gz -C /app
+```
+
+The helper only decrypts and prints commands — it never applies a dump to a live
+URL by itself. Verify the manifest checksums, keep an off-box copy, and run a
+restore drill before go-live and then quarterly.
+
+> Uploads stay on a persistent volume (`/app/data/uploads`). That is correct for
+the single-replica compose deployment; running multiple API replicas needs
+object storage (S3/R2), which is still P2.
 
 ## 4. Razorpay webhooks
 

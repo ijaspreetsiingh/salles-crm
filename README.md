@@ -25,7 +25,7 @@ npm run dev
 
 ## Connecting to the Traveldesk API
 
-The workspace is fully backed by the Node.js + SQLite API in [`backend/`](backend/README.md):
+The workspace is fully backed by the Node.js + PostgreSQL API in [`backend/`](backend/README.md):
 sign-in, records, tasks, custom fields, branches, members and the audit trail all read/write over
 REST — there is no browser-only demo store.
 

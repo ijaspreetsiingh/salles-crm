@@ -9,9 +9,10 @@ COPY package.json package-lock.json* ./scripts ./scripts
 RUN npm install
 
 COPY prisma ./prisma
-# DATABASE_PROVIDER chooses the Prisma engine baked into this build
-# (sqlite by default; set to postgres for managed Postgres deployments).
-ARG DATABASE_PROVIDER=sqlite
+# DATABASE_PROVIDER chooses the Prisma engine baked into this build.
+# PostgreSQL is the only supported target: money uses DECIMAL(14,2) and
+# Prisma's SQLite connector cannot generate that schema at all.
+ARG DATABASE_PROVIDER=postgres
 RUN node scripts/db-provider.mjs ${DATABASE_PROVIDER} && npx prisma generate
 
 COPY tsconfig.json ./
@@ -23,11 +24,14 @@ RUN npm prune --omit=dev
 
 # ─── Stage 2: runtime ────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
-ARG DATABASE_PROVIDER=sqlite
+ARG DATABASE_PROVIDER=postgres
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
-ENV DATABASE_URL="file:/app/data/traveldesk.db"
+# Overridden by compose / your orchestrator. There is deliberately no SQLite
+# fallback: a container that silently created a local database would lose every
+# row on the next deploy.
+ENV DATABASE_URL="postgres://traveldesk:traveldesk-change-me@postgres:5432/traveldesk"
 ENV UPLOAD_DIR="/app/data/uploads"
 
 RUN apk add --no-cache openssl wget postgresql-client
