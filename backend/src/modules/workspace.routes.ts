@@ -11,6 +11,8 @@ import { getPagination, paginated } from "../lib/pagination";
 import { csvHeader, csvRow, type CsvValue } from "../lib/csv";
 import { assertAgentCredit, chargeAgentCredit, releaseAgentCredit } from "../services/agent-credit";
 import {
+  applyCapacityChange,
+  holdsSeats,
   releaseDepartureCapacity,
   reserveDepartureCapacity,
 } from "../services/departure-capacity";
@@ -691,39 +693,65 @@ router.patch(
           )
         : null;
 
-    const record = await prisma.record.update({
-      where: { id: existing.id },
-      data: {
-        name: body.name,
-        detail: body.detail,
-        destination: body.destination,
-        date: body.date,
-        amount: body.amount,
-        currency: body.currency === "" ? "" : body.currency,
-        status: body.status,
-        email: body.email,
-        phone: body.phone,
-        source: body.source,
-        notes: body.notes,
-        tab: body.tab,
-        reference: body.reference,
-        extra: body.extra ? normalizeExtra(body.extra) : undefined,
-        meta: body.meta ? stringifyJson(body.meta) : undefined,
-        ownerId: resolved?.ownerId,
-        ownerName: resolved?.ownerName,
-        branchId: resolved?.branchId,
-        branchName: resolved?.branchName,
-        updatedById: req.auth!.userId,
-      },
-    });
+    /*
+     * Seats move with the booking, not just with its creation.
+     *
+     * Editing a party of two into six, switching to another departure, or
+     * reopening a cancelled booking all change what the departure is holding.
+     * Extra seats are taken before the write so a full departure refuses the
+     * edit; if the write then fails the reservation is handed back.
+     */
+    const nextExtra = body.extra ? normalizeExtra(body.extra) : existing.extra;
+    const capacityChange =
+      module.id === "bookings"
+        ? await applyCapacityChange(
+            req.auth!.organizationId,
+            { extra: existing.extra, status: existing.status },
+            { extra: nextExtra, status: body.status ?? existing.status },
+          )
+        : null;
 
-    // Cancelling a credit sale puts the money back on the agent's line, and
-    // returns the seats to the fixed departure.
+    let record;
+    try {
+      record = await prisma.record.update({
+        where: { id: existing.id },
+        data: {
+          name: body.name,
+          detail: body.detail,
+          destination: body.destination,
+          date: body.date,
+          amount: body.amount,
+          currency: body.currency === "" ? "" : body.currency,
+          status: body.status,
+          email: body.email,
+          phone: body.phone,
+          source: body.source,
+          notes: body.notes,
+          tab: body.tab,
+          reference: body.reference,
+          extra: body.extra ? nextExtra : undefined,
+          meta: body.meta ? stringifyJson(body.meta) : undefined,
+          ownerId: resolved?.ownerId,
+          ownerName: resolved?.ownerName,
+          branchId: resolved?.branchId,
+          branchName: resolved?.branchName,
+          updatedById: req.auth!.userId,
+        },
+      });
+    } catch (error) {
+      await capacityChange?.revert().catch(() => undefined);
+      throw error;
+    }
+
+    // The write went through, so the old seats are genuinely free now.
+    await capacityChange?.commit().catch(() => undefined);
+
+    // A cancellation that did not release its agent credit would leave the
+    // sub-agent permanently short of limit for a booking nobody is paying for.
     if (module.id === "bookings" && record.status === "Cancelled" && existing.status !== "Cancelled") {
-      await Promise.all([
-        releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount),
-        releaseDepartureCapacity(req.auth!.organizationId, existing.extra, 1),
-      ]);
+      await releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount).catch(
+        () => undefined,
+      );
     }
 
     await recordAudit({
@@ -818,6 +846,20 @@ router.delete(
       where: { id: existing.id },
       data: { deletedAt: new Date(), updatedById: req.auth!.userId },
     });
+
+    /*
+     * A deleted booking is not travelling. Leaving its seats held would make the
+     * departure look full to the next customer, and leaving its credit held
+     * would keep a sub-agent under their limit for a sale that no longer exists.
+     */
+    if (module.id === "bookings" && holdsSeats(existing.status)) {
+      await Promise.all([
+        releaseDepartureCapacity(req.auth!.organizationId, existing.extra, 1).catch(() => undefined),
+        releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount).catch(
+          () => undefined,
+        ),
+      ]);
+    }
 
     await recordAudit({
       organizationId: req.auth!.organizationId,
@@ -969,10 +1011,50 @@ router.post(
       throw new ForbiddenError(`Your role cannot edit records in "${existing.moduleId}"`);
     }
 
-    const record = await prisma.record.update({
-      where: { id: existing.id },
-      data: { deletedAt: null, updatedById: req.auth!.userId },
-    });
+    /*
+     * Restoring a booking puts it back on the departure and back on the agent's
+     * credit line — deleting it took both away. If the departure has since
+     * filled up, the restore is refused rather than quietly overselling it.
+     */
+    let capacityChange: Awaited<ReturnType<typeof applyCapacityChange>> | null = null;
+    if (existing.moduleId === "bookings" && holdsSeats(existing.status)) {
+      capacityChange = await applyCapacityChange(
+        req.auth!.organizationId,
+        { extra: existing.extra, status: "Cancelled" },
+        { extra: existing.extra, status: existing.status },
+      );
+    }
+
+    let record;
+    try {
+      record = await prisma.record.update({
+        where: { id: existing.id },
+        data: { deletedAt: null, updatedById: req.auth!.userId },
+      });
+    } catch (error) {
+      await capacityChange?.revert().catch(() => undefined);
+      throw error;
+    }
+    await capacityChange?.commit().catch(() => undefined);
+
+    if (existing.moduleId === "bookings" && holdsSeats(existing.status) && existing.amount > 0) {
+      const charged = await chargeAgentCredit(
+        req.auth!.organizationId,
+        existing.extra,
+        existing.amount,
+      );
+      if (charged.accountId && !charged.charged) {
+        // The credit line moved while this booking sat in the bin; undo the
+        // restore so the two cannot disagree.
+        await prisma.record
+          .update({ where: { id: existing.id }, data: { deletedAt: new Date() } })
+          .catch(() => undefined);
+        await capacityChange?.revert().catch(() => undefined);
+        throw new BadRequestError(
+          "This agent's credit limit no longer covers the restored booking — it was left in the bin.",
+        );
+      }
+    }
 
     await recordAudit({
       organizationId: req.auth!.organizationId,
@@ -1073,8 +1155,28 @@ router.post(
       req.auth!,
     );
 
+    /*
+     * A bulk action moves records that a single edit would also move, so it
+     * must move their seats and credit with them. A toolbar "Cancel" on twenty
+     * bookings used to leave twenty seat blocks on the departure and twenty
+     * credit lines on the sub-agent — the seats then looked sold forever.
+     */
+    const changed = await prisma.record.findMany({
+      where,
+      select: { id: true, reference: true, status: true, extra: true, amount: true },
+    });
+
     if (action === "delete") {
       const result = await prisma.record.updateMany({ where, data: { deletedAt: new Date() } });
+      if (module.id === "bookings") {
+        for (const row of changed) {
+          if (!holdsSeats(row.status)) continue;
+          await Promise.all([
+            releaseDepartureCapacity(organizationId, row.extra, 1).catch(() => undefined),
+            releaseAgentCredit(organizationId, row.extra, row.amount).catch(() => undefined),
+          ]);
+        }
+      }
       await recordAudit({
         organizationId,
         action: "Deleted",
@@ -1091,10 +1193,68 @@ router.post(
       // typo in the toolbar could park 400 records in a status the module has
       // never heard of.
       assertValidStatus(module, value);
-      const result = await prisma.record.updateMany({
-        where,
-        data: { status: value, updatedById: req.auth!.userId },
-      });
+
+      const moving = changed.filter((row) => row.status !== value);
+      const skipped: Array<{ reference: string; reason: string }> = [];
+
+      if (module.id !== "bookings") {
+        const result = await prisma.record.updateMany({
+          where,
+          data: { status: value, updatedById: req.auth!.userId },
+        });
+        await recordAudit({
+          organizationId,
+          action: "Updated",
+          moduleId: module.id,
+          label: `${result.count} records set to ${value}`,
+          req,
+        });
+        return ok(res, { affected: result.count });
+      }
+
+      const targetHoldsSeats = holdsSeats(value);
+      const ready: Array<{ row: (typeof moving)[number]; commit: () => Promise<void> }> = [];
+
+      for (const row of moving) {
+        try {
+          // Reopening a cancelled booking may legitimately fail: the seats were
+          // given away. Say so for that row instead of failing the whole batch.
+          const change = await applyCapacityChange(
+            organizationId,
+            { extra: row.extra, status: row.status },
+            { extra: row.extra, status: value },
+          );
+          ready.push({ row, commit: change.commit });
+        } catch (error) {
+          if (targetHoldsSeats) {
+            skipped.push({
+              reference: row.reference,
+              reason: error instanceof Error ? error.message : "Could not reserve a seat",
+            });
+          }
+        }
+      }
+
+      const result =
+        ready.length > 0
+          ? await prisma.record.updateMany({
+              where: { ...where, id: { in: ready.map((entry) => entry.row.id) } },
+              data: { status: value, updatedById: req.auth!.userId },
+            })
+          : { count: 0 };
+
+      // The status write landed, so the seats it no longer holds are free.
+      for (const entry of ready) await entry.commit().catch(() => undefined);
+
+      if (!targetHoldsSeats) {
+        // Cancelling: put the agent's credit back for every booking that moved.
+        for (const entry of ready) {
+          await releaseAgentCredit(organizationId, entry.row.extra, entry.row.amount).catch(
+            () => undefined,
+          );
+        }
+      }
+
       await recordAudit({
         organizationId,
         action: "Updated",
@@ -1102,7 +1262,10 @@ router.post(
         label: `${result.count} records set to ${value}`,
         req,
       });
-      return ok(res, { affected: result.count });
+      return ok(res, {
+        affected: result.count,
+        ...(skipped.length ? { skipped } : {}),
+      });
     }
 
     // assign — an empty value hands the records back to the unclaimed queue.

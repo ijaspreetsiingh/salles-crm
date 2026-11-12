@@ -2,7 +2,7 @@ import { PrismaClient, type Prisma } from "@prisma/client";
 import { env, isProd } from "../config/env";
 
 /** SQLite URLs look like `file:./data/traveldesk.db`; everything else is Postgres. */
-const isSqlite = env.DATABASE_URL.startsWith("file:");
+export const isSqlite = env.DATABASE_URL.startsWith("file:");
 
 /**
  * Money is stored as exact `DECIMAL(14,2)` in Postgres, but application code

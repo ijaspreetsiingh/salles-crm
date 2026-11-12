@@ -109,8 +109,17 @@ export async function releaseAgentCredit(
     select: { id: true },
   });
   if (!account) return;
-  await prisma.agentAccount.update({
-    where: { id: account.id },
+
+  // Never let the used line go below zero: a booking created before credit was
+  // enforced was never charged, and releasing it must not create free credit.
+  const released = await prisma.agentAccount.updateMany({
+    where: { id: account.id, creditUsed: { gte: amount } },
     data: { creditUsed: { decrement: amount } },
   });
+  if (released.count === 0) {
+    await prisma.agentAccount.update({
+      where: { id: account.id },
+      data: { creditUsed: 0 },
+    });
+  }
 }

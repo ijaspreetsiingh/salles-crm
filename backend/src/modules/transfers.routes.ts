@@ -23,6 +23,7 @@ import { validate } from "../middlewares/validate";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import { cuid, parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
+import { assertTransportAvailable } from "../services/transport-assignment";
 import { eventCreated, eventStatusChange } from "../services/timeline";
 
 const router = Router();
@@ -431,15 +432,48 @@ router.post(
     });
     if (!transfer) throw new NotFoundError("Transfer");
 
-    // Look up vehicle and driver names for the assignment record.
+    // Look up vehicle and driver names for the assignment record. The ids must
+    // name a vehicle and a driver — not any record in the workspace.
     const [vehicle, driver] = await Promise.all([
       body.vehicleId
-        ? prisma.record.findFirst({ where: { id: body.vehicleId, organizationId }, select: { reference: true, name: true } })
+        ? prisma.record.findFirst({
+            where: {
+              id: body.vehicleId,
+              organizationId,
+              moduleId: "transfers",
+              tab: "Vehicles",
+              deletedAt: null,
+            },
+            select: { reference: true, name: true },
+          })
         : null,
       body.driverId
-        ? prisma.record.findFirst({ where: { id: body.driverId, organizationId }, select: { name: true, phone: true } })
+        ? prisma.record.findFirst({
+            where: {
+              id: body.driverId,
+              organizationId,
+              moduleId: "transfers",
+              tab: "Drivers",
+              deletedAt: null,
+            },
+            select: { name: true, phone: true },
+          })
         : null,
     ]);
+    if (body.vehicleId && !vehicle) throw new NotFoundError("Vehicle");
+    if (body.driverId && !driver) throw new NotFoundError("Driver");
+
+    /*
+     * One vehicle and one driver per calendar day. Without this the same Innova
+     * could be sent on two airport pickups at once — the fleet board looked
+     * right because nothing compared the two transfers.
+     */
+    await assertTransportAvailable(organizationId, {
+      transferId: transfer.id,
+      date: transfer.date,
+      vehicleId: body.vehicleId ?? undefined,
+      driverId: body.driverId ?? undefined,
+    });
 
     const extra = parseJson<Record<string, unknown>>(transfer.extra as string, {});
     const updated = await prisma.record.update({

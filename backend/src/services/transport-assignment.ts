@@ -63,7 +63,6 @@ export async function assertTransportAvailable(
     where: {
       organizationId,
       moduleId: "transfers",
-      tab: "Transfers",
       date: input.date.slice(0, 10),
       deletedAt: null,
     },
@@ -78,5 +77,6 @@ export async function assertTransportAvailable(
     conflict.kind === "vehicle"
       ? `That vehicle is already assigned to transfer ${conflict.reference || conflict.transferId} on this date`
       : `That driver is already assigned to transfer ${conflict.reference || conflict.transferId} on this date`,
+    { kind: conflict.kind, transferId: conflict.transferId, reference: conflict.reference },
   );
 }

@@ -78,6 +78,7 @@ model Organization {
   attendance    Attendance[]
   creditNotes   CreditNote[]
   groupMembers  GroupMember[]
+  roomBlocks    GroupRoomBlock[]
   recordRelations RecordRelation[]
   recordEvents  RecordEvent[]
   savedViews    SavedView[]
@@ -253,6 +254,8 @@ model Record {
   owner        User?         @relation("RecordOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   /// Delegates hang off this record (groups module); purging it removes them.
   groupMembers GroupMember[]
+  /// Hotel rooms this group is holding; released with the group.
+  roomBlocks   GroupRoomBlock[]
 
   @@unique([organizationId, reference])
   @@index([organizationId, moduleId])
@@ -1019,6 +1022,9 @@ model HotelAllotment {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  /// Blocks held against this contract; a released contract takes them with it.
+  groupBlocks    GroupRoomBlock[]
+
   @@index([organizationId, hotelName])
   @@index([organizationId, status])
   @@index([organizationId, city])
@@ -1059,6 +1065,37 @@ model GroupMember {
 
   @@index([organizationId, groupRecordId])
   @@index([organizationId, status])
+}
+
+/// Rooms a group is holding out of a hotel contract.
+///
+/// This used to be an array inside the group record's `extra` JSON, which meant
+/// two people linking a block at the same time both read the same array: one
+/// block vanished, but both increments to `HotelAllotment.usedRooms` stuck — the
+/// contract then showed fewer rooms free than were actually held. A row per
+/// block with a real foreign key makes the block and the counter move together,
+/// and deleting a block by its id can never remove the wrong one.
+model GroupRoomBlock {
+  id             String   @id @default(cuid())
+  organizationId String
+  groupRecordId  String
+  allotmentId    String
+  /// Copied at link time so the document the hotel receives does not change if
+  /// the contract is later renamed.
+  hotelName      String   @default("")
+  roomType       String   @default("")
+  roomsHeld      Int      @default(1)
+  notes          String   @default("")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  group        Record         @relation(fields: [groupRecordId], references: [id], onDelete: Cascade)
+  allotment    HotelAllotment @relation(fields: [allotmentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, groupRecordId])
+  @@index([organizationId, allotmentId])
 }
 
 /// One document a visa application needs.
