@@ -383,6 +383,8 @@ export type Settings = {
   brandSecondaryColor?: string;
   whiteLabelDomain?: string;
   hideBranding?: boolean;
+  /** Recycle-bin auto-purge: days after soft-delete before permanent removal. 0 = never. */
+  purgeAfterDays: number;
 };
 
 export const defaultSettings: Settings = {
@@ -405,6 +407,7 @@ export const defaultSettings: Settings = {
   brandPrimaryColor: "#2f5c50",
   brandSecondaryColor: "#f2c94c",
   hideBranding: false,
+  purgeAfterDays: 30,
   branches: ["Mumbai", "Delhi", "Bengaluru"],
   employees: [
     { name: "Sarah Wilson", role: "Workspace administrator", branch: "Mumbai", active: true },

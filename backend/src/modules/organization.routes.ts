@@ -11,6 +11,7 @@ import { publicOrganizationSettings } from "../lib/redact";
 import { recordAudit } from "../services/audit";
 import { readDigestSettings, sendDigestTo, writeDigestSettings } from "../services/digest";
 import { readSodRules } from "../services/sod";
+import { readPurgeSettings } from "../services/trash-purge";
 import { MODULES, moduleGroups } from "../domain/modules";
 
 const router = Router();
@@ -320,6 +321,53 @@ router.patch(
       req,
     });
     return ok(res, { rules: body.rules });
+  }),
+);
+
+/**
+ * Recycle-bin auto-purge settings — how many days a soft-deleted record stays
+ * in the bin before being permanently removed. 0 means never.
+ */
+const purgeSettingsSchema = z.object({
+  purgeAfterDays: z.coerce.number().int().min(0).max(36500),
+});
+
+router.get(
+  "/current/purge-settings",
+  asyncHandler(async (req, res) => {
+    const organization = await prisma.organization.findUnique({
+      where: { id: req.auth!.organizationId },
+      select: { settings: true },
+    });
+    const settings = readPurgeSettings(organization?.settings ?? null);
+    return ok(res, settings);
+  }),
+);
+
+router.patch(
+  "/current/purge-settings",
+  requireRole("company_admin"),
+  validate(purgeSettingsSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as { purgeAfterDays: number };
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+      select: { settings: true },
+    });
+    const settings = parseJson<Record<string, unknown>>(organization.settings, {});
+    settings.purgeAfterDays = body.purgeAfterDays;
+    await prisma.organization.update({
+      where: { id: req.auth!.organizationId },
+      data: { settings: stringifyJson(settings) },
+    });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: `Recycle-bin auto-purge set to ${body.purgeAfterDays} days`,
+      req,
+    });
+    return ok(res, { purgeAfterDays: body.purgeAfterDays });
   }),
 );
 

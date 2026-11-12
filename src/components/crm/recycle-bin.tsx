@@ -36,9 +36,22 @@ const when = (iso: string | null) => {
   });
 };
 
+const expiresWhen = (deletedAt: string | null, purgeAfterDays: number) => {
+  if (!deletedAt || purgeAfterDays === 0) return "—";
+  const deleted = new Date(deletedAt);
+  if (Number.isNaN(deleted.getTime())) return "—";
+  const expires = new Date(deleted.getTime() + purgeAfterDays * 86400000);
+  return expires.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
 export function RecycleBin() {
   const { settings } = useCRM();
   const currency = settings.currency || "INR";
+  const purgeAfterDays = settings.purgeAfterDays ?? 30;
   const [search, setSearch] = useState("");
   const [moduleFilter, setModuleFilter] = useState("All modules");
   const [confirming, setConfirming] = useState<string | null>(null);
@@ -193,6 +206,7 @@ export function RecycleBin() {
                   <p className="mt-0.5 flex items-center gap-1 text-[11px] text-faint">
                     <AlertTriangle className="size-3" /> deleted {when(item.deletedAt)}
                     {item.status ? ` · was ${item.status}` : ""}
+                    {purgeAfterDays > 0 ? ` · auto-purge ${expiresWhen(item.deletedAt, purgeAfterDays)}` : ""}
                   </p>
                 </div>
 

@@ -8,11 +8,9 @@ import { startDigestScheduler, stopDigestScheduler } from "./services/digest";
 import { startFollowUpScheduler, stopFollowUpScheduler } from "./services/followups";
 import { startWebhookScheduler, stopWebhookScheduler } from "./services/webhook-dispatch";
 import { startCampaignScheduler, stopCampaignScheduler } from "./services/campaign-scheduler";
-import {
-  startWorkflowRetryScheduler,
-  stopWorkflowRetryScheduler,
-} from "./services/workflow-runs";
+import { startWorkflowRetryScheduler, stopWorkflowRetryScheduler } from "./services/workflow-runs";
 import { startSlaScheduler, stopSlaScheduler } from "./services/sla";
+import { startTrashPurgeScheduler, stopTrashPurgeScheduler } from "./services/trash-purge";
 import { captureException, sentryEnabled } from "./services/sentry";
 import { alertInBackground, alertingEnabled } from "./services/alerting";
 import { initSocket } from "./lib/socket";
@@ -88,6 +86,8 @@ async function bootstrap() {
     startWorkflowRetryScheduler();
     // Escalate overdue support tickets on the elected scheduler process.
     startSlaScheduler();
+    // Permanently delete trash older than the org's purge window.
+    startTrashPurgeScheduler();
   } else {
     logger.info("In-process schedulers disabled (RUN_SCHEDULERS=false)");
   }
@@ -107,6 +107,7 @@ async function bootstrap() {
     stopCampaignScheduler();
     stopWorkflowRetryScheduler();
     stopSlaScheduler();
+    stopTrashPurgeScheduler();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);

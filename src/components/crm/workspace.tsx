@@ -34,6 +34,7 @@ import {
   Trash2,
   Workflow,
   X,
+  Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -114,7 +115,6 @@ import {
   SupportRefunds,
   SupportKB,
   SupportFeedback,
-  AgentKYC,
   FinanceLedger,
   FinanceReceivablesAging,
   SalesIntelligence,
@@ -169,6 +169,8 @@ import {
   updateApiKey,
   fetchSodRules,
   saveSodRules,
+  fetchPurgeSettings,
+  savePurgeSettings,
   type SodRuleDto,
   removeEmailChannel,
   removeRazorpayChannel,
@@ -462,27 +464,16 @@ export function Workspace({ module }: { module: Module }) {
         tab === "Cost centres" ||
         tab === "Policies" ||
         tab === "Approvals")) ||
-    (module.id === "transfers" &&
-      (tab === "Vehicles" || tab === "Drivers" || tab === "Rail, bus & cruise")) ||
+    (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers")) ||
     (module.id === "suppliers" &&
       (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) ||
-    (module.id === "operations" &&
-      (tab === "Incidents" || tab === "Daily operations" || tab === "Manifests")) ||
-    (module.id === "flights" &&
-      (tab === "Ancillaries" || tab === "Reissues & refunds" || tab === "Tickets")) ||
+    (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations")) ||
+    (module.id === "flights" && (tab === "Ancillaries" || tab === "Reissues & refunds")) ||
     (module.id === "packages" && (tab === "Fixed departures" || tab === "Seasonal rates")) ||
     (module.id === "visa" &&
       (tab === "Insurance" || tab === "Appointments" || tab === "Travel advisories")) ||
     (module.id === "support" &&
-      (tab === "Refund requests" ||
-        tab === "Knowledge base" ||
-        tab === "Feedback" ||
-        tab === "Escalations")) ||
-    (module.id === "agents" &&
-      (tab === "KYC approvals" ||
-        tab === "Credit limits" ||
-        tab === "Sub-agents" ||
-        tab === "Distributors")) ||
+      (tab === "Refund requests" || tab === "Knowledge base" || tab === "Feedback")) ||
     (module.id === "finance" && (tab === "Ledger" || tab === "Receivables")) ||
     (module.id === "assistant" &&
       (tab === "Sales intelligence" || tab === "Operations insights")) ||
@@ -1787,7 +1778,11 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
   const [activeSaved, setActiveSaved] = useState<SavedReportDto | null>(null);
   const showSavedList = tab === "Saved reports" && activeSaved === null;
   const currency = settings.currency;
-  const reportKey = (activeSaved?.moduleId as ReportKey | undefined) ?? REPORT_KEY_BY_TAB[tab] ?? "sales";
+  useEffect(() => {
+    if (tab !== "Saved reports") setActiveSaved(null);
+  }, [tab]);
+  const reportKey =
+    (activeSaved?.moduleId as ReportKey | undefined) ?? REPORT_KEY_BY_TAB[tab] ?? "sales";
   const apiFilters = activeSaved
     ? {
         ...(typeof activeSaved.filters["branch"] === "string"
@@ -1796,9 +1791,7 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
         ...(typeof activeSaved.filters["from"] === "string"
           ? { from: activeSaved.filters["from"] }
           : {}),
-        ...(typeof activeSaved.filters["to"] === "string"
-          ? { to: activeSaved.filters["to"] }
-          : {}),
+        ...(typeof activeSaved.filters["to"] === "string" ? { to: activeSaved.filters["to"] } : {}),
       }
     : {
         ...(branch === "All branches" ? {} : { branch }),
@@ -1806,10 +1799,15 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
       };
 
   // Live report + saved views come from the server; records stay the fallback.
-  const { data: report, loading: reportLoading, error: reportError, reload: reloadReport } = useApiQuery(
+  const {
+    data: report,
+    loading: reportLoading,
+    error: reportError,
+    reload: reloadReport,
+  } = useApiQuery(
     () => runReport(reportKey, apiFilters),
     [reportKey, branch, date, activeSaved?.id, JSON.stringify(apiFilters)],
-    status === "ready" && (!showSavedList),
+    status === "ready" && !showSavedList,
   );
   const { data: savedList, reload: reloadSaved } = useApiQuery(
     () => fetchSavedReports(),
@@ -1884,7 +1882,8 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
               Back to saved reports
             </Button>
             <span className="text-sm text-muted">
-              {activeSaved.title} · {report?.filters.range ?? "Saved date range"} · {report?.filters.branch ?? "All branches"}
+              {activeSaved.title} · {report?.filters.range ?? "Saved date range"} ·{" "}
+              {report?.filters.branch ?? "All branches"}
             </span>
           </>
         ) : (
@@ -1902,53 +1901,63 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
             </select>
           </>
         )}
-        {!showSavedList && <>
-          <Button variant="outline" onClick={exportReport}>
-            <ArrowDownToLine /> CSV
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void downloadReportFile("xlsx")}
-            title="Excel workbook: summary, records and every breakdown"
-          >
-            <FileSpreadsheet /> Excel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void downloadReportFile("pdf")}
-            title="Printable PDF of this report"
-          >
-            <FileText /> PDF
-          </Button>
-        </>}
+        {!showSavedList && (
+          <>
+            <Button
+              variant="outline"
+              disabled={!report || reportLoading || Boolean(reportError)}
+              onClick={exportReport}
+            >
+              <ArrowDownToLine /> CSV
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!report || reportLoading || Boolean(reportError)}
+              onClick={() => void downloadReportFile("xlsx")}
+              title="Excel workbook: summary, records and every breakdown"
+            >
+              <FileSpreadsheet /> Excel
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!report || reportLoading || Boolean(reportError)}
+              onClick={() => void downloadReportFile("pdf")}
+              title="Printable PDF of this report"
+            >
+              <FileText /> PDF
+            </Button>
+          </>
+        )}
         {tab !== "Saved reports" && (
           <Button variant="outline" onClick={() => saveView(`${tab} performance summary`)}>
             <Plus /> Save view
           </Button>
         )}
       </div>
-      {!showSavedList && <div className="module-stats">
-        {[
-          [plain("Closed value"), summary ? money(summary.revenue, currency) : "—"],
-          [
-            "Gross margin",
-            // Shown as "—" when no supplier cost is on record, rather than a guess.
-            summary?.grossMargin === null || summary?.grossMargin === undefined
-              ? "—"
-              : money(summary.grossMargin, currency),
-          ],
-          ["Conversion rate", summary ? `${summary.conversionRate}%` : "—"],
-          [plain("Average record value"), summary ? money(summary.averageValue, currency) : "—"],
-        ].map(([t, v]) => (
-          <div key={t}>
-            <p>{t}</p>
-            <strong>{v}</strong>
-            <small>
-              {report?.filters.range ?? date} · {report?.filters.branch ?? branch}
-            </small>
-          </div>
-        ))}
-      </div>}
+      {!showSavedList && (
+        <div className="module-stats">
+          {[
+            [plain("Closed value"), summary ? money(summary.revenue, currency) : "—"],
+            [
+              plain("Gross margin"),
+              // Shown as "—" when no supplier cost is on record, rather than a guess.
+              summary?.grossMargin === null || summary?.grossMargin === undefined
+                ? "—"
+                : money(summary.grossMargin, currency),
+            ],
+            [plain("Conversion rate"), summary ? `${summary.conversionRate}%` : "—"],
+            [plain("Average record value"), summary ? money(summary.averageValue, currency) : "—"],
+          ].map(([t, v]) => (
+            <div key={t}>
+              <p>{t}</p>
+              <strong>{v}</strong>
+              <small>
+                {report?.filters.range ?? date} · {report?.filters.branch ?? branch}
+              </small>
+            </div>
+          ))}
+        </div>
+      )}
       {showSavedList ? (
         savedList && savedList.length > 0 ? (
           <div className="reports-grid">
@@ -1993,78 +2002,106 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
             <EmptyState
               title="This report could not be loaded"
               description={reportError}
-              action={<Button variant="outline" onClick={reloadReport}>Try again</Button>}
+              action={
+                <Button variant="outline" onClick={reloadReport}>
+                  Try again
+                </Button>
+              }
             />
           ) : reportLoading || !report ? (
-            <EmptyState title="Loading report" description="Getting the latest saved records for this period." />
+            <EmptyState
+              title="Loading report"
+              description="Getting the latest saved records for this period."
+            />
           ) : report.summary.records === 0 ? (
             <EmptyState
-              title={`No ${reportKey} records in this period`}
-              description="Try another date range or branch, or add the first record to this workspace."
+              title={
+                report.fx.missingCurrencies.length
+                  ? "Records need an exchange rate"
+                  : `No ${reportKey} records in this period`
+              }
+              description={
+                report.fx.missingCurrencies.length
+                  ? `Set an exchange rate for ${report.fx.missingCurrencies.join(", ")} in company settings to include these records.`
+                  : "Try another date range or branch, or add the first record to this workspace."
+              }
             />
-          ) : [
-            {
-              title: plain("Activity by destination"),
-              rows: report.byDestination,
-            },
-            {
-              title: plain("Activity by owner"),
-              rows: report.byOwner,
-            },
-            {
-              title: plain("Records by status"),
-              rows: report.byStatus,
-            },
-            {
-              title: plain("Records by source"),
-              rows: report.bySource,
-            },
-            {
-              title: plain("Monthly activity"),
-              rows: report.series.map((item) => ({
-                label: item.month,
-                count: item.count,
-                value: item.value,
-              })),
-            },
-          ].map(({ title, rows: breakdown }) => (
-            <section className="report-item" key={title}>
-              <div className="section-heading">
-                <h3>{title}</h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title={savedTitles.has(title) ? `Saved: ${title}` : `Save ${title}`}
-                  onClick={() => saveView(title)}
-                >
-                  {savedTitles.has(title) ? <Check /> : <Plus />}
-                </Button>
-              </div>
-              {breakdown.length > 0 ? (
-                <div className="report-bars">
-                  {breakdown.slice(0, 8).map((item) => {
-                    const max = Math.max(...breakdown.map((entry) => entry.count), 1);
-                    const pct = Math.max(4, Math.round((item.count / max) * 100));
-                    return (
-                      <div key={item.label}>
-                        <span>{item.label}</span>
-                        <div>
-                          <i className="report-bar" style={{ width: `${pct}%` }} />
-                        </div>
-                        <strong>{item.count} · {money(item.value, currency)}</strong>
-                      </div>
-                    );
-                  })}
+          ) : (
+            [
+              {
+                title: plain("Activity by destination"),
+                rows: report.byDestination,
+              },
+              {
+                title: plain("Activity by owner"),
+                rows: report.byOwner,
+              },
+              {
+                title: plain("Records by status"),
+                rows: report.byStatus,
+              },
+              {
+                title: plain("Records by source"),
+                rows: report.bySource,
+              },
+              {
+                title: plain("Monthly activity"),
+                rows: report.series.map((item) => ({
+                  label: item.month,
+                  count: item.count,
+                  value: item.value,
+                })),
+              },
+            ].map(({ title, rows: breakdown }) => (
+              <section className="report-item" key={title}>
+                <div className="section-heading">
+                  <h3>{title}</h3>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title={savedTitles.has(title) ? `Saved: ${title}` : `Save ${title}`}
+                    onClick={() => saveView(title)}
+                  >
+                    {savedTitles.has(title) ? <Check /> : <Plus />}
+                  </Button>
                 </div>
-              ) : (
-                <p>No records to break down for this period.</p>
-              )}
-              <small>Record count · recorded value in {currency}</small>
-            </section>
-          ))}
+                {breakdown.length > 0 ? (
+                  <div className="report-bars">
+                    {breakdown.slice(0, 8).map((item) => {
+                      const max = Math.max(...breakdown.map((entry) => entry.count), 1);
+                      const pct = Math.max(4, Math.round((item.count / max) * 100));
+                      return (
+                        <div key={item.label}>
+                          <span>{item.label}</span>
+                          <div>
+                            <i className="report-bar" style={{ width: `${pct}%` }} />
+                          </div>
+                          <strong>
+                            {item.count} · {money(item.value, currency)}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p>No records to break down for this period.</p>
+                )}
+                <small>Record count · recorded value in {currency}</small>
+              </section>
+            ))
+          )}
         </div>
       )}
-      <p className="cost-disclaimer">Figures shown in {currency} · generated from saved records.</p>
+      {report?.fx.missingCurrencies.length ? (
+        <p className="cost-disclaimer" role="status">
+          Some records are not included because no {currency} exchange rate is set for{" "}
+          {report.fx.missingCurrencies.join(", ")}.
+        </p>
+      ) : (
+        <p className="cost-disclaimer">
+          Figures shown in {currency} · generated from saved records.
+        </p>
+      )}
     </>
   );
 }
@@ -2971,6 +3008,7 @@ function SettingsPanel({
   const [sodActions, setSodActions] = useState("");
   const [sodOverrideRoles, setSodOverrideRoles] = useState("");
   const [savingSod, setSavingSod] = useState(false);
+  const [savingPurge, setSavingPurge] = useState(false);
   const [creatingKey, setCreatingKey] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
@@ -3057,6 +3095,14 @@ function SettingsPanel({
     authStatus === "ready",
   );
   const fetchedSodRules = sodData?.rules ?? [];
+
+  const { data: purgeData, reload: reloadPurge } = useApiQuery(
+    () => fetchPurgeSettings(),
+    [],
+    authStatus === "ready",
+  );
+  const fetchedPurgeSettings = purgeData ?? null;
+  const [purgeDays, setPurgeDays] = useState(String(fetchedPurgeSettings?.purgeAfterDays ?? 30));
 
   const roleRows = matrix?.roles ?? [];
   const roleActions = matrix?.actions ?? ["view", "create", "edit", "approve", "export", "delete"];
@@ -3165,13 +3211,24 @@ function SettingsPanel({
     if (!sodModule.trim()) return;
     setSavingSod(true);
     try {
-      const rules = [...fetchedSodRules, {
-        moduleId: sodModule.trim(),
-        actions: sodActions.split(",").map((s) => s.trim()).filter(Boolean) as ("approve" | "delete" | "export")[],
-        ...(sodOverrideRoles.trim()
-          ? { overrideRoles: sodOverrideRoles.split(",").map((s) => s.trim()).filter(Boolean) }
-          : {}),
-      }];
+      const rules = [
+        ...fetchedSodRules,
+        {
+          moduleId: sodModule.trim(),
+          actions: sodActions
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean) as ("approve" | "delete" | "export")[],
+          ...(sodOverrideRoles.trim()
+            ? {
+                overrideRoles: sodOverrideRoles
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }
+            : {}),
+        },
+      ];
       await saveSodRules({ rules });
       setSodModule("");
       setSodActions("");
@@ -3182,6 +3239,19 @@ function SettingsPanel({
       toast.error(errorMessage(err));
     } finally {
       setSavingSod(false);
+    }
+  };
+
+  const savePurgeSettingsFromForm = async (days: number) => {
+    setSavingPurge(true);
+    try {
+      await savePurgeSettings({ purgeAfterDays: days });
+      reloadPurge();
+      toast.success(`Recycle-bin auto-purge set to ${days} days`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSavingPurge(false);
     }
   };
 
@@ -3509,9 +3579,8 @@ function SettingsPanel({
         )}
         <h3>Segregation of duties</h3>
         <p>
-          Which actions on which modules require a different person than the
-          one who created the record. Prevents one person from creating and
-          approving (or deleting) the same invoice.
+          Which actions on which modules require a different person than the one who created the
+          record. Prevents one person from creating and approving (or deleting) the same invoice.
         </p>
         <div className="branch-list">
           {fetchedSodRules.map((rule) => (
@@ -3520,7 +3589,9 @@ function SettingsPanel({
                 <h4>{rule.moduleId}</h4>
                 <p>
                   {rule.actions.join(", ")}
-                  {rule.overrideRoles?.length ? " · override: " + rule.overrideRoles.join(", ") : ""}
+                  {rule.overrideRoles?.length
+                    ? " · override: " + rule.overrideRoles.join(", ")
+                    : ""}
                 </p>
               </div>
             </div>
@@ -3559,6 +3630,48 @@ function SettingsPanel({
           />
           <Button type="submit" disabled={savingSod}>
             <Plus /> Add rule
+          </Button>
+        </form>
+        <h3>Recycle-bin auto-purge</h3>
+        <p>
+          Soft-deleted records stay in the bin until restored or emptied. Auto-purge permanently
+          removes them after a set number of days so the bin doesn't grow forever. Set to 0 to
+          disable automatic purge.
+        </p>
+        <div className="branch-list">
+          <div>
+            <h4>Purge after</h4>
+            <p>
+              {fetchedPurgeSettings?.purgeAfterDays === 0
+                ? "Never (auto-purge off)"
+                : `${fetchedPurgeSettings?.purgeAfterDays ?? 30} days`}
+            </p>
+          </div>
+        </div>
+        <form
+          className="dialog-actions"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const days = Number(purgeDays);
+            if (!Number.isFinite(days) || days < 0) {
+              toast.error("Enter a valid number of days");
+              return;
+            }
+            void savePurgeSettingsFromForm(days);
+          }}
+        >
+          <input
+            aria-label="Days to keep trashed records"
+            type="number"
+            min="0"
+            value={purgeDays}
+            onChange={(e) => setPurgeDays(e.target.value)}
+            placeholder="30"
+            className="border border-input bg-background px-2 py-1 text-sm rounded w-32"
+          />
+          <span className="text-xs text-faint ml-2">days</span>
+          <Button type="submit" disabled={savingPurge}>
+            <Save className="size-4" /> Save
           </Button>
         </form>
       </div>

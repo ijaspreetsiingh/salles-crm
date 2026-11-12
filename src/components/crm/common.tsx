@@ -342,7 +342,9 @@ export function CellValue({
               : "text-foreground";
         return (
           <span className={tone} title={slaStateLabel(state)}>
-            {raw === "" ? "—" : `${formatSlaDue({ status: row.status, extra: row.extra ?? null, date: String(raw) })} ${state === "breached" ? "⚠" : state === "due soon" ? "⏰" : ""}`}
+            {raw === ""
+              ? "—"
+              : `${formatSlaDue({ status: row.status, extra: row.extra ?? null, date: String(raw) })} ${state === "breached" ? "⚠" : state === "due soon" ? "⏰" : ""}`}
           </span>
         );
       }

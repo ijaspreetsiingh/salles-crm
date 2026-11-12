@@ -72,7 +72,10 @@ export function isSlaBreached(ticket: {
   date: string | null;
 }): boolean {
   if (["Resolved", "Closed"].includes(ticket.status)) return false;
-  const extra = typeof ticket.extra === "string" ? parseJson<Record<string, unknown>>(ticket.extra, {}) : (ticket.extra ?? {});
+  const extra =
+    typeof ticket.extra === "string"
+      ? parseJson<Record<string, unknown>>(ticket.extra, {})
+      : (ticket.extra ?? {});
   const dueAt = normalizedDueAt(extra.slaDueAt, ticket.date);
   return Boolean(dueAt && Date.parse(dueAt) <= Date.now());
 }
@@ -84,7 +87,10 @@ export function slaState(ticket: {
   date: string | null;
 }): "ok" | "due soon" | "breached" {
   if (["Resolved", "Closed"].includes(ticket.status)) return "ok";
-  const extra = typeof ticket.extra === "string" ? parseJson<Record<string, unknown>>(ticket.extra, {}) : (ticket.extra ?? {});
+  const extra =
+    typeof ticket.extra === "string"
+      ? parseJson<Record<string, unknown>>(ticket.extra, {})
+      : (ticket.extra ?? {});
   const dueAt = normalizedDueAt(extra.slaDueAt, ticket.date);
   if (!dueAt) return "ok";
   const due = new Date(dueAt);

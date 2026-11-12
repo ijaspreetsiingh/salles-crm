@@ -54,4 +54,3 @@ export function slaStateLabel(state: "ok" | "due soon" | "breached"): string {
       return plain("SLA on track");
   }
 }
-

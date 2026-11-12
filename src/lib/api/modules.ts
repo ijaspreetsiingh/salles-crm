@@ -160,6 +160,7 @@ export type ReportResultDto = {
   byOwner: Array<{ label: string; count: number; value: number }>;
   byStatus: Array<{ label: string; count: number; value: number }>;
   bySource: Array<{ label: string; count: number; value: number }>;
+  fx: { baseCurrency: string; rates: Record<string, number>; missingCurrencies: string[] };
 };
 
 export type SavedReportDto = {
@@ -1163,6 +1164,23 @@ export const fetchSodRules = () =>
 
 export const saveSodRules = (body: { rules: SodRuleDto[] }) =>
   apiRequest<{ rules: SodRuleDto[] }>("/organizations/current/sod-rules", {
+    method: "PATCH",
+    body,
+  });
+
+/* ------------------------------------------------------------------ *
+ * Recycle-bin auto-purge
+ * ------------------------------------------------------------------ */
+
+export type PurgeSettingsDto = {
+  purgeAfterDays: number;
+};
+
+export const fetchPurgeSettings = () =>
+  apiRequest<PurgeSettingsDto>("/organizations/current/purge-settings");
+
+export const savePurgeSettings = (body: { purgeAfterDays: number }) =>
+  apiRequest<PurgeSettingsDto>("/organizations/current/purge-settings", {
     method: "PATCH",
     body,
   });

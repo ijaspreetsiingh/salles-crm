@@ -33,6 +33,7 @@ import {
 import { recordAudit } from "../services/audit";
 import { createNotification } from "../services/notifications";
 import { applySlaOnCreate, applySlaOnUpdate } from "../services/sla";
+import { purgeExpiredTrash } from "../services/trash-purge";
 import { importRecords } from "../services/import";
 import { buildAttention } from "../services/attention";
 import { findDuplicateGroups, mergeRecords } from "../services/duplicates";
@@ -55,7 +56,11 @@ const recordBodySchema = z.object({
     .string()
     .max(40)
     .refine(
-      (v) => v === undefined || v === "" || /^\d{4}-\d{2}-\d{2}$/.test(v) || !Number.isNaN(Date.parse(v)),
+      (v) =>
+        v === undefined ||
+        v === "" ||
+        /^\d{4}-\d{2}-\d{2}$/.test(v) ||
+        !Number.isNaN(Date.parse(v)),
       "Invalid date (use YYYY-MM-DD)",
     )
     .optional(),
@@ -510,8 +515,7 @@ router.post(
       module.id === "support"
         ? applySlaOnCreate(extraJson, createdAt.toISOString(), body.date || undefined)
         : null;
-    const recordDate =
-      supportSla?.date ?? body.date ?? createdAt.toISOString().slice(0, 10);
+    const recordDate = supportSla?.date ?? body.date ?? createdAt.toISOString().slice(0, 10);
     const persistedExtra = supportSla?.extraJson ?? extraJson;
     let record = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -570,7 +574,9 @@ router.post(
           const charged = await chargeAgentCredit(organizationId, record.extra, record.amount);
           if (charged.accountId && !charged.charged) {
             if (reservation.reserved) {
-              await releaseDepartureCapacity(organizationId, record.extra, 1).catch(() => undefined);
+              await releaseDepartureCapacity(organizationId, record.extra, 1).catch(
+                () => undefined,
+              );
             }
             // The pre-check passed but a concurrent booking took the line first;
             // remove the row so a refused sale never appears as booked.
@@ -736,8 +742,9 @@ router.patch(
             existing.createdAt.toISOString(),
             body.date && body.date !== existing.date ? body.date : undefined,
             body.extra !== undefined &&
-              String(parseJson<Record<string, unknown>>(existing.extra, {}).priority ?? "Normal") !==
-                String(parseJson<Record<string, unknown>>(nextExtra, {}).priority ?? "Normal"),
+              String(
+                parseJson<Record<string, unknown>>(existing.extra, {}).priority ?? "Normal",
+              ) !== String(parseJson<Record<string, unknown>>(nextExtra, {}).priority ?? "Normal"),
           )
         : null;
 
@@ -778,7 +785,11 @@ router.patch(
 
     // A cancellation that did not release its agent credit would leave the
     // sub-agent permanently short of limit for a booking nobody is paying for.
-    if (module.id === "bookings" && record.status === "Cancelled" && existing.status !== "Cancelled") {
+    if (
+      module.id === "bookings" &&
+      record.status === "Cancelled" &&
+      existing.status !== "Cancelled"
+    ) {
       await releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount).catch(
         () => undefined,
       );
@@ -830,7 +841,11 @@ router.patch(
       data: { ...payload, previousStatus: existing.status },
     });
 
-    if (module.id === "bookings" && record.status === "Confirmed" && existing.status !== "Confirmed") {
+    if (
+      module.id === "bookings" &&
+      record.status === "Confirmed" &&
+      existing.status !== "Confirmed"
+    ) {
       void dispatchWebhookEvent({
         organizationId: req.auth!.organizationId,
         event: "booking.confirmed",
@@ -892,7 +907,9 @@ router.delete(
      */
     if (module.id === "bookings" && holdsSeats(existing.status)) {
       await Promise.all([
-        releaseDepartureCapacity(req.auth!.organizationId, existing.extra, 1).catch(() => undefined),
+        releaseDepartureCapacity(req.auth!.organizationId, existing.extra, 1).catch(
+          () => undefined,
+        ),
         releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount).catch(
           () => undefined,
         ),
@@ -1171,6 +1188,20 @@ router.post(
       req,
     });
     return ok(res, { purged: result.count });
+  }),
+);
+
+/**
+ * Runs the trash purge on demand — deletes every trashed record older than the
+ * organization's purgeAfterDays window. A company admin can use this to test
+ * the policy or force a purge without waiting for the scheduler.
+ */
+router.post(
+  "/trash/purge-now",
+  requireModulePermission("settings", "delete"),
+  asyncHandler(async (req, res) => {
+    const purged = await purgeExpiredTrash(req.auth!.organizationId);
+    return ok(res, { purged });
   }),
 );
 

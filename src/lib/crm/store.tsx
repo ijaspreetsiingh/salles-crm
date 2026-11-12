@@ -232,6 +232,9 @@ function buildSettings(
     },
     branches: branches.filter((b) => b.active).map((b) => b.name),
     employees,
+    purgeAfterDays: Number(
+      (org.settings ?? {})["purgeAfterDays"] ?? defaultSettings.purgeAfterDays,
+    ),
   };
 }
 

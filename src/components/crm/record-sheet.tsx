@@ -50,7 +50,13 @@ import { GroupDelegatesSection } from "./group-delegates";
 import { GroupRoomBlocksSection } from "./group-room-blocks";
 import { ActivityTimeline } from "./activity-timeline";
 import { FavoriteButton } from "./favorite-button";
-import { fetchRelations, linkRecords, unlinkRecords, type RecordRelationEdge, type RelationKind } from "@/lib/api/relations";
+import {
+  fetchRelations,
+  linkRecords,
+  unlinkRecords,
+  type RecordRelationEdge,
+  type RelationKind,
+} from "@/lib/api/relations";
 import { findModule } from "@/lib/crm/catalog";
 import { IRNPanel } from "./irn-panel";
 
@@ -172,10 +178,16 @@ export function RecordSheet({
   // After first paint, fetch real RecordRelation rows and upgrade the rail.
   useEffect(() => {
     let cancelled = false;
-    buildJourneyFromRelations(row, module.id).then((real) => {
-      if (!cancelled && real) setJourney(real);
-    }).catch(() => { /* keep name-match */ });
-    return () => { cancelled = true; };
+    buildJourneyFromRelations(row, module.id)
+      .then((real) => {
+        if (!cancelled && real) setJourney(real);
+      })
+      .catch(() => {
+        /* keep name-match */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [row.id, module.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Follow-ups pinned to this record.
@@ -304,7 +316,11 @@ export function RecordSheet({
           </div>
 
           {/* Sheet navigation tabs */}
-          <div className="flex gap-1 rounded-xl border border-line bg-glass-2 p-1" role="tablist" aria-label="Record sections">
+          <div
+            className="flex gap-1 rounded-xl border border-line bg-glass-2 p-1"
+            role="tablist"
+            aria-label="Record sections"
+          >
             {(["details", "timeline", "relations"] as const).map((t) => (
               <button
                 key={t}
@@ -313,9 +329,7 @@ export function RecordSheet({
                 aria-selected={sheetTab === t}
                 onClick={() => setSheetTab(t)}
                 className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  sheetTab === t
-                    ? "bg-background shadow-sm"
-                    : "text-muted hover:text-foreground"
+                  sheetTab === t ? "bg-background shadow-sm" : "text-muted hover:text-foreground"
                 }`}
               >
                 {t === "details" ? "Details" : t === "timeline" ? "Activity" : "Links"}
@@ -345,7 +359,8 @@ export function RecordSheet({
           )}
 
           {/* Contact row — email/WhatsApp open Communications with this contact */}
-          {(row.email || contactPhone) && (            <div className="record-sheet__contact">
+          {(row.email || contactPhone) && (
+            <div className="record-sheet__contact">
               {row.email && (
                 <>
                   <button
@@ -1333,7 +1348,9 @@ function RelationsPanel({
       setEdges((prev) => [...prev, optimisticEdge]);
       setLinkId("");
       toast.success("Record linked");
-      fetchRelations(recordId).then(({ edges: e }) => setEdges(e)).catch(() => {});
+      fetchRelations(recordId)
+        .then(({ edges: e }) => setEdges(e))
+        .catch(() => {});
     } catch (err) {
       toast.error(errorMessage(err, "Could not link the records"));
     } finally {
@@ -1365,7 +1382,9 @@ function RelationsPanel({
           placeholder="Record ID (e.g. BK-2401)"
           className="flex-1 min-w-0 rounded-xl border border-line bg-glass-2 px-3 py-1.5 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label="Record ID to link"
-          onKeyDown={(e) => { if (e.key === "Enter") void handleLink(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleLink();
+          }}
         />
         <select
           value={linkKind}
@@ -1374,7 +1393,9 @@ function RelationsPanel({
           className="rounded-xl border border-line bg-glass-2 px-2 py-1.5 text-xs"
         >
           {(Object.keys(KIND_LABELS) as RelationKind[]).map((k) => (
-            <option key={k} value={k}>{KIND_LABELS[k]}</option>
+            <option key={k} value={k}>
+              {KIND_LABELS[k]}
+            </option>
           ))}
         </select>
         <Button size="sm" disabled={adding || !linkId.trim()} onClick={() => void handleLink()}>
@@ -1395,7 +1416,10 @@ function RelationsPanel({
           {edges.map((edge) => {
             const relatedMod = edge.related ? findModule(edge.related.moduleId) : null;
             return (
-              <li key={edge.id} className="flex items-center gap-2 rounded-xl border border-line bg-glass-2 px-3 py-2">
+              <li
+                key={edge.id}
+                className="flex items-center gap-2 rounded-xl border border-line bg-glass-2 px-3 py-2"
+              >
                 <span className="shrink-0 text-[11px] font-semibold text-muted">
                   {KIND_LABELS[edge.kind as RelationKind] ?? edge.kind}
                 </span>
@@ -1405,7 +1429,8 @@ function RelationsPanel({
                   </span>
                   {edge.related && (
                     <span className="block text-[11px] text-muted">
-                      {relatedMod?.name ?? edge.related.moduleId} · {edge.related.reference} · {edge.related.status}
+                      {relatedMod?.name ?? edge.related.moduleId} · {edge.related.reference} ·{" "}
+                      {edge.related.status}
                     </span>
                   )}
                 </div>
