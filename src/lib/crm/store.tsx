@@ -375,6 +375,23 @@ export function CRMProvider({ children }: { children: ReactNode }) {
     setRecordsLoading(true);
     setStatus("ready");
 
+    // Sync server-side preferences: apply theme, language, etc.
+    // Fail silently — workspace loads fine without prefs.
+    import("@/lib/api/preferences").then(({ fetchPreferences }) =>
+      fetchPreferences().then((prefs) => {
+        if (prefs.language) {
+          localStorage.setItem("travo.language", prefs.language);
+        }
+        if (prefs.theme) {
+          document.documentElement.setAttribute("data-theme", prefs.theme);
+          localStorage.setItem("travo.theme", prefs.theme);
+        }
+        if (prefs.sidebarPinned !== undefined) {
+          localStorage.setItem("travo.sidebarPinned", prefs.sidebarPinned);
+        }
+      }).catch(() => {})
+    ).catch(() => {});
+
     /*
      * The recent slice of every module is *context* — the record drawer's
      * history and cross-module links — not the lists themselves. Module

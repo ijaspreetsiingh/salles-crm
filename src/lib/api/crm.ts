@@ -291,6 +291,13 @@ export const logout = () =>
     loggedOut: true,
   }));
 
+export const resendVerification = (email: string) =>
+  apiRequest<{ sent: boolean }>("/auth/resend-verification", {
+    method: "POST",
+    body: { email },
+    auth: false,
+  });
+
 export const fetchMe = () => apiRequest<MeDto>("/auth/me");
 
 /* ------------------------------------------------------------------ *

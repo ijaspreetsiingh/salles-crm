@@ -2,6 +2,7 @@ import {
   BadgeIndianRupee,
   BarChart3,
   Building2,
+  CalendarClock,
   CalendarDays,
   FileSpreadsheet,
   Globe,
@@ -92,6 +93,7 @@ export const ICONS: Record<string, LucideIcon> = {
   reports: BarChart3,
   distribution: Globe,
   integrations: Plug,
+  attendance: CalendarClock,
   settings: Settings2,
 };
 
@@ -120,6 +122,7 @@ const GOTO: Record<string, string> = {
   reports: "r",
   distribution: "d",
   integrations: "n",
+  attendance: "k",
   settings: "S",
 };
 
@@ -261,6 +264,7 @@ export const EXTRA_MODULE_IDS: string[] = [
   "automation",
   "distribution",
   "integrations",
+  "attendance",
   "settings",
   "team-chat",
 ];
@@ -282,6 +286,7 @@ export const EXTRA_HINTS: Record<string, string> = {
   automation: "Workflows that run without anyone remembering",
   distribution: "Website pages and the lead-capture form",
   integrations: "WhatsApp, email, payments, webhooks",
+  attendance: "Clock-in, team attendance and leave",
   "team-chat": "Internal Slack-style chat — channels, DMs, emoji reactions",
   settings: "Company, branches, roles, tax, recycle bin",
 };

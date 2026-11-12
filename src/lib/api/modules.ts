@@ -975,6 +975,7 @@ export const fetchPublicLeadForm = (slug: string) =>
   apiRequest<{
     organization: { name: string; slug: string; supportEmail: string | null };
     token: string;
+    captcha: { provider: string; siteKey: string } | null;
   }>(`/public/lead-form/${slug}`, { auth: false });
 
 export const updateRole = (

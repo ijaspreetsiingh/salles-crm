@@ -17,6 +17,8 @@ export type CampaignDto = {
   failed: number;
   skipped: number;
   lastSentAt: string | null;
+  /** ISO datetime when this campaign is scheduled to send. null = send immediately. */
+  scheduledFor: string | null;
   createdAt: string;
 };
 
@@ -45,6 +47,8 @@ export type CampaignInput = {
   body: string;
   audienceModule: string;
   statuses: string[];
+  /** ISO datetime string — omit or null to send immediately */
+  scheduledFor?: string | null;
 };
 
 export const fetchCampaigns = () => apiRequest<CampaignDto[]>("/campaigns");

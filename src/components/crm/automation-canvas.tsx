@@ -44,8 +44,13 @@ const TRIGGERS = [
 const CONDITIONS = [
   { kind: "always", label: "Continue" },
   { kind: "amount_above", label: "Amount is above…", config: { value: "50000" } },
+  { kind: "amount_below", label: "Amount is below…", config: { value: "100000" } },
   { kind: "status_is", label: "Status is…", config: { value: "New" } },
+  { kind: "status_not", label: "Status is not…", config: { value: "Cancelled" } },
   { kind: "owner_empty", label: "Nobody owns it" },
+  { kind: "owner_is", label: "Owner is…", config: { value: "" } },
+  { kind: "destination_is", label: "Destination contains…", config: { value: "Dubai" } },
+  { kind: "source_is", label: "Source is…", config: { value: "Website" } },
 ];
 
 const ACTIONS = [
@@ -59,6 +64,8 @@ const ACTIONS = [
   { kind: "send_whatsapp", label: "Send a WhatsApp", config: { body: "" } },
   { kind: "assign_owner", label: "Assign to me" },
   { kind: "update_status", label: "Change status to…", config: { value: "Contacted" } },
+  { kind: "send_alert", label: "Send an alert", config: { channel: "email", message: "Alert: review this record" } },
+  { kind: "webhook", label: "Call a webhook", config: { url: "" } },
 ];
 
 const KIND_LABEL: Record<string, string> = Object.fromEntries(
@@ -448,21 +455,24 @@ export function AutomationStudio() {
                 </div>
                 <p className="auto-node__detail">
                   {node.kind === "amount_above" && `More than ${node.config?.["value"] ?? "0"}`}
+                  {node.kind === "amount_below" && `Less than ${node.config?.["value"] ?? "0"}`}
                   {node.kind === "status_is" && `Status is ${node.config?.["value"] ?? "…"}`}
+                  {node.kind === "status_not" && `Status is not ${node.config?.["value"] ?? "…"}`}
+                  {node.kind === "owner_is" && `Owner is ${node.config?.["value"] ?? "…"}`}
+                  {node.kind === "destination_is" && `Destination has "${node.config?.["value"] ?? "…"}"`}
+                  {node.kind === "source_is" && `Source is ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "update_status" && `New status: ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "create_task" && String(node.config?.["title"] ?? "Create a task")}
-                  {["send_email", "send_whatsapp", "notify"].includes(node.kind) &&
+                  {["send_email", "send_whatsapp", "notify", "send_alert"].includes(node.kind) &&
                     String(
                       node.config?.["body"] ?? node.config?.["message"] ?? "Write the message",
                     )}
+                  {node.kind === "webhook" && `POST to ${node.config?.["url"] ?? "(no URL)"}`}
                   {![
-                    "amount_above",
-                    "status_is",
-                    "update_status",
-                    "create_task",
-                    "send_email",
-                    "send_whatsapp",
-                    "notify",
+                    "amount_above", "amount_below", "status_is", "status_not", "owner_is",
+                    "destination_is", "source_is",
+                    "update_status", "create_task", "send_email", "send_whatsapp", "notify",
+                    "send_alert", "webhook",
                   ].includes(node.kind) && KIND_LABEL[node.kind]}
                 </p>
                 <div className="auto-node__foot">
@@ -595,9 +605,13 @@ export function AutomationStudio() {
               {selected.type} · {selected.kind}
             </p>
 
-            {["amount_above", "status_is", "update_status"].includes(selected.kind) && (
+            {["amount_above", "amount_below", "status_is", "status_not", "owner_is", "destination_is", "source_is", "update_status"].includes(selected.kind) && (
               <label>
-                Value
+                {selected.kind === "status_is" || selected.kind === "status_not"
+                  ? "Status value"
+                  : selected.kind === "update_status"
+                    ? "New status"
+                    : "Value"}
                 <input
                   value={String(selected.config?.["value"] ?? "")}
                   onChange={(e) =>
@@ -641,10 +655,36 @@ export function AutomationStudio() {
               </label>
             )}
 
-            {["send_email", "send_whatsapp", "notify"].includes(selected.kind) && (
+            {["send_email", "send_whatsapp", "notify", "send_alert"].includes(selected.kind) && (
               <>
+                {selected.kind === "send_alert" && (
+                  <label>
+                    Alert channel
+                    <select
+                      value={String(selected.config?.["channel"] ?? "email")}
+                      onChange={(e) =>
+                        setGraph((current) =>
+                          current
+                            ? {
+                                ...current,
+                                nodes: current.nodes.map((node) =>
+                                  node.id === selected.id
+                                    ? { ...node, config: { ...node.config, channel: e.target.value } }
+                                    : node,
+                                ),
+                              }
+                            : current,
+                        )
+                      }
+                    >
+                      <option value="email">Email alert</option>
+                      <option value="whatsapp">WhatsApp alert</option>
+                      <option value="notification">In-app notification</option>
+                    </select>
+                  </label>
+                )}
                 <label>
-                  Message
+                  {selected.kind === "send_alert" ? "Alert message" : "Message"}
                   <textarea
                     rows={5}
                     value={String(selected.config?.["body"] ?? selected.config?.["message"] ?? "")}
@@ -659,7 +699,7 @@ export function AutomationStudio() {
                                       ...node,
                                       config: {
                                         ...node.config,
-                                        ...(node.kind === "notify"
+                                        ...(node.kind === "notify" || node.kind === "send_alert"
                                           ? { message: e.target.value }
                                           : { body: e.target.value }),
                                       },
@@ -702,6 +742,31 @@ export function AutomationStudio() {
                   customer&apos;s own details.
                 </p>
               </>
+            )}
+
+            {selected.kind === "webhook" && (
+              <label>
+                Webhook URL
+                <input
+                  type="url"
+                  placeholder="https://hooks.example.com/inbox"
+                  value={String(selected.config?.["url"] ?? "")}
+                  onChange={(e) =>
+                    setGraph((current) =>
+                      current
+                        ? {
+                            ...current,
+                            nodes: current.nodes.map((node) =>
+                              node.id === selected.id
+                                ? { ...node, config: { ...node.config, url: e.target.value } }
+                                : node,
+                            ),
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
             )}
 
             <div className="auto-conns">

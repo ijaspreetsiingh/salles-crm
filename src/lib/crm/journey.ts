@@ -1,15 +1,21 @@
 import { findModule, type RecordRow } from "./catalog";
+import { fetchRelations, type RecordRelationEdge } from "@/lib/api/relations";
 
 /* ==========================================================================
    The journey.
 
-   A booking is not a row — it is a chain: an enquiry became a quote, the
-   quote became a booking, the booking needs a visa and a flight, and at
-   the end there is an invoice.
+   V1 (name-matching): guesses related records by name / reference text.
+   V2 (real relations): reads explicit RecordRelation rows from the API.
 
-   The journey rail shows that chain on one line, with every step a real
-   record you can open. It is the fastest way to answer "what is still
-   missing for this trip?".
+   buildJourney()              — synchronous, uses V1 name-matching as the
+                                 immediate/offline fallback (no API call).
+   buildJourneyFromRelations() — async, reads the real RecordRelation table.
+                                 Called after first paint; replaces the guess
+                                 with the truth.
+
+   The RecordSheet renders the guess instantly, then calls the async version
+   and re-renders with the real data — so there is no loading flash and no
+   stale data.
    ========================================================================== */
 
 export type JourneyStep = {
@@ -211,3 +217,111 @@ export const journeyLabel = (step: JourneyStep): string => {
   const module = findModule(step.moduleId || "");
   return `${step.record.name} · ${module?.name ?? ""}`;
 };
+
+// ─── V2: real RecordRelation-backed journey ───────────────────────────────
+
+/**
+ * Maps a RecordRelation `kind` to the step id it satisfies.
+ *
+ * "quoted"      → the quotation step
+ * "booked"      → the booking step
+ * "invoiced"    → the invoice step
+ * "visa_for"    → the visa step
+ * "flight_for"  → the flight step
+ * "hotel_for"   → the hotel step
+ * "transfer_for"→ the transfer step
+ */
+const KIND_TO_STEP: Record<string, string> = {
+  quoted: "quotation",
+  booked: "booking",
+  invoiced: "invoice",
+  visa_for: "visa",
+  flight_for: "flight",
+  hotel_for: "hotel",
+  transfer_for: "transfer",
+  paying_for: "invoice",
+  escalated_to: "support",
+};
+
+/**
+ * Builds the journey using real RecordRelation rows from the API.
+ *
+ * Falls back gracefully: if the API is unreachable or returns no edges, the
+ * caller keeps the name-match result it already has.
+ *
+ * Returns null if the API call fails so the caller can keep its fallback.
+ */
+export async function buildJourneyFromRelations(
+  record: RecordRow,
+  moduleId: string,
+): Promise<JourneyStep[] | null> {
+  let edges: RecordRelationEdge[];
+  try {
+    const result = await fetchRelations(record.id);
+    edges = result.edges;
+  } catch {
+    // API unreachable — caller keeps name-match fallback.
+    return null;
+  }
+
+  if (edges.length === 0) {
+    // No explicit links yet — return null so the caller keeps name-match
+    // rather than showing an empty rail that looks broken.
+    return null;
+  }
+
+  const kind = journeyKind(moduleId);
+  const steps = STEPS[kind];
+
+  // Build a map: stepId → hydrated RecordRow from edge.related
+  const stepToRecord = new Map<string, RecordRow>();
+
+  // The record itself always fills its own step.
+  const selfStepId = steps.find((s) => s.moduleId === moduleId)?.id;
+  if (selfStepId) stepToRecord.set(selfStepId, record);
+
+  for (const edge of edges) {
+    if (!edge.related) continue;
+    const stepId = KIND_TO_STEP[edge.kind];
+    if (!stepId) continue;
+    // Don't overwrite if already filled (keep first / prefer "from" direction).
+    if (!stepToRecord.has(stepId)) {
+      // Convert the slim edge.related shape into a RecordRow-compatible object.
+      const relatedRow: RecordRow = {
+        id: edge.related.id,
+        moduleId: edge.related.moduleId,
+        reference: edge.related.reference,
+        name: edge.related.name,
+        status: edge.related.status,
+        // These are not in the edge payload — leave as empty defaults.
+        detail: "",
+        destination: "",
+        owner: "",
+        branch: "",
+        date: "",
+        amount: 0,
+        currency: "",
+        email: "",
+        phone: "",
+        source: "",
+        notes: "",
+        extra: {},
+      } as unknown as RecordRow;
+      stepToRecord.set(stepId, relatedRow);
+    }
+  }
+
+  // Build the step list in the canonical order.
+  return steps.map((step) => {
+    const match = stepToRecord.get(step.id);
+    const detail = match ? stepDetail(step, match) : undefined;
+    return {
+      id: step.id,
+      label: step.label,
+      moduleId: step.moduleId || moduleId,
+      ...(match ? { record: match } : {}),
+      ...(detail ? { detail } : {}),
+      ...(match ? {} : { missing: `No ${step.label.toLowerCase()} yet` }),
+    };
+  });
+}

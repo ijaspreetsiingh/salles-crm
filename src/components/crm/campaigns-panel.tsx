@@ -34,6 +34,7 @@ export function Campaigns() {
     body: "Hi {{name}},\n\nSummer fares to Bali are open — 6 nights with breakfast from ₹62,000 per person.\n\nReply to this message and I will hold the rooms for you.\n",
     audienceModule: "customers",
     statuses: [] as string[],
+    scheduledFor: "" as string, // empty = send immediately; ISO local datetime otherwise
   });
 
   const { data: campaigns, loading, error, reload } = useApiQuery(() => fetchCampaigns(), []);
@@ -80,8 +81,14 @@ export function Campaigns() {
         body: draft.body,
         audienceModule: draft.audienceModule,
         statuses: draft.statuses,
+        // Convert local datetime-local value to ISO string; empty = send immediately.
+        ...(draft.scheduledFor ? { scheduledFor: new Date(draft.scheduledFor).toISOString() } : {}),
       });
-      toast.success("Campaign saved as a draft — check the audience, then send");
+      toast.success(
+        draft.scheduledFor
+          ? `Campaign scheduled for ${new Date(draft.scheduledFor).toLocaleString("en-IN")}`
+          : "Campaign saved as a draft — check the audience, then send",
+      );
       setAdding(false);
       setOpen(campaign.id);
       setDraft({ ...draft, name: "", subject: "" });
@@ -221,6 +228,31 @@ export function Campaigns() {
               />
             </Field>
           </div>
+          <Field label="Schedule send (optional — leave empty to send immediately)">
+            <input
+              type="datetime-local"
+              value={draft.scheduledFor}
+              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+              onChange={(e) => setDraft({ ...draft, scheduledFor: e.target.value })}
+              aria-label="Schedule send date and time"
+            />
+          </Field>
+          {draft.scheduledFor && (
+            <div className="flex items-center gap-2 rounded-xl border border-butter/40 bg-butter/10 px-3 py-2 text-xs text-butter md:col-span-2">
+              <span className="font-semibold">Scheduled:</span>
+              {new Date(draft.scheduledFor).toLocaleString("en-IN", {
+                weekday: "short", day: "numeric", month: "short",
+                hour: "2-digit", minute: "2-digit",
+              })}
+              <button
+                type="button"
+                className="ml-auto text-muted hover:text-foreground"
+                onClick={() => setDraft({ ...draft, scheduledFor: "" })}
+              >
+                Clear
+              </button>
+            </div>
+          )}
           <div className="md:col-span-2 flex items-center gap-2">
             <Button size="sm" disabled={busy} onClick={() => void save()}>
               <Check className="size-4" /> {busy ? "Saving…" : "Save draft"}
@@ -266,7 +298,9 @@ export function Campaigns() {
                 {campaign.statuses.length ? ` · ${campaign.statuses.join(", ")}` : " · any status"}
                 {campaign.lastSentAt
                   ? ` · last sent ${new Date(campaign.lastSentAt).toLocaleString("en-IN")}`
-                  : " · never sent"}
+                  : campaign.scheduledFor
+                    ? ` · scheduled for ${new Date(campaign.scheduledFor).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                    : " · never sent"}
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs">
@@ -409,6 +443,7 @@ function CampaignDetail({ campaign }: { campaign: CampaignDto }) {
 function CampaignStatus({ status }: { status: string }) {
   const map: Record<string, { label: string; tone: string }> = {
     draft: { label: "Draft", tone: "status-warning" },
+    scheduled: { label: "Scheduled", tone: "status-warning" },
     sending: { label: "Sending", tone: "status-warning" },
     sent: { label: "Sent", tone: "status-success" },
     failed: { label: "Failed", tone: "status-danger" },

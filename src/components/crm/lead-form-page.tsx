@@ -7,6 +7,7 @@ import { errorMessage } from "@/lib/api/client";
 type OrgInfo = {
   organization: { name: string; slug: string; supportEmail: string | null };
   token: string;
+  captcha: { provider: string; siteKey: string } | null;
 };
 
 /**
@@ -20,6 +21,9 @@ export function LeadFormPage() {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState<{ reference: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Time trap: a form that is submitted in under a second was not read.
+  const [renderedAt] = useState(() => Date.now());
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   useEffect(() => {
     document.title = "Plan my trip — enquiry";
@@ -27,6 +31,20 @@ export function LeadFormPage() {
       .then(setMeta)
       .catch((err) => setLoadError(errorMessage(err, "This travel desk could not be found.")));
   }, [slug]);
+
+  useEffect(() => {
+    const siteKey = meta?.captcha?.siteKey;
+    if (!siteKey) return;
+    (window as unknown as { onTraveldeskTurnstile?: (token: string) => void }).onTraveldeskTurnstile =
+      (token: string) => setTurnstileToken(token);
+    if (!document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+      const script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+  }, [meta]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,6 +59,10 @@ export function LeadFormPage() {
         destination: fd.get("destination") || undefined,
         travellers: Number(fd.get("travellers")) || 1,
         notes: fd.get("notes") || undefined,
+        // Hidden from people, irresistible to bots.
+        website: fd.get("website") || undefined,
+        renderedAt,
+        turnstileToken: turnstileToken || undefined,
       });
       setSent(result);
     } catch (err) {
@@ -98,6 +120,14 @@ export function LeadFormPage() {
           one working day.
         </p>
         <form onSubmit={handleSubmit}>
+          <input
+            type="text"
+            name="website"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
+          />
           <div className="lead-form-grid">
             <label>
               <User size={14} /> Full name
@@ -147,8 +177,18 @@ export function LeadFormPage() {
               />
             </label>
           </div>
+          {meta?.captcha?.siteKey ? (
+            <div
+              className="cf-turnstile"
+              data-sitekey={meta.captcha.siteKey}
+              data-callback="onTraveldeskTurnstile"
+            />
+          ) : null}
           {error ? <p className="lead-form-error">{error}</p> : null}
-          <button type="submit" disabled={busy}>
+          <button
+            type="submit"
+            disabled={busy || Boolean(meta?.captcha?.siteKey && !turnstileToken)}
+          >
             <Send size={15} /> {busy ? "Sending…" : "Send enquiry"}
           </button>
         </form>

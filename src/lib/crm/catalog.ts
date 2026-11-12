@@ -126,6 +126,14 @@ export const modules: Module[] = [
     noun: "trip",
   },
   {
+    id: "attendance",
+    name: "Attendance & working hours",
+    group: "Operations",
+    tabs: ["Today", "Team attendance", "Monthly summary", "Leave"],
+    description: "Who is in, who is on leave, and the hours the desk actually worked.",
+    noun: "attendance entry",
+  },
+  {
     id: "suppliers",
     name: "Suppliers & contracts",
     group: "Operations",

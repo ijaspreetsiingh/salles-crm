@@ -14,6 +14,7 @@ import { LandingPage } from "@/components/crm/landing-page";
 import { PlatformPortal } from "@/components/crm/platform-portal";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { fetchPlans, type PlanDto } from "@/lib/api/modules";
+import { resendVerification } from "@/lib/api/crm";
 import { TwoFactorPanel } from "@/components/crm/two-factor";
 import { useCRM } from "@/lib/crm/store";
 import { toast } from "sonner";
@@ -207,6 +208,8 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState("");
   const [recoveryMode, setRecoveryMode] = useState(false);
+  const [showResend, setShowResend] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -236,6 +239,13 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
             ? "That recovery code did not work. Each code works once — try another."
             : "Enter the 6-digit code from your authenticator app.",
         );
+        return;
+      }
+      if (err instanceof ApiError && err.code === "email_not_verified") {
+        setError(
+          "Your email address is not verified yet. Open the link we emailed you, or resend it below.",
+        );
+        setShowResend(true);
         return;
       }
       const message = errorMessage(
@@ -398,6 +408,28 @@ export function LoginScreen({ initialMode = "signin" }: { initialMode?: "signin"
                 <p className="login-error-text" role="alert">
                   {error}
                 </p>
+              )}
+
+              {showResend && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={resendBusy}
+                  onClick={async () => {
+                    setResendBusy(true);
+                    try {
+                      await resendVerification(email.trim());
+                      toast.success("Verification email sent — check your inbox.");
+                    } catch (err) {
+                      toast.error(errorMessage(err, "Could not resend the verification email."));
+                    } finally {
+                      setResendBusy(false);
+                    }
+                  }}
+                >
+                  {resendBusy ? "Sending…" : "Resend verification email"}
+                </Button>
               )}
 
               <Button type="submit" size="lg" className="login-submit" disabled={busy}>
