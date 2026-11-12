@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
 import { prisma } from "../lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { buildReport } from "./analytics";
 import { MODULES } from "../domain/modules";
 
@@ -30,26 +31,6 @@ async function loadReport(input: ReportExportInput) {
   });
   const data = await buildReport(input.organizationId, input.report, input.filters);
   const currency = organization.currency || "INR";
-
-  const records = await prisma.record.findMany({
-    where: {
-      organizationId: input.organizationId,
-      moduleId: data.moduleId,
-      deletedAt: null,
-      ...(input.filters.branch ? { branchName: input.filters.branch } : {}),
-      ...(input.filters.from || input.filters.to
-        ? {
-            date: {
-              ...(input.filters.from ? { gte: input.filters.from } : {}),
-              ...(input.filters.to ? { lte: input.filters.to } : {}),
-            },
-          }
-        : {}),
-    },
-    orderBy: { date: "desc" },
-    take: 5000,
-  });
-
   const moduleName = MODULES.find((m) => m.id === data.moduleId)?.name ?? data.moduleId;
   const title = `${moduleName} report`;
 
@@ -67,8 +48,37 @@ async function loadReport(input: ReportExportInput) {
     ["Average value", money(data.summary.averageValue, currency)],
   ];
 
-  return { organization, data, records, currency, title, kpis, moduleName };
+  return { organization, data, currency, title, kpis, moduleName };
 }
+
+/** Every record the report counted, under the same filters the screen used. */
+const recordsWhere = (
+  input: ReportExportInput,
+  moduleId: string,
+): Prisma.RecordWhereInput => ({
+  organizationId: input.organizationId,
+  moduleId,
+  deletedAt: null,
+  ...(input.filters.branch ? { branchName: input.filters.branch } : {}),
+  ...(input.filters.from || input.filters.to
+    ? {
+        date: {
+          ...(input.filters.from ? { gte: input.filters.from } : {}),
+          ...(input.filters.to ? { lte: input.filters.to } : {}),
+        },
+      }
+    : {}),
+});
+
+/** Rows read per page while filling the sheet — memory stays flat. */
+const RECORD_PAGE = 1_000;
+
+/**
+ * Excel itself stops at 1,048,576 rows and a web request should not try to
+ * reach it. We stop well before that, and when we do the summary sheet says so
+ * in words — a file that silently drops rows is worse than a smaller file.
+ */
+const MAX_SHEET_ROWS = 100_000;
 
 const recordColumns = [
   "Reference",
@@ -126,8 +136,7 @@ export async function buildReportWorkbook(input: ReportExportInput): Promise<{
   filename: string;
   buffer: Buffer;
 }> {
-  const { organization, data, records, currency, title, kpis, moduleName } =
-    await loadReport(input);
+  const { organization, data, currency, title, kpis, moduleName } = await loadReport(input);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = organization.name;
@@ -189,10 +198,47 @@ export async function buildReportWorkbook(input: ReportExportInput): Promise<{
     pattern: "solid",
     fgColor: { argb: "FFEFEFEF" },
   };
-  for (const record of records) table.addRow(toCells(record as RecordRow));
-  if (records.length) {
+  let written = 0;
+  let cursor: string | undefined;
+  const where = recordsWhere(input, data.moduleId);
+  for (;;) {
+    const page = await prisma.record.findMany({
+      where,
+      orderBy: [{ date: "desc" }, { id: "desc" }],
+      take: RECORD_PAGE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (page.length === 0) break;
+    for (const record of page) {
+      if (written >= MAX_SHEET_ROWS) break;
+      table.addRow(toCells(record as unknown as RecordRow));
+      written += 1;
+    }
+    cursor = page[page.length - 1]!.id;
+    if (written >= MAX_SHEET_ROWS || page.length < RECORD_PAGE) break;
+  }
+
+  if (written > 0) {
     table.autoFilter = { from: "A1", to: { row: 1, column: recordColumns.length } };
     table.views = [{ state: "frozen", ySplit: 1 }];
+  }
+
+  // The summary always says how much of the report is in the sheet, so a
+  // truncated file can never be mistaken for a complete one.
+  const totalRecords = data.summary.records;
+  summary.addRow({});
+  summary.addRow({
+    label: "Rows in records sheet",
+    value:
+      written < totalRecords
+        ? `${written.toLocaleString("en-IN")} of ${totalRecords.toLocaleString("en-IN")}`
+        : written.toLocaleString("en-IN"),
+  });
+  if (written < totalRecords) {
+    summary.addRow({
+      label: "Note",
+      value: `This sheet lists the most recent ${written.toLocaleString("en-IN")} records. The totals above cover all ${totalRecords.toLocaleString("en-IN")} records; use the CSV export for the full list.`,
+    });
   }
 
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
@@ -207,8 +253,15 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
   filename: string;
   buffer: Buffer;
 }> {
-  const { organization, data, records, currency, title, kpis, moduleName } =
-    await loadReport(input);
+  const { organization, data, currency, title, kpis, moduleName } = await loadReport(input);
+
+  // A PDF is a summary you can email, not a data dump: the 40 newest rows,
+  // labelled with how many the report actually covers.
+  const latest = await prisma.record.findMany({
+    where: recordsWhere(input, data.moduleId),
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    take: 40,
+  });
 
   const doc = new PDFDocument({ size: "A4", margin: 40 });
   const chunks: Buffer[] = [];
@@ -322,7 +375,7 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
   );
 
   table(
-    `${moduleName} (latest 40)`,
+    `${moduleName} — latest ${latest.length} of ${data.summary.records}`,
     [
       { label: "Reference", width: 80 },
       { label: "Name", width: 150 },
@@ -330,7 +383,7 @@ export async function buildReportPdf(input: ReportExportInput): Promise<{
       { label: "Status", width: 90 },
       { label: "Amount", width: 130, align: "right" },
     ],
-    records.map((row) => [
+    latest.map((row) => [
       row.reference,
       row.name,
       row.date,

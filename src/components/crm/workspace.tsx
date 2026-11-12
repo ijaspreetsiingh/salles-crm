@@ -100,15 +100,26 @@ import { SuppliersPanel } from "./suppliers-panel";
 import { OperationsPanel } from "./operations-panel";
 import { DistributionPanel } from "./distribution-panel";
 import {
-  CampaignSegments, CampaignCoupons, CampaignAttribution,
-  FlightAncillaries, FlightReissuesRefunds,
-  PackageDepartures, PackageSeasonalRates,
-  VisaInsurance, VisaAppointments, VisaAdvisories,
-  SupportRefunds, SupportKB, SupportFeedback,
+  CampaignSegments,
+  CampaignCoupons,
+  CampaignAttribution,
+  FlightAncillaries,
+  FlightReissuesRefunds,
+  PackageDepartures,
+  PackageSeasonalRates,
+  VisaInsurance,
+  VisaAppointments,
+  VisaAdvisories,
+  SupportRefunds,
+  SupportKB,
+  SupportFeedback,
   AgentKYC,
-  FinanceLedger, FinanceReceivablesAging,
-  SalesIntelligence, OperationsInsights,
-  TeamChatSearch, TeamChatFiles,
+  FinanceLedger,
+  FinanceReceivablesAging,
+  SalesIntelligence,
+  OperationsInsights,
+  TeamChatSearch,
+  TeamChatFiles,
 } from "./extension-panels";
 import { TwoFactorPanel } from "./two-factor";
 import { WebsitePanel } from "./website-panel";
@@ -372,24 +383,24 @@ export function Workspace({ module }: { module: Module }) {
     module.id === "attendance"
       ? "attendance"
       : module.id === "assistant"
-      ? "assistant"
-      : module.id === "inbox"
-        ? "inbox"
-        : module.id === "reports" && tab === "Growth"
-          ? "growth"
-          : module.id === "reports"
-            ? "reports"
-            : module.id === "integrations"
-              ? "integrations"
-              : module.id === "quotations" && tab === "Itinerary builder"
-                ? "itinerary"
-                : module.id === "automation" && tab === "Workflows"
-                  ? "automation"
-                  : module.id === "settings"
-                    ? "settings"
-                    : module.id === "flights" && tab === "Flight search"
-                      ? "flights"
-                      : null;
+        ? "assistant"
+        : module.id === "inbox"
+          ? "inbox"
+          : module.id === "reports" && tab === "Growth"
+            ? "growth"
+            : module.id === "reports"
+              ? "reports"
+              : module.id === "integrations"
+                ? "integrations"
+                : module.id === "quotations" && tab === "Itinerary builder"
+                  ? "itinerary"
+                  : module.id === "automation" && tab === "Workflows"
+                    ? "automation"
+                    : module.id === "settings"
+                      ? "settings"
+                      : module.id === "flights" && tab === "Flight search"
+                        ? "flights"
+                        : null;
 
   /** Customers get the Rapport directory grid instead of the generic table/board. */
   const toggleSort = (key: SortKey) =>
@@ -437,20 +448,39 @@ export function Workspace({ module }: { module: Module }) {
     (module.id === "hotels" &&
       (tab === "Rate plans" || tab === "Hotels" || tab === "Room inventory")) ||
     (module.id === "campaigns" && tab === "Campaigns") ||
-    (module.id === "campaigns" && (tab === "Segments" || tab === "Referrals & coupons" || tab === "Attribution")) ||
-    (module.id === "companies" && (tab === "Travel requests" || tab === "Cost centres" || tab === "Policies" || tab === "Approvals")) ||
-    (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers" || tab === "Rail, bus & cruise")) ||
-    (module.id === "suppliers" && (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) ||
-    (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations" || tab === "Manifests")) ||
-    (module.id === "flights" && (tab === "Ancillaries" || tab === "Reissues & refunds" || tab === "Tickets")) ||
+    (module.id === "campaigns" &&
+      (tab === "Segments" || tab === "Referrals & coupons" || tab === "Attribution")) ||
+    (module.id === "companies" &&
+      (tab === "Travel requests" ||
+        tab === "Cost centres" ||
+        tab === "Policies" ||
+        tab === "Approvals")) ||
+    (module.id === "transfers" &&
+      (tab === "Vehicles" || tab === "Drivers" || tab === "Rail, bus & cruise")) ||
+    (module.id === "suppliers" &&
+      (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) ||
+    (module.id === "operations" &&
+      (tab === "Incidents" || tab === "Daily operations" || tab === "Manifests")) ||
+    (module.id === "flights" &&
+      (tab === "Ancillaries" || tab === "Reissues & refunds" || tab === "Tickets")) ||
     (module.id === "packages" && (tab === "Fixed departures" || tab === "Seasonal rates")) ||
-    (module.id === "visa" && (tab === "Insurance" || tab === "Appointments" || tab === "Travel advisories")) ||
-    (module.id === "support" && (tab === "Refund requests" || tab === "Knowledge base" || tab === "Feedback" || tab === "Escalations")) ||
-    (module.id === "agents" && (tab === "KYC approvals" || tab === "Credit limits" || tab === "Sub-agents" || tab === "Distributors")) ||
+    (module.id === "visa" &&
+      (tab === "Insurance" || tab === "Appointments" || tab === "Travel advisories")) ||
+    (module.id === "support" &&
+      (tab === "Refund requests" ||
+        tab === "Knowledge base" ||
+        tab === "Feedback" ||
+        tab === "Escalations")) ||
+    (module.id === "agents" &&
+      (tab === "KYC approvals" ||
+        tab === "Credit limits" ||
+        tab === "Sub-agents" ||
+        tab === "Distributors")) ||
     (module.id === "finance" && (tab === "Ledger" || tab === "Receivables")) ||
-    (module.id === "assistant" && (tab === "Sales intelligence" || tab === "Operations insights")) ||
-    (module.id === "team-chat") ||
-    (module.id === "distribution");
+    (module.id === "assistant" &&
+      (tab === "Sales intelligence" || tab === "Operations insights")) ||
+    module.id === "team-chat" ||
+    module.id === "distribution";
 
   // A brand-new workspace does not show an empty table. It sits the person
   // down and walks them through making their first record. Pages with their own
@@ -502,11 +532,17 @@ export function Workspace({ module }: { module: Module }) {
     // Corporate travel — travel requests, cost centres, policy
     if (module.id === "companies") return <CorporatePanel />;
     // Transfers — vehicle fleet + driver roster
-    if (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers")) return <TransfersPanel />;
+    if (module.id === "transfers" && (tab === "Vehicles" || tab === "Drivers"))
+      return <TransfersPanel />;
     // Suppliers — contracts, purchase orders, settlements
-    if (module.id === "suppliers" && (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")) return <SuppliersPanel />;
+    if (
+      module.id === "suppliers" &&
+      (tab === "Contracts" || tab === "Purchase orders" || tab === "Settlements")
+    )
+      return <SuppliersPanel />;
     // Operations — incidents + deadlines (manifests use the generic list)
-    if (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations")) return <OperationsPanel />;
+    if (module.id === "operations" && (tab === "Incidents" || tab === "Daily operations"))
+      return <OperationsPanel />;
     // Distribution — CMS pages, destinations, B2B portal
     if (module.id === "distribution") return <DistributionPanel />;
     // Campaigns extensions
@@ -691,7 +727,13 @@ export function Workspace({ module }: { module: Module }) {
                     currentFilters={{ status: statusFilter, owner, date, tab }}
                     currentSort={sort ? { key: sort.key, dir: sort.dir } : {}}
                     currentColumns={[]}
-                    currentLayout={view === "board" ? "board" : view === "cards" || view === "grid" ? "cards" : "table"}
+                    currentLayout={
+                      view === "board"
+                        ? "board"
+                        : view === "cards" || view === "grid"
+                          ? "cards"
+                          : "table"
+                    }
                     onApply={(savedView) => {
                       const f = savedView.filters as Record<string, unknown>;
                       // Restore status filter
@@ -720,7 +762,9 @@ export function Workspace({ module }: { module: Module }) {
                           savedView.layout === "board"
                             ? "board"
                             : savedView.layout === "cards"
-                              ? module.id === "customers" ? "grid" : "cards"
+                              ? module.id === "customers"
+                                ? "grid"
+                                : "cards"
                               : "list",
                         );
                       }
@@ -1730,7 +1774,7 @@ function reportRange(value: string): { from?: string; to?: string } {
 }
 
 function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
-  const { settings, getRows, status } = useCRM();
+  const { settings, status } = useCRM();
   const [date, setDate] = useState("This month");
   const [branch, setBranch] = useState("All branches");
   const [service, setService] = useState("All services");
@@ -1753,31 +1797,19 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
     status === "ready",
   );
   const savedTitles = new Set((savedList ?? []).map((s) => s.title));
-
-  const inBranch = (r: RecordRow) => branch === "All branches" || r.branch === branch;
-  const bookingsAll = getRows("bookings").filter(inBranch);
-  const rev = bookingsAll.filter((r) => r.status !== "Cancelled").reduce((a, r) => a + r.amount, 0);
-  const avg = bookingsAll.length ? Math.round(rev / bookingsAll.length) : 0;
-  const conv = bookingsAll.length
-    ? Math.round(
-        (bookingsAll.filter((r) => ["Confirmed", "Won"].includes(r.status)).length /
-          Math.max(1, bookingsAll.length)) *
-          100,
-      )
-    : 0;
-  const fallbackDest = Object.entries(
-    bookingsAll.reduce<Record<string, number>>((acc, r) => {
-      acc[r.destination] = (acc[r.destination] ?? 0) + r.amount;
-      return acc;
-    }, {}),
-  ).sort((a, b) => b[1] - a[1]);
   const summary = report?.summary;
-  const bars: Array<[string, number]> = report?.byDestination.length
-    ? report.byDestination.map((d) => [d.label, d.value] as [string, number])
-    : fallbackDest;
+  // Only the server report is a complete count; the cached module rows are a
+  // slice, so they are never used to print a total that looks company-wide.
+  const bars: Array<[string, number]> = (report?.byDestination ?? []).map((d) => [
+    d.label,
+    d.value,
+  ]);
 
   const exportReport = () => {
-    exportRecordsCsv("bookings", branch === "All branches" ? {} : { branch })
+    // The rows behind this tab, not always bookings: the CSV used to say
+    // "Finance" and contain booking rows.
+    const moduleId = report?.moduleId ?? "bookings";
+    exportRecordsCsv(moduleId, branch === "All branches" ? {} : { branch })
       .then((csv) => {
         const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
         const link = document.createElement("a");
@@ -1788,8 +1820,12 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
         toast.success("Report exported");
       })
       .catch(() => {
-        exportRows(rows, `${tab}-${date}-${branch}-${service}`);
-        toast.success("Report exported");
+        // Falling back to the rows on screen is fine, but the file is then a
+        // slice of the report and must not be presented as the report.
+        exportRows(rows, `${tab}-${date}-${branch}-${service}-partial`);
+        toast.error(
+          "The server export failed. This file contains only the rows already loaded on this screen, not the whole report.",
+        );
       });
   };
 
@@ -1869,7 +1905,7 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
       </div>
       <div className="module-stats">
         {[
-          ["Revenue", money(summary?.revenue ?? rev, currency)],
+          ["Revenue", summary ? money(summary.revenue, currency) : "—"],
           [
             "Gross margin",
             // Shown as "—" when no supplier cost is on record, rather than a guess.
@@ -1877,8 +1913,8 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
               ? "—"
               : money(summary.grossMargin, currency),
           ],
-          ["Conversion rate", `${summary?.conversionRate ?? conv}%`],
-          ["Average booking value", money(summary?.averageValue ?? avg, currency)],
+          ["Conversion rate", summary ? `${summary.conversionRate}%` : "—"],
+          ["Average booking value", summary ? money(summary.averageValue, currency) : "—"],
         ].map(([t, v]) => (
           <div key={t}>
             <p>{t}</p>
@@ -1946,24 +1982,32 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
                   {savedTitles.has(title) ? <Check /> : <Plus />}
                 </Button>
               </div>
-              <div className="report-bars">
-                {(bars.slice(0, 4).length
-                  ? bars.slice(0, 4)
-                  : ([["Sample", 100000]] as Array<[string, number]>)
-                ).map(([d, amt]) => {
-                  const max = bars[0]?.[1] || 1;
-                  const pct = Math.round((amt / max) * 100);
-                  return (
-                    <div key={d}>
-                      <span>{d}</span>
-                      <div>
-                        <i className="report-bar" style={{ width: `${pct}%` }} />
-                      </div>
-                      <strong>{money(amt, currency)}</strong>
-                    </div>
-                  );
-                })}
-              </div>
+              {title === `${tab} performance summary` ? (
+                bars.length ? (
+                  <div className="report-bars">
+                    {bars.slice(0, 4).map(([d, amt]) => {
+                      const max = bars[0]?.[1] || 1;
+                      const pct = Math.round((amt / max) * 100);
+                      return (
+                        <div key={d}>
+                          <span>{d}</span>
+                          <div>
+                            <i className="report-bar" style={{ width: `${pct}%` }} />
+                          </div>
+                          <strong>{money(amt, currency)}</strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p>No {reportKey} activity in this period.</p>
+                )
+              ) : (
+                // The other five headings are placeholders for reports that are
+                // not built yet. Printing the same destination bars under each
+                // would look like six findings when it is one.
+                <p>Not built yet — this heading is a placeholder, not a figure.</p>
+              )}
               <Button variant="link" onClick={exportReport}>
                 Download report <ArrowDownToLine />
               </Button>
@@ -2919,11 +2963,11 @@ function SettingsPanel({
   }, [channelStatus]);
 
   // Live billing: plan, usage counters and issued invoices for the organisation.
-  const { data: subscription, reload: reloadSubscription, loading: billingLoading } = useApiQuery(
-    () => fetchSubscription(),
-    [],
-    authStatus === "ready",
-  );
+  const {
+    data: subscription,
+    reload: reloadSubscription,
+    loading: billingLoading,
+  } = useApiQuery(() => fetchSubscription(), [], authStatus === "ready");
   const { data: domain, reload: reloadDomain } = useApiQuery(
     () => fetchDomain(),
     [],
@@ -3097,9 +3141,9 @@ function SettingsPanel({
                 setUserLanguage(next);
                 localStorage.setItem("travo.language", next);
                 // Persist to server so preference survives device switches.
-                import("@/lib/api/preferences").then(({ setPreference }) =>
-                  setPreference("language", next).catch(() => {})
-                ).catch(() => {});
+                import("@/lib/api/preferences")
+                  .then(({ setPreference }) => setPreference("language", next).catch(() => {}))
+                  .catch(() => {});
               }}
             >
               {Object.entries(LANGUAGES).map(([key, info]) => (
@@ -3265,12 +3309,14 @@ function SettingsPanel({
                   updateSettings({ security: { ...security, [key]: e.target.checked } });
                   // Sync non-twoFactor prefs to server so they survive device switches.
                   if (key !== "twoFactor") {
-                    import("@/lib/api/preferences").then(({ setPreference }) =>
-                      setPreference(
-                        key === "quiet" ? "notifyDigest" : "density",
-                        e.target.checked ? "true" : "false",
-                      ).catch(() => {})
-                    ).catch(() => {});
+                    import("@/lib/api/preferences")
+                      .then(({ setPreference }) =>
+                        setPreference(
+                          key === "quiet" ? "notifyDigest" : "density",
+                          e.target.checked ? "true" : "false",
+                        ).catch(() => {}),
+                      )
+                      .catch(() => {});
                   }
                 }}
               />
@@ -4387,10 +4433,7 @@ function SettingsPanel({
         >
           <RefreshCw /> Refresh workspace
         </Button>
-        <Button
-          disabled={billingLoading}
-          onClick={() => reloadSubscription()}
-        >
+        <Button disabled={billingLoading} onClick={() => reloadSubscription()}>
           <RefreshCw /> {billingLoading ? "Refreshing…" : "Refresh billing"}
         </Button>
       </div>

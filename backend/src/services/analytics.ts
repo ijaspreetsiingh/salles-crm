@@ -119,144 +119,266 @@ function toBaseRows<T extends { amount: number; currency: string; extra: string 
 /** Aggregated metrics for the dashboard home. */
 export async function dashboardOverview(organizationId: string, filters: Filters) {
   const today = new Date().toISOString().slice(0, 10);
-
   const fx = await fxContext(organizationId);
-  const [bookingsRaw, leadsRaw, quotations, financeRaw, visa, tasks] = await Promise.all([
-    prisma.record.findMany({ where: recordFilter(organizationId, "bookings", filters) }),
-    prisma.record.findMany({ where: recordFilter(organizationId, "leads", filters) }),
-    prisma.record.findMany({ where: recordFilter(organizationId, "quotations", filters) }),
-    prisma.record.findMany({ where: recordFilter(organizationId, "finance", filters) }),
-    prisma.record.findMany({ where: recordFilter(organizationId, "visa", filters) }),
-    prisma.task.findMany({ where: { organizationId, done: false } }),
-  ]);
 
-  const bookingsBase = toBaseRows(bookingsRaw, fx);
-  const leadsBase = toBaseRows(leadsRaw, fx);
-  const financeBase = toBaseRows(financeRaw, fx);
-  const bookings = bookingsBase.rows;
-  const leads = leadsBase.rows;
-  const finance = financeBase.rows;
-  const missingCurrencies = [
-    ...new Set([...bookingsBase.missing, ...leadsBase.missing, ...financeBase.missing]),
-  ];
-
-  const confirmedBookings = bookings.filter((b) =>
-    ["Confirmed", "paid", "Paid"].includes(b.status),
-  );
-  const revenue = sum(confirmedBookings.length ? confirmedBookings : bookings);
-  const outstanding = sum(finance.filter((f) => f.status !== "Paid"));
-  const collected = sum(finance.filter((f) => f.status === "Paid"));
-  const newLeads = leads.filter((l) => l.status === "New").length;
-  const wonLeads = leads.filter((l) => l.status === "Won").length;
-  const upcoming = bookings
-    .filter((b) => b.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  // Revenue series — last 6 months by record date.
   const buckets = lastMonths(6);
   const seriesMap = new Map(buckets.map((key) => [key, { revenue: 0, bookings: 0 }]));
-  for (const booking of bookings) {
-    const key = monthKey(booking.date);
-    const bucket = seriesMap.get(key);
-    if (bucket) {
-      bucket.revenue += booking.amount;
-      bucket.bookings += 1;
+  const byDestination = new Map<string, GroupTotals>();
+  const byOwner = new Map<string, GroupTotals>();
+  const missing = new Set<string>();
+
+  /* ── Bookings: revenue, margin, series, upcoming departures ─────────────── */
+  let bookingCount = 0;
+  let confirmedCount = 0;
+  let totalRevenue = 0;
+  let confirmedRevenue = 0;
+  let totalCost = 0;
+  let confirmedCost = 0;
+  let totalCosted = 0;
+  let confirmedCosted = 0;
+  const upcoming: Array<{
+    id: string;
+    reference: string;
+    name: string;
+    destination: string;
+    date: string;
+    status: string;
+    amount: number;
+  }> = [];
+  let upcomingCount = 0;
+  const awaitingConfirmation: Array<{
+    label: string;
+    detail: string;
+    moduleId: string;
+    recordId: string;
+    level: "warning";
+  }> = [];
+
+  await scanRecordPages(recordFilter(organizationId, "bookings", filters), (pageRaw) => {
+    const base = toBaseRows(pageRaw, fx);
+    for (const currency of base.missing) missing.add(currency);
+    for (const booking of base.rows) {
+      bookingCount += 1;
+      totalRevenue += booking.amount;
+      addToGroup(byDestination, booking.destination || "Unassigned", booking.amount);
+      addToGroup(byOwner, booking.ownerName || "Unassigned", booking.amount);
+
+      const bucket = seriesMap.get(monthKey(booking.date));
+      if (bucket) {
+        bucket.revenue += booking.amount;
+        bucket.bookings += 1;
+      }
+
+      const cost = costOf(booking);
+      if (cost !== null) {
+        totalCost += cost;
+        totalCosted += 1;
+      }
+      if (["Confirmed", "paid", "Paid"].includes(booking.status)) {
+        confirmedCount += 1;
+        confirmedRevenue += booking.amount;
+        if (cost !== null) {
+          confirmedCost += cost;
+          confirmedCosted += 1;
+        }
+      }
+
+      if (booking.date >= today) {
+        upcomingCount += 1;
+        upcoming.push({
+          id: booking.id,
+          reference: booking.reference,
+          name: booking.name,
+          destination: booking.destination,
+          date: booking.date,
+          status: booking.status,
+          amount: booking.amount,
+        });
+        // Keep only the five soonest departures — the full list can be huge.
+        upcoming.sort((a, b) => a.date.localeCompare(b.date));
+        if (upcoming.length > 5) upcoming.length = 5;
+      }
+
+      if (
+        awaitingConfirmation.length < 3 &&
+        ["Pending", "On hold"].includes(booking.status)
+      ) {
+        awaitingConfirmation.push({
+          label: `Booking awaiting confirmation · ${booking.reference}`,
+          detail: booking.destination,
+          moduleId: "bookings",
+          recordId: booking.id,
+          level: "warning",
+        });
+      }
     }
-  }
+  });
+
+  /* ── Leads: pipeline stages and conversion ──────────────────────────────── */
+  const stageCounts = new Map<string, number>();
+  const stageValues = new Map<string, number>();
+  let leadCount = 0;
+  let newLeads = 0;
+  let wonLeads = 0;
+
+  await scanRecordPages(recordFilter(organizationId, "leads", filters), (pageRaw) => {
+    const base = toBaseRows(pageRaw, fx);
+    for (const currency of base.missing) missing.add(currency);
+    for (const lead of base.rows) {
+      leadCount += 1;
+      if (lead.status === "New") newLeads += 1;
+      if (lead.status === "Won") wonLeads += 1;
+      stageCounts.set(lead.status, (stageCounts.get(lead.status) ?? 0) + 1);
+      stageValues.set(lead.status, (stageValues.get(lead.status) ?? 0) + lead.amount);
+    }
+  });
+
+  /* ── Money owed to you ──────────────────────────────────────────────────── */
+  let outstanding = 0;
+  let collected = 0;
+  const overdue: Array<{
+    label: string;
+    detail: string;
+    moduleId: string;
+    recordId: string;
+    level: "danger";
+  }> = [];
+
+  await scanRecordPages(recordFilter(organizationId, "finance", filters), (pageRaw) => {
+    const base = toBaseRows(pageRaw, fx);
+    for (const currency of base.missing) missing.add(currency);
+    for (const invoice of base.rows) {
+      if (invoice.status === "Paid") collected += invoice.amount;
+      else outstanding += invoice.amount;
+
+      if (invoice.status === "Overdue" && overdue.length < 3) {
+        overdue.push({
+          label: `Overdue payment · ${invoice.reference}`,
+          detail: invoice.name,
+          moduleId: "finance",
+          recordId: invoice.id,
+          level: "danger",
+        });
+      }
+    }
+  });
+
+  /* ── Small reads that already have their own ceiling ────────────────────── */
+  const [quotationsSent, tasks, visaPending] = await Promise.all([
+    prisma.record.count({
+      where: { ...recordFilter(organizationId, "quotations", filters), status: "Sent" },
+    }),
+    prisma.task.count({ where: { organizationId, done: false } }),
+    prisma.record.findMany({
+      where: {
+        ...recordFilter(organizationId, "visa", filters),
+        status: "Documents pending",
+      },
+      orderBy: { date: "asc" },
+      take: 2,
+    }),
+  ]);
+
+  const useConfirmed = confirmedCount > 0;
+  const revenue = useConfirmed ? confirmedRevenue : totalRevenue;
+  const knownCosts = useConfirmed ? confirmedCost : totalCost;
+  const costedRows = useConfirmed ? confirmedCosted : totalCosted;
+  const margin = costedRows > 0 ? revenue - knownCosts : null;
 
   const pipeline = ["New", "Contacted", "Qualified", "Quoted", "Won"].map((stage) => ({
     stage,
-    count: leads.filter((l) => l.status === stage).length,
-    value: sum(leads.filter((l) => l.status === stage)),
+    count: stageCounts.get(stage) ?? 0,
+    value: stageValues.get(stage) ?? 0,
   }));
 
   const attention = [
-    ...finance
-      .filter((f) => f.status === "Overdue")
-      .slice(0, 3)
-      .map((f) => ({
-        label: `Overdue payment · ${f.reference}`,
-        detail: f.name,
-        moduleId: "finance",
-        recordId: f.id,
-        level: "danger" as const,
-      })),
-    ...bookings
-      .filter((b) => ["Pending", "On hold"].includes(b.status))
-      .slice(0, 3)
-      .map((b) => ({
-        label: `Booking awaiting confirmation · ${b.reference}`,
-        detail: b.destination,
-        moduleId: "bookings",
-        recordId: b.id,
-        level: "warning" as const,
-      })),
-    ...visa
-      .filter((v) => v.status === "Documents pending")
-      .slice(0, 2)
-      .map((v) => ({
-        label: `Visa documents pending · ${v.reference}`,
-        detail: v.name,
-        moduleId: "visa",
-        recordId: v.id,
-        level: "warning" as const,
-      })),
+    ...overdue,
+    ...awaitingConfirmation,
+    ...visaPending.map((v) => ({
+      label: `Visa documents pending · ${v.reference}`,
+      detail: v.name,
+      moduleId: "visa",
+      recordId: v.id,
+      level: "warning" as const,
+    })),
   ];
-
-  // Real margin from the recorded supplier cost — null when unknown.
-  const margin = marginOf(confirmedBookings.length ? confirmedBookings : bookings);
 
   return {
     metrics: {
       revenue,
       collected,
       outstanding,
-      bookings: bookings.length,
-      confirmedBookings: confirmedBookings.length,
+      bookings: bookingCount,
+      confirmedBookings: confirmedCount,
       newLeads,
-      quotationsSent: quotations.filter((q) => q.status === "Sent").length,
-      upcomingDepartures: upcoming.length,
-      openTasks: tasks.length,
-      conversionRate: leads.length ? Math.round((wonLeads / leads.length) * 1000) / 10 : 0,
-      averageBookingValue: bookings.length ? Math.round(revenue / bookings.length) : 0,
-      grossMargin: margin.margin,
-      grossMarginPercent: margin.marginPercent,
-      cost: margin.cost,
+      quotationsSent,
+      upcomingDepartures: upcomingCount,
+      openTasks: tasks,
+      conversionRate: leadCount ? Math.round((wonLeads / leadCount) * 1000) / 10 : 0,
+      averageBookingValue: bookingCount ? Math.round(revenue / bookingCount) : 0,
+      grossMargin: margin,
+      grossMarginPercent: margin === null ? null : revenue ? Math.round((margin / revenue) * 1000) / 10 : 0,
+      cost: costedRows > 0 ? knownCosts : null,
     },
     revenueSeries: buckets.map((key) => ({
       month: monthLabel(key),
       ...(seriesMap.get(key) ?? { revenue: 0, bookings: 0 }),
     })),
     pipeline,
-    upcomingDepartures: upcoming.slice(0, 5).map((b) => ({
-      id: b.id,
-      reference: b.reference,
-      name: b.name,
-      destination: b.destination,
-      date: b.date,
-      status: b.status,
-      amount: b.amount,
-    })),
+    upcomingDepartures: upcoming,
     attention: attention.slice(0, 6),
-    byDestination: topBy(bookings, (r) => r.destination, 6),
-    byOwner: topBy(bookings, (r) => r.ownerName, 6),
-    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies },
+    byDestination: ranked(byDestination, 6),
+    byOwner: ranked(byOwner, 6),
+    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies: [...missing] },
   };
 }
 
-function topBy<T extends { amount: number }>(rows: T[], keyFn: (row: T) => string, limit: number) {
-  const map = new Map<string, { label: string; count: number; value: number }>();
-  for (const row of rows) {
-    const label = keyFn(row) || "Unassigned";
-    const entry = map.get(label) ?? { label, count: 0, value: 0 };
-    entry.count += 1;
-    entry.value += row.amount;
-    map.set(label, entry);
+/** Rows read per page. A report's memory stays flat however big the table is. */
+const SCAN_PAGE = 1_000;
+
+type RecordRow = Awaited<ReturnType<typeof prisma.record.findMany>>[number];
+
+/**
+ * Walks every record matching `where`, one id-ordered page at a time.
+ *
+ * A report used to load its whole matching set into memory and then sum it.
+ * That is exact right up to the row count that takes the process down, and any
+ * cap put in its place would make the totals quietly short — the one thing a
+ * report must never do. Paging gives both: exact totals, flat memory.
+ */
+async function scanRecordPages(
+  where: Prisma.RecordWhereInput,
+  visit: (rows: RecordRow[]) => void,
+): Promise<number> {
+  let cursor: string | undefined;
+  let seen = 0;
+  for (;;) {
+    const page = await prisma.record.findMany({
+      where,
+      orderBy: { id: "asc" },
+      take: SCAN_PAGE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (page.length === 0) break;
+    seen += page.length;
+    visit(page);
+    cursor = page[page.length - 1]!.id;
+    if (page.length < SCAN_PAGE) break;
   }
-  return Array.from(map.values())
-    .sort((a, b) => b.value - a.value)
-    .slice(0, limit);
+  return seen;
 }
+
+type GroupTotals = { label: string; count: number; value: number };
+
+function addToGroup(map: Map<string, GroupTotals>, label: string, value: number): void {
+  const entry = map.get(label) ?? { label, count: 0, value: 0 };
+  entry.count += 1;
+  entry.value += value;
+  map.set(label, entry);
+}
+
+const ranked = (map: Map<string, GroupTotals>, limit: number): GroupTotals[] =>
+  [...map.values()].sort((a, b) => b.value - a.value).slice(0, limit);
 
 /** Report builder used by every tab under Reports & analytics. */
 export async function buildReport(organizationId: string, report: string, filters: Filters) {
@@ -272,40 +394,64 @@ export async function buildReport(organizationId: string, report: string, filter
 
   const moduleId = moduleByReport[report] ?? "bookings";
   const fx = await fxContext(organizationId);
-  const rawRows = await prisma.record.findMany({
-    where: recordFilter(organizationId, moduleId, filters),
-  });
-  const base = toBaseRows(rawRows, fx);
-  const rows = base.rows;
 
-  const wonRows = rows.filter((r) =>
-    [
-      "Won",
-      "Confirmed",
-      "Paid",
-      "Accepted",
-      "Active",
-      "Published",
-      "Resolved",
-      "Approved",
-    ].includes(r.status),
-  );
-  const revenue = sum(wonRows);
-  // Real margin from the recorded supplier cost — never a guess.
-  const margin = marginOf(wonRows);
-  const grossMargin = margin.margin;
-  const won = wonRows.length;
-  const conversionRate = rows.length ? Math.round((won / rows.length) * 1000) / 10 : 0;
+  const closedStatuses = new Set([
+    "Won",
+    "Confirmed",
+    "Paid",
+    "Accepted",
+    "Active",
+    "Published",
+    "Resolved",
+    "Approved",
+  ]);
 
   const buckets = lastMonths(6);
   const seriesMap = new Map(buckets.map((key) => [key, { value: 0, count: 0 }]));
-  for (const row of rows) {
-    const bucket = seriesMap.get(monthKey(row.date));
-    if (bucket) {
-      bucket.value += row.amount;
-      bucket.count += 1;
+  const byDestination = new Map<string, GroupTotals>();
+  const byOwner = new Map<string, GroupTotals>();
+  const byStatus = new Map<string, GroupTotals>();
+  const bySource = new Map<string, GroupTotals>();
+  const missing = new Set<string>();
+
+  let records = 0;
+  let won = 0;
+  let revenue = 0;
+  let knownCost = 0;
+  let costedRows = 0;
+
+  // Every matching record is counted, however many there are: the loop reads a
+  // page at a time, so the totals are exact without holding the table in memory.
+  await scanRecordPages(recordFilter(organizationId, moduleId, filters), (pageRaw) => {
+    const base = toBaseRows(pageRaw, fx);
+    for (const currency of base.missing) missing.add(currency);
+    for (const row of base.rows) {
+      records += 1;
+      addToGroup(byOwner, row.ownerName || "Unassigned", row.amount);
+      addToGroup(byDestination, row.destination || "Unassigned", row.amount);
+      addToGroup(byStatus, row.status || "Unknown", row.amount);
+      addToGroup(bySource, row.source || "Unknown", row.amount);
+
+      const bucket = seriesMap.get(monthKey(row.date));
+      if (bucket) {
+        bucket.value += row.amount;
+        bucket.count += 1;
+      }
+
+      if (closedStatuses.has(row.status)) {
+        won += 1;
+        revenue += row.amount;
+        const cost = costOf(row);
+        if (cost !== null) {
+          knownCost += cost;
+          costedRows += 1;
+        }
+      }
     }
-  }
+  });
+
+  const grossMargin = costedRows > 0 ? revenue - knownCost : null;
+  const conversionRate = records ? Math.round((won / records) * 1000) / 10 : 0;
 
   return {
     report,
@@ -319,23 +465,24 @@ export async function buildReport(organizationId: string, report: string, filter
           : "Last 90 days",
     },
     summary: {
-      records: rows.length,
+      records,
       revenue,
       grossMargin,
-      grossMarginPercent: margin.marginPercent,
-      cost: margin.cost,
+      grossMarginPercent:
+        grossMargin === null ? null : revenue ? Math.round((grossMargin / revenue) * 1000) / 10 : 0,
+      cost: costedRows > 0 ? knownCost : null,
       conversionRate,
-      averageValue: rows.length ? Math.round(revenue / rows.length) : 0,
-      won: won,
+      averageValue: records ? Math.round(revenue / records) : 0,
+      won,
     },
     series: buckets.map((key) => ({
       month: monthLabel(key),
       ...(seriesMap.get(key) ?? { value: 0, count: 0 }),
     })),
-    byDestination: topBy(rows, (r) => r.destination, 8),
-    byOwner: topBy(rows, (r) => r.ownerName, 8),
-    byStatus: topBy(rows, (r) => r.status, 8),
-    bySource: topBy(rows, (r) => r.source, 8),
-    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies: base.missing },
+    byDestination: ranked(byDestination, 8),
+    byOwner: ranked(byOwner, 8),
+    byStatus: ranked(byStatus, 8),
+    bySource: ranked(bySource, 8),
+    fx: { baseCurrency: fx.baseCurrency, rates: fx.rates, missingCurrencies: [...missing] },
   };
 }
