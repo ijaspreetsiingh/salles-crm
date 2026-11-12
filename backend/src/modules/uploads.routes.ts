@@ -9,6 +9,7 @@ import { NotFoundError, BadRequestError, ForbiddenError } from "../lib/errors";
 import { env } from "../config/env";
 import { randomToken } from "../lib/utils";
 import { recordAudit } from "../services/audit";
+import { scanFile } from "../services/virus-scan";
 import { hasPermission } from "../domain/rbac";
 
 const router = Router();
@@ -192,6 +193,8 @@ const dto = (a: {
   size: number;
   moduleId: string | null;
   recordId: string | null;
+  scanStatus?: string;
+  scannedAt?: Date | null;
   createdAt: Date;
 }) => ({
   id: a.id,
@@ -200,6 +203,10 @@ const dto = (a: {
   size: a.size,
   moduleId: a.moduleId,
   recordId: a.recordId,
+  // "clamav:clean" means a real scan; "eicar-only:clean" means no daemon was
+  // configured, and the screen can say the file was not fully checked.
+  scanStatus: a.scanStatus ?? "",
+  scannedAt: a.scannedAt?.toISOString() ?? null,
   url: `${env.APP_URL}/api/v1/uploads/${a.id}`,
   createdAt: a.createdAt.toISOString(),
 });
@@ -237,6 +244,22 @@ router.post(
     // Content-Type header can be spoofed, so we read the magic bytes.
     const verifiedMime = verifyFileContent(req.file.path, req.file.mimetype);
 
+    /*
+     * Malware scan before the file becomes part of the workspace. Magic bytes
+     * only prove what a file claims to be; a real virus has the right header.
+     * With ClamAV configured an unreachable daemon fails the upload closed —
+     * storing an unscanned passport scan is the risk we are trying to avoid.
+     */
+    const scan = await scanFile(req.file.path);
+    if (!scan.clean) {
+      safeUnlink(req.file.path);
+      throw new BadRequestError(
+        `The uploaded file was rejected by the malware scanner${
+          scan.signature ? ` (${scan.signature})` : ""
+        }.`,
+      );
+    }
+
     // A record id from another tenant must never become a place to hang a file.
     if (recordId) {
       const record = await prisma.record.findFirst({
@@ -258,6 +281,8 @@ router.post(
         storedName: req.file.filename,
         mimeType: verifiedMime,
         size: req.file.size,
+        scanStatus: `${scan.scanner}:clean`,
+        scannedAt: new Date(),
         uploadedById: req.auth!.apiKeyId ? null : req.auth!.userId,
       },
     });

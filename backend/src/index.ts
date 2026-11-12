@@ -12,6 +12,8 @@ import {
   startWorkflowRetryScheduler,
   stopWorkflowRetryScheduler,
 } from "./services/workflow-runs";
+import { captureException, sentryEnabled } from "./services/sentry";
+import { alertInBackground, alertingEnabled } from "./services/alerting";
 import { initSocket } from "./lib/socket";
 
 async function bootstrap() {
@@ -53,6 +55,18 @@ async function bootstrap() {
 
   const app = createApp();
   const server = http.createServer(app);
+
+  // Says out loud what is and is not watching this deployment. A self-hosted
+  // install with no Sentry DSN and no alert webhook should know that before an
+  // incident, not during one.
+  logger.info(
+    {
+      errorReporting: sentryEnabled() ? "sentry" : "logs only",
+      alerting: alertingEnabled() ? "webhook" : "logs only",
+      malwareScanning: env.CLAMAV_HOST ? "clamav" : "eicar signature only",
+    },
+    "Monitoring status",
+  );
 
   // Real-time layer — socket.io attaches to the same HTTP server so no extra
   // port or proxy rule is needed.
@@ -99,12 +113,27 @@ async function bootstrap() {
 
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("unhandledRejection", (reason) =>
-    logger.error({ err: reason }, "Unhandled rejection"),
-  );
+  process.on("unhandledRejection", (reason) => {
+    logger.error({ err: reason }, "Unhandled rejection");
+    void captureException(reason, { kind: "unhandledRejection" }).catch(() => undefined);
+    alertInBackground({
+      key: "process:unhandledRejection",
+      title: "A background task failed without a handler",
+      body: reason instanceof Error ? reason.message : String(reason),
+      level: "warning",
+    });
+  });
   process.on("uncaughtException", (error) => {
     logger.fatal({ err: error }, "Uncaught exception");
-    process.exit(1);
+    // Report first, then die: a crash with no trace is the worst kind.
+    void captureException(error, { kind: "uncaughtException" }).catch(() => undefined);
+    alertInBackground({
+      key: "process:uncaughtException",
+      title: "The API crashed and is restarting",
+      body: error.message,
+      level: "critical",
+    });
+    setTimeout(() => process.exit(1), 500);
   });
 }
 

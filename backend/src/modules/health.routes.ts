@@ -27,7 +27,15 @@ router.get(
   "/ready",
   asyncHandler(async (_req, res) => {
     await prisma.$queryRawUnsafe("SELECT 1");
-    return ok(res, { status: "ready", database: "up" });
+    return ok(res, {
+      status: "ready",
+      database: "up",
+      // What is actually guarding this deployment, so ops can see a gap here
+      // instead of discovering it after an incident.
+      malwareScanning: env.CLAMAV_HOST ? "clamav" : "eicar-only",
+      errorReporting: env.SENTRY_DSN ? "sentry" : "logs",
+      alerting: env.ALERT_WEBHOOK_URL ? "webhook" : "logs",
+    });
   }),
 );
 

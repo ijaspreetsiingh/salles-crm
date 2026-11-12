@@ -687,6 +687,10 @@ model Attachment {
   storedName     String
   mimeType       String   @default("application/octet-stream")
   size           Int      @default(0)
+  /// Which scanner saw this file — "clamav:clean" or "eicar-only:clean".
+  /// Empty on rows uploaded before scanning existed.
+  scanStatus     String   @default("")
+  scannedAt      DateTime?
   uploadedById   String?
   createdAt      DateTime @default(now())
 

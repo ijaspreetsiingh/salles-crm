@@ -1091,7 +1091,12 @@ export function RecordDialog({
                         <div>
                           <h4>{att.filename}</h4>
                           <p>
-                            {Math.max(1, Math.round(att.size / 1024))} KB · {att.mimeType}
+                            {Math.max(1, Math.round(att.size / 1024))} KB · {att.mimeType} ·{" "}
+                            {att.scanStatus.startsWith("clamav")
+                              ? "Virus-scanned"
+                              : att.scanStatus
+                                ? "Not virus-scanned"
+                                : "Scan unknown"}
                           </p>
                         </div>
                         <Button

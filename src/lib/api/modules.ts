@@ -635,6 +635,9 @@ export type AttachmentDto = {
   size: number;
   moduleId: string | null;
   recordId: string | null;
+  /** "clamav:clean" when a real scan ran; "eicar-only:clean" when none did. */
+  scanStatus: string;
+  scannedAt: string | null;
   url: string;
   createdAt: string;
 };

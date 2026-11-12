@@ -85,6 +85,15 @@ const envSchema = z.object({
   SENTRY_RELEASE: z.string().optional().default(""),
 
   /**
+   * Optional alert webhook — a Slack incoming webhook, or any URL that accepts
+   * `{ text }`. Empty = alerts stay in the log file, and nobody is woken up.
+   * Repeated alerts with the same title are throttled by ALERT_MIN_INTERVAL_MS
+   * so a failing endpoint cannot fill the channel.
+   */
+  ALERT_WEBHOOK_URL: z.string().optional().default(""),
+  ALERT_MIN_INTERVAL_MS: z.coerce.number().int().nonnegative().default(300_000),
+
+  /**
    * Demo data is a development convenience. It must never land in a real
    * workspace by accident, so the default is "on in development, off in
    * production" and production additionally needs SEED_DEMO=true.

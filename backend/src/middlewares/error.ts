@@ -4,6 +4,8 @@ import { AppError } from "../lib/errors";
 import { logger } from "../lib/logger";
 import { flatten } from "./validate";
 import { ZodError } from "zod";
+import { captureException } from "../services/sentry";
+import { alertInBackground } from "../services/alerting";
 
 /** Central error translator — turns any thrown error into a consistent payload. */
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
@@ -54,6 +56,29 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   };
   if (status >= 500) logger.error(logPayload, message);
   else logger.warn({ requestId: req.requestId, path: req.originalUrl, code }, message);
+
+  /*
+   * A 5xx is the server admitting it broke a customer's action. Logging it is
+   * not enough: the owner finds out by phone. Send it to Sentry when a DSN is
+   * configured, and post a throttled message to the alert webhook when one is,
+   * so the same broken route cannot fill the channel.
+   */
+  if (status >= 500) {
+    const route = req.originalUrl.split("?")[0];
+    void captureException(err, {
+      requestId: req.requestId,
+      method: req.method,
+      path: route,
+      status,
+      code,
+    }).catch(() => undefined);
+    alertInBackground({
+      key: `http:${req.method}:${route}:${code}`,
+      title: `${req.method} ${route} failed (${status})`,
+      body: `request ${req.requestId ?? "(no id)"} — ${message}`,
+      level: "error",
+    });
+  }
 
   res.status(status).json({
     success: false,
