@@ -258,8 +258,11 @@ compile theek. **Gap:** scheduler single-process hai; multi-node par
 
 ### Bookings & trips
 
-**Bookings** — lifecycle, webhooks on confirm, ledger link. **Gap:** koi
-overbooking/seat inventory check nahi (availability supplier-side hai). **P2.**
+**Bookings** — lifecycle, webhooks on confirm, ledger link. Fixed departures par
+**seat inventory hard reservation** hai: create, edit (pax ya departure badalna),
+cancel, delete, restore aur bulk status change — sab par counter booking ke saath
+chalta hai. **Gap:** supplier-side availability (flights/hotels) abhi bhi
+supplier ki zimmedari hai. **P2.**
 
 **Flights** — Amadeus adapter, PNR queue, E-ticket PDF, ancillaries,
 reissue/refund. **Gap:** credentials ke bina sirf structure; live fares test
@@ -269,18 +272,20 @@ host par. **P1 (business decision).**
 **Gap:** live availability (Hotelbeds) optional; cut-off/allotment release
 automation partial. **P1.**
 
-**Packages** — fixed departures, seasonal rates. Ab type-safe. **Gap:** departure
-capacity vs bookings ka hard reservation nahi. **P2.**
+**Packages** — fixed departures, seasonal rates. **Departure capacity ab hard
+reservation hai:** seats create/edit/cancel/delete/restore par move hote hain,
+full departure par booking ya edit refuse hota hai. **P1 → done.**
 
-**Ground transport** — fleet, drivers, assignment, rail/bus/cruise (ab crash
-nahi). **Gap:** driver/vehicle double-booking check nahi. **P1.**
+**Ground transport** — fleet, drivers, assignment, rail/bus/cruise. **Driver /
+vehicle double-booking ab blocked:** ek vehicle aur ek driver ek din me ek hi
+transfer par; conflict 409 + doosre transfer ka reference. **P1 → done.**
 
 **Visa & insurance** — applications, checklists, appointments, advisories.
 **Gap:** embassy appointment slots integration nahi. **P2.**
 
 **Groups & MICE** — delegates, rooming list, manifest, auto-rooms, room blocks.
-Ab field names theek. **Gap:** room block `extra` JSON me hai, dedicated table
-nahi — concurrent edits par last-write-wins. **P1.**
+**Room blocks ab dedicated `GroupRoomBlock` table me hain:** real foreign keys,
+conditional room claim ek hi transaction me, delete by id. **P1 → done.**
 
 **Trip operations** — departures, manifests, incidents, deadlines, vouchers.
 **Gap:** "arrivals today" `extra` string match par depend karta hai (fragile).
@@ -315,9 +320,10 @@ payables, expenses, reconciliation, profitability, GSTR-1/3B, Tally XML, e-invoi
 **Still open:** GSTR-2B reconciliation / e-way bill (P2); Razorpay refund se credit
 note auto-issue (P2 — ab manual CN flow hai); TDS/TCS edge cases CA review.
 
-**Reports** — xlsx + PDF export, saved reports, GSTR/Tally. **Gap:** reports
-`take` caps par chalte hain (500–2,000); bahut bade data par totals adhoore ho
-sakte hain. **P1**
+**Reports** — xlsx + PDF export, saved reports, GSTR/Tally. **Totals ab uncapped:**
+report aur dashboard id-ordered pages me poora table walk karte hain, is liye
+totals exact hain aur memory flat. Excel pages me likhta hai aur summary sheet
+"X of N" batati hai; PDF apne sample ko real count se label karta hai. **P1 → done.**
 
 ### AI & automation
 
@@ -325,8 +331,11 @@ sakte hain. **P1**
 customer data cross-tenant leak ka model-level guard nahi; output review flow
 nahi. **P1 (security review needed).**
 
-**Workflow automation** — triggers, runs, approvals. **Gap:** retries/dead-letter
-nahi; ek fail hua run chup-chaap ruk jata hai. **P1.**
+**Workflow automation** — triggers, runs, approvals. **Retries + dead-letter ab
+hain:** fail hua run 1 aur 5 minute baad dobara, teesri failure par `dead` +
+notification tray; manual retry poora budget reset karta hai, discard permanent
+hai. Retry row ko atomically claim karta hai, is liye do node ek run ko double
+nahi chalate. **P1 → done.**
 
 ### Platform
 
@@ -382,20 +391,36 @@ export for external auditor (P2).
 
 ### P1 — still open (business/ops, not code blockers)
 
-12. **File virus scanning** — magic-byte check hai, malware scan nahi.
-13. **Segregation of duties** — invoice banane wala hi approve/delete/export kar
+12. **Segregation of duties** — invoice banane wala hi approve/delete/export kar
     sakta hai; approval matrix product decision chahiye.
-14. **Departure capacity / driver double-booking** — agent credit aur supplier
-    match closed, ye do money/ops rules abhi record-only hain.
-15. **Observability** — `/metrics` + request logs hain; Sentry/alerting wire nahi.
-16. **Live e-invoicing GSP credentials** — Sek crypto implemented aur tested,
+13. **Live e-invoicing GSP credentials** — Sek crypto implemented aur tested,
     lekin real GSP account/IRP registration ke bina production IRN nahi banega.
+14. **API key lifecycle** — expiry/rotation policy aur per-key IP allowlist nahi.
+15. **Support SLA timers** — ticket breach alerts nahi.
+16. **AI prompt-injection guard** — model-level cross-tenant guard aur output
+    review flow chahiye (security review).
+
+### Closed is pass (is pass me)
+
+- **Virus scanning** — har upload ClamAV INSTREAM se scan hota hai; infected file
+  delete, daemon down par upload 503 (fail closed). `scanStatus`/`scannedAt`
+  attachment par record hote hain aur UI "Virus-scanned" / "Not virus-scanned"
+  kehta hai. Compose me `clamav` service.
+- **Observability** — 5xx, crash aur unhandled rejection Sentry par (DSN ho to)
+  aur throttled alert webhook par jate hain; `/ready` aur boot log batate hain
+  kya watch kar raha hai.
+- **Departure capacity** — seats har write par move hote hain, full departure
+  par edit/create refuse.
+- **Driver/vehicle double-booking** — ek vehicle/driver ek din me ek transfer.
+- **Groups room blocks** — dedicated table, atomic room claim, delete by id.
+- **Reports** — exact totals at any table size; honest export labels.
+- **Workflow retries** — backoff, dead-letter, manual retry/discard.
 
 ### P2 — scale/parity
 
 17. Saved-view sharing, favourites (partial), offline mode, WCAG AA audit,
     board keyboard DnD.
-18. Full-text search, report totals bina cap ke, campaign scheduling multi-node.
+18. Full-text search, campaign scheduling multi-node.
 19. Plan-based feature gating (abhi sirf seats), custom domain TLS automation.
 20. Object storage (S3/R2) for uploads; recycle-bin auto-purge; hash-chain audit
     export; GSTR-2B / e-way bill; Razorpay refund → auto credit note.
@@ -412,26 +437,34 @@ export for external auditor (P2).
 6. `INBOUND_EMAIL_SECRET` + `WHATSAPP_APP_SECRET` + `WHATSAPP_VERIFY_TOKEN` set
    (warna production inbound refuse karega — by design).
 7. Razorpay keys + webhook secret + dashboard webhook URL.
-8. `METRICS_TOKEN` set; `/health` aur `/ready` monitoring me.
-9. `BACKUP_ENCRYPTION_KEY` (32+ chars) set; `db:backup:schedule` ya compose
-   backup service on; off-box copy; ek restore drill `restore-backup.mjs` se.
-10. GSP credentials + `IRP_SANDBOX=false`: Sek per-session decrypt ab implemented
+8. `METRICS_TOKEN` set; `/health` aur `/ready` monitoring me. `/ready` batata
+   hai malware scanning, error reporting aur alerting kis mode me hai.
+9. `SENTRY_DSN` (optional) aur `ALERT_WEBHOOK_URL` set — warna 5xx sirf log me
+   rahega. `CLAMAV_HOST` compose ke `clamav` service par point karo; daemon
+   signature download hone tak upload 503 dega (fail closed, by design).
+10. `BACKUP_ENCRYPTION_KEY` (32+ chars) set; `db:backup:schedule` ya compose
+    backup service on; off-box copy; ek restore drill `restore-backup.mjs` se.
+11. GSP credentials + `IRP_SANDBOX=false`: Sek per-session decrypt ab implemented
     hai; pehla IRN sandbox me test karke hi live jayein.
-11. `REQUIRE_EMAIL_VERIFICATION=true`; SMTP working (verification mail).
-12. Lead form par Turnstile keys (optional; honeypot/limiter bina bhi active).
-13. Uptime + error alerting; log retention policy (PII redaction ab lagu hai).
-14. Pilot: 1 branch, 5–10 users, real data, weekly review — phir rollout.
+12. `REQUIRE_EMAIL_VERIFICATION=true`; SMTP working (verification mail).
+13. Lead form par Turnstile keys (optional; honeypot/limiter bina bhi active).
+14. Uptime monitoring; log retention policy (PII redaction ab lagu hai).
+15. Pilot: 1 branch, 5–10 users, real data, weekly review — phir rollout.
 
 ---
 
 ## 5. Ek line me
 
 Pehle ye CRM build hi nahi hota tha; ab backend/frontend clean compile hote hain,
-149 tests pass hain, fresh Postgres par 11 migrations + drift zero hai, 1,00,000
-row export stream hota hai, aur is pass me DPDP erasure, encrypted DB+uploads
-backup/restore, email-verification gate, lead-form anti-spam, agent credit
-enforcement, supplier 3-way match, credit notes (GST 9B/3B), FX consolidation,
-append-only audit, trigram search indexes, attendance aur live e-invoice Sek
-decrypt sab code + runtime verified hain. Production go-live ke liye ab sirf
-external cheezein baaki hain: GSP account, SMTP/Razorpay keys, Turnstile (optional),
-Sentry/alerting, aur virus scanning.
+190 backend (11 DB-backed skipped) + 176 frontend tests pass hain, fresh Postgres
+par 14 migrations +
+drift zero hai, 1,00,000 row export stream hota hai, aur is pass me DPDP erasure,
+encrypted DB+uploads backup/restore, email-verification gate, lead-form anti-spam,
+agent credit enforcement, supplier 3-way match, credit notes (GST 9B/3B), FX
+consolidation, append-only audit, trigram search indexes, attendance, live
+e-invoice Sek decrypt, uncapped report totals, workflow retries/dead-letter,
+Sentry + alert webhook, ClamAV upload scanning, departure seat inventory,
+driver/vehicle double-booking guard aur dedicated group room blocks sab code +
+runtime verified hain. Production go-live ke liye ab sirf external cheezein
+baaki hain: GSP account, SMTP/Razorpay keys, Turnstile (optional), Sentry DSN,
+alert webhook URL, aur ClamAV host.
