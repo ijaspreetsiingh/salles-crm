@@ -145,6 +145,7 @@ export type ReportResultDto = {
   filters: { branch: string; range: string };
   summary: {
     records: number;
+    /** Value from records in closed/won states, converted to workspace currency. */
     revenue: number;
     /** null when no supplier cost has been recorded — never a guess. */
     grossMargin: number | null;
@@ -1143,6 +1144,25 @@ export const fetchDigestSettings = () =>
 
 export const saveDigestSettings = (body: Partial<DigestSettingsDto>) =>
   apiRequest<{ settings: DigestSettingsDto }>("/organizations/current/digest", {
+    method: "PATCH",
+    body,
+  });
+
+/* ------------------------------------------------------------------ *
+ * Segregation of duties rules
+ * ------------------------------------------------------------------ */
+
+export type SodRuleDto = {
+  moduleId: string;
+  actions: ("approve" | "delete" | "export")[];
+  overrideRoles?: string[];
+};
+
+export const fetchSodRules = () =>
+  apiRequest<{ rules: SodRuleDto[] }>("/organizations/current/sod-rules");
+
+export const saveSodRules = (body: { rules: SodRuleDto[] }) =>
+  apiRequest<{ rules: SodRuleDto[] }>("/organizations/current/sod-rules", {
     method: "PATCH",
     body,
   });

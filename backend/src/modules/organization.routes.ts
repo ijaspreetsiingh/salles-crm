@@ -10,6 +10,7 @@ import { parseJson, stringifyJson } from "../lib/utils";
 import { publicOrganizationSettings } from "../lib/redact";
 import { recordAudit } from "../services/audit";
 import { readDigestSettings, sendDigestTo, writeDigestSettings } from "../services/digest";
+import { readSodRules } from "../services/sod";
 import { MODULES, moduleGroups } from "../domain/modules";
 
 const router = Router();
@@ -267,6 +268,58 @@ router.post(
     });
 
     return ok(res, { ...result, to: req.auth!.email });
+  }),
+);
+
+/**
+ * Segregation of duties rules — which actions on which modules require a
+ * different person than the one who created the record.
+ *
+ * GET returns the current rules; PATCH lets a company admin set them.
+ * Stored in the organization's settings JSON under `sodRules`.
+ */
+const sodRuleSchema = z.object({
+  moduleId: z.string().min(1),
+  actions: z.array(z.enum(["approve", "delete", "export"])).min(1),
+  overrideRoles: z.array(z.string()).optional(),
+});
+
+router.get(
+  "/current/sod-rules",
+  asyncHandler(async (req, res) => {
+    const organization = await prisma.organization.findUnique({
+      where: { id: req.auth!.organizationId },
+      select: { settings: true },
+    });
+    const rules = readSodRules(organization?.settings ?? null);
+    return ok(res, { rules });
+  }),
+);
+
+router.patch(
+  "/current/sod-rules",
+  requireRole("company_admin"),
+  validate(z.object({ rules: z.array(sodRuleSchema) })),
+  asyncHandler(async (req, res) => {
+    const body = req.body as { rules: { moduleId: string; actions: string[]; overrideRoles?: string[] }[] };
+    const organization = await prisma.organization.findUniqueOrThrow({
+      where: { id: req.auth!.organizationId },
+      select: { settings: true },
+    });
+    const settings = parseJson<Record<string, unknown>>(organization.settings, {});
+    settings.sodRules = body.rules;
+    await prisma.organization.update({
+      where: { id: req.auth!.organizationId },
+      data: { settings: stringifyJson(settings) },
+    });
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "Updated",
+      moduleId: "settings",
+      label: `Segregation of duties rules updated (${body.rules.length} rules)`,
+      req,
+    });
+    return ok(res, { rules: body.rules });
   }),
 );
 
