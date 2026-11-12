@@ -15,7 +15,7 @@ describe("platform endpoints", () => {
   it("exposes service metadata with the full module catalogue", async () => {
     const res = await request(app).get("/api/v1/meta");
     expect(res.status).toBe(200);
-    expect(res.body.data.moduleCount).toBe(24);
+    expect(res.body.data.moduleCount).toBe(25);
     expect(res.body.data.modules).toContain("bookings");
   });
 
