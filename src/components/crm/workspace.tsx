@@ -167,6 +167,9 @@ import {
   revokeApiKey,
   rotateApiKey,
   updateApiKey,
+  fetchSodRules,
+  saveSodRules,
+  type SodRuleDto,
   removeEmailChannel,
   removeRazorpayChannel,
   removeWhatsAppChannel,
@@ -195,6 +198,7 @@ import {
   type MessageDto,
   type PlanDto,
   type ReportKey,
+  type SavedReportDto,
   type WebhookDeliveryDto,
   type RoleDto,
   type WorkflowDto,
@@ -1780,19 +1784,32 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
   const { settings, status } = useCRM();
   const [date, setDate] = useState("This month");
   const [branch, setBranch] = useState("All branches");
-  const [service, setService] = useState("All services");
+  const [activeSaved, setActiveSaved] = useState<SavedReportDto | null>(null);
+  const showSavedList = tab === "Saved reports" && activeSaved === null;
   const currency = settings.currency;
-  const reportKey = REPORT_KEY_BY_TAB[tab] ?? "sales";
-  const apiFilters = {
-    ...(branch === "All branches" ? {} : { branch }),
-    ...reportRange(date),
-  };
+  const reportKey = (activeSaved?.moduleId as ReportKey | undefined) ?? REPORT_KEY_BY_TAB[tab] ?? "sales";
+  const apiFilters = activeSaved
+    ? {
+        ...(typeof activeSaved.filters["branch"] === "string"
+          ? { branch: activeSaved.filters["branch"] }
+          : {}),
+        ...(typeof activeSaved.filters["from"] === "string"
+          ? { from: activeSaved.filters["from"] }
+          : {}),
+        ...(typeof activeSaved.filters["to"] === "string"
+          ? { to: activeSaved.filters["to"] }
+          : {}),
+      }
+    : {
+        ...(branch === "All branches" ? {} : { branch }),
+        ...reportRange(date),
+      };
 
   // Live report + saved views come from the server; records stay the fallback.
-  const { data: report } = useApiQuery(
+  const { data: report, loading: reportLoading, error: reportError, reload: reloadReport } = useApiQuery(
     () => runReport(reportKey, apiFilters),
-    [reportKey, branch, date],
-    status === "ready" && tab !== "Saved reports",
+    [reportKey, branch, date, activeSaved?.id, JSON.stringify(apiFilters)],
+    status === "ready" && (!showSavedList),
   );
   const { data: savedList, reload: reloadSaved } = useApiQuery(
     () => fetchSavedReports(),
@@ -1803,21 +1820,20 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
   const summary = report?.summary;
   // Only the server report is a complete count; the cached module rows are a
   // slice, so they are never used to print a total that looks company-wide.
-  const bars: Array<[string, number]> = (report?.byDestination ?? []).map((d) => [
-    d.label,
-    d.value,
-  ]);
-
   const exportReport = () => {
     // The rows behind this tab, not always bookings: the CSV used to say
     // "Finance" and contain booking rows.
-    const moduleId = report?.moduleId ?? "bookings";
-    exportRecordsCsv(moduleId, branch === "All branches" ? {} : { branch })
+    if (!report) {
+      toast.error("Wait for the report to finish loading before exporting it.");
+      return;
+    }
+    const moduleId = report.moduleId;
+    exportRecordsCsv(moduleId, apiFilters)
       .then((csv) => {
         const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${tab}-${date}-${branch}.csv`;
+        link.download = `${reportKey}-${date}-${branch}.csv`;
         link.click();
         URL.revokeObjectURL(url);
         toast.success("Report exported");
@@ -1825,7 +1841,7 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
       .catch(() => {
         // Falling back to the rows on screen is fine, but the file is then a
         // slice of the report and must not be presented as the report.
-        exportRows(rows, `${tab}-${date}-${branch}-${service}-partial`);
+        exportRows(rows, `${tab}-${date}-${branch}-partial`);
         toast.error(
           "The server export failed. This file contains only the rows already loaded on this screen, not the whole report.",
         );
@@ -1862,53 +1878,58 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
   return (
     <>
       <div className="report-filter-band">
-        <DateFilter value={date} onChange={setDate} />
-        <select
-          aria-label="Report branch"
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-        >
-          <option>All branches</option>
-          {settings.branches.map((b) => (
-            <option key={b}>{b}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Report service"
-          value={service}
-          onChange={(e) => setService(e.target.value)}
-        >
-          <option>All services</option>
-          <option>Flights</option>
-          <option>Hotels</option>
-          <option>Packages</option>
-        </select>
-        <Button variant="outline" onClick={exportReport}>
-          <ArrowDownToLine /> CSV
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => void downloadReportFile("xlsx")}
-          title="Excel workbook: summary, records and every breakdown"
-        >
-          <FileSpreadsheet /> Excel
-        </Button>
-        <Button
-          variant="outline"
-          onClick={() => void downloadReportFile("pdf")}
-          title="Printable PDF of this report"
-        >
-          <FileText /> PDF
-        </Button>
+        {showSavedList ? null : activeSaved ? (
+          <>
+            <Button variant="outline" onClick={() => setActiveSaved(null)}>
+              Back to saved reports
+            </Button>
+            <span className="text-sm text-muted">
+              {activeSaved.title} · {report?.filters.range ?? "Saved date range"} · {report?.filters.branch ?? "All branches"}
+            </span>
+          </>
+        ) : (
+          <>
+            <DateFilter value={date} onChange={setDate} />
+            <select
+              aria-label="Report branch"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+            >
+              <option>All branches</option>
+              {settings.branches.map((b) => (
+                <option key={b}>{b}</option>
+              ))}
+            </select>
+          </>
+        )}
+        {!showSavedList && <>
+          <Button variant="outline" onClick={exportReport}>
+            <ArrowDownToLine /> CSV
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void downloadReportFile("xlsx")}
+            title="Excel workbook: summary, records and every breakdown"
+          >
+            <FileSpreadsheet /> Excel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void downloadReportFile("pdf")}
+            title="Printable PDF of this report"
+          >
+            <FileText /> PDF
+          </Button>
+        </>}
         {tab !== "Saved reports" && (
           <Button variant="outline" onClick={() => saveView(`${tab} performance summary`)}>
             <Plus /> Save view
           </Button>
         )}
       </div>
-      <div className="module-stats">
+      {!showSavedList && <div className="module-stats">
         {[
-          ["Revenue", summary ? money(summary.revenue, currency) : "—"],
+          [plain("Closed value"), summary ? money(summary.revenue, currency) : "—"],
           [
             "Gross margin",
             // Shown as "—" when no supplier cost is on record, rather than a guess.
@@ -1917,18 +1938,18 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
               : money(summary.grossMargin, currency),
           ],
           ["Conversion rate", summary ? `${summary.conversionRate}%` : "—"],
-          ["Average booking value", summary ? money(summary.averageValue, currency) : "—"],
+          [plain("Average record value"), summary ? money(summary.averageValue, currency) : "—"],
         ].map(([t, v]) => (
           <div key={t}>
             <p>{t}</p>
             <strong>{v}</strong>
             <small>
-              {date} · {branch}
+              {report?.filters.range ?? date} · {report?.filters.branch ?? branch}
             </small>
           </div>
         ))}
-      </div>
-      {tab === "Saved reports" ? (
+      </div>}
+      {showSavedList ? (
         savedList && savedList.length > 0 ? (
           <div className="reports-grid">
             {savedList.map((s) => (
@@ -1954,6 +1975,9 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
                 <p>
                   {findModule(s.moduleId)?.name ?? s.moduleId} · saved {formatDay(s.createdAt)}
                 </p>
+                <Button size="sm" variant="outline" onClick={() => setActiveSaved(s)}>
+                  Open saved report
+                </Button>
               </section>
             ))}
           </div>
@@ -1965,14 +1989,45 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
         )
       ) : (
         <div className="reports-grid">
-          {[
-            `${tab} performance summary`,
-            "Booking profitability",
-            "Revenue by destination",
-            "Team target attainment",
-            "Receivables aging",
-            "Supplier fulfilment",
-          ].map((title) => (
+          {reportError ? (
+            <EmptyState
+              title="This report could not be loaded"
+              description={reportError}
+              action={<Button variant="outline" onClick={reloadReport}>Try again</Button>}
+            />
+          ) : reportLoading || !report ? (
+            <EmptyState title="Loading report" description="Getting the latest saved records for this period." />
+          ) : report.summary.records === 0 ? (
+            <EmptyState
+              title={`No ${reportKey} records in this period`}
+              description="Try another date range or branch, or add the first record to this workspace."
+            />
+          ) : [
+            {
+              title: plain("Activity by destination"),
+              rows: report.byDestination,
+            },
+            {
+              title: plain("Activity by owner"),
+              rows: report.byOwner,
+            },
+            {
+              title: plain("Records by status"),
+              rows: report.byStatus,
+            },
+            {
+              title: plain("Records by source"),
+              rows: report.bySource,
+            },
+            {
+              title: plain("Monthly activity"),
+              rows: report.series.map((item) => ({
+                label: item.month,
+                count: item.count,
+                value: item.value,
+              })),
+            },
+          ].map(({ title, rows: breakdown }) => (
             <section className="report-item" key={title}>
               <div className="section-heading">
                 <h3>{title}</h3>
@@ -1985,40 +2040,31 @@ function Reports({ rows, tab }: { rows: RecordRow[]; tab: string }) {
                   {savedTitles.has(title) ? <Check /> : <Plus />}
                 </Button>
               </div>
-              {title === `${tab} performance summary` ? (
-                bars.length ? (
-                  <div className="report-bars">
-                    {bars.slice(0, 4).map(([d, amt]) => {
-                      const max = bars[0]?.[1] || 1;
-                      const pct = Math.round((amt / max) * 100);
-                      return (
-                        <div key={d}>
-                          <span>{d}</span>
-                          <div>
-                            <i className="report-bar" style={{ width: `${pct}%` }} />
-                          </div>
-                          <strong>{money(amt, currency)}</strong>
+              {breakdown.length > 0 ? (
+                <div className="report-bars">
+                  {breakdown.slice(0, 8).map((item) => {
+                    const max = Math.max(...breakdown.map((entry) => entry.count), 1);
+                    const pct = Math.max(4, Math.round((item.count / max) * 100));
+                    return (
+                      <div key={item.label}>
+                        <span>{item.label}</span>
+                        <div>
+                          <i className="report-bar" style={{ width: `${pct}%` }} />
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p>No {reportKey} activity in this period.</p>
-                )
+                        <strong>{item.count} · {money(item.value, currency)}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
-                // The other five headings are placeholders for reports that are
-                // not built yet. Printing the same destination bars under each
-                // would look like six findings when it is one.
-                <p>Not built yet — this heading is a placeholder, not a figure.</p>
+                <p>No records to break down for this period.</p>
               )}
-              <Button variant="link" onClick={exportReport}>
-                Download report <ArrowDownToLine />
-              </Button>
+              <small>Record count · recorded value in {currency}</small>
             </section>
           ))}
         </div>
       )}
-      <p className="cost-disclaimer">Figures shown in {currency} · live analytics.</p>
+      <p className="cost-disclaimer">Figures shown in {currency} · generated from saved records.</p>
     </>
   );
 }
@@ -2920,6 +2966,11 @@ function SettingsPanel({
   const [keyName, setKeyName] = useState("");
   const [keyExpires, setKeyExpires] = useState("");
   const [keyIps, setKeyIps] = useState("");
+  const [sodRules, setSodRules] = useState<SodRuleDto[]>([]);
+  const [sodModule, setSodModule] = useState("");
+  const [sodActions, setSodActions] = useState("");
+  const [sodOverrideRoles, setSodOverrideRoles] = useState("");
+  const [savingSod, setSavingSod] = useState(false);
   const [creatingKey, setCreatingKey] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
@@ -2999,6 +3050,13 @@ function SettingsPanel({
     [],
     authStatus === "ready",
   );
+
+  const { data: sodData, reload: reloadSod } = useApiQuery(
+    () => fetchSodRules(),
+    [],
+    authStatus === "ready",
+  );
+  const fetchedSodRules = sodData?.rules ?? [];
 
   const roleRows = matrix?.roles ?? [];
   const roleActions = matrix?.actions ?? ["view", "create", "edit", "approve", "export", "delete"];
@@ -3100,6 +3158,30 @@ function SettingsPanel({
       toast.success("API key updated");
     } catch (err) {
       toast.error(errorMessage(err));
+    }
+  };
+
+  const saveSodRulesFromForm = async () => {
+    if (!sodModule.trim()) return;
+    setSavingSod(true);
+    try {
+      const rules = [...fetchedSodRules, {
+        moduleId: sodModule.trim(),
+        actions: sodActions.split(",").map((s) => s.trim()).filter(Boolean) as ("approve" | "delete" | "export")[],
+        ...(sodOverrideRoles.trim()
+          ? { overrideRoles: sodOverrideRoles.split(",").map((s) => s.trim()).filter(Boolean) }
+          : {}),
+      }];
+      await saveSodRules({ rules });
+      setSodModule("");
+      setSodActions("");
+      setSodOverrideRoles("");
+      reloadSod();
+      toast.success("SOD rule added");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setSavingSod(false);
     }
   };
 
@@ -3425,6 +3507,60 @@ function SettingsPanel({
             <code> {newKey}</code>
           </div>
         )}
+        <h3>Segregation of duties</h3>
+        <p>
+          Which actions on which modules require a different person than the
+          one who created the record. Prevents one person from creating and
+          approving (or deleting) the same invoice.
+        </p>
+        <div className="branch-list">
+          {fetchedSodRules.map((rule) => (
+            <div className="security-row" key={rule.moduleId + "-" + rule.actions.join(",")}>
+              <div>
+                <h4>{rule.moduleId}</h4>
+                <p>
+                  {rule.actions.join(", ")}
+                  {rule.overrideRoles?.length ? " · override: " + rule.overrideRoles.join(", ") : ""}
+                </p>
+              </div>
+            </div>
+          ))}
+          {fetchedSodRules.length === 0 && (
+            <p className="record-sheet__hint">No rules configured — using defaults.</p>
+          )}
+        </div>
+        <form
+          className="dialog-actions"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveSodRulesFromForm();
+          }}
+        >
+          <input
+            aria-label="Module ID"
+            placeholder="Module (e.g. finance)"
+            value={sodModule}
+            onChange={(e) => setSodModule(e.target.value)}
+            className="border border-input bg-background px-2 py-1 text-sm rounded"
+          />
+          <input
+            aria-label="Actions"
+            placeholder="Actions (approve, delete)"
+            value={sodActions}
+            onChange={(e) => setSodActions(e.target.value)}
+            className="border border-input bg-background px-2 py-1 text-sm rounded"
+          />
+          <input
+            aria-label="Override roles"
+            placeholder="Override roles (optional, comma separated)"
+            value={sodOverrideRoles}
+            onChange={(e) => setSodOverrideRoles(e.target.value)}
+            className="border border-input bg-background px-2 py-1 text-sm rounded w-full"
+          />
+          <Button type="submit" disabled={savingSod}>
+            <Plus /> Add rule
+          </Button>
+        </form>
       </div>
     );
 

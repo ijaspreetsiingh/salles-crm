@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "./ui";
 import { Avatar, CustomerLinkPicker, Status, labelForKey, readField } from "./common";
-import { slaState, slaStateLabel } from "@/lib/crm/sla";
+import { formatSlaDue, slaState, slaStateLabel } from "@/lib/crm/sla";
 import { JourneyRail } from "./journey";
 import { buildJourney, buildJourneyFromRelations } from "@/lib/crm/journey";
 import { money, type Module, type RecordRow, modules } from "@/lib/crm/catalog";
@@ -142,8 +142,8 @@ export function RecordSheet({
           label: labelForKey(field.key, schema.fields),
           value:
             module.id === "support" && field.key === "date"
-              ? `${String(value)} — ${slaStateLabel(
-                  slaState({ status: row.status, extra: row.extra ?? {}, date: String(value) }),
+              ? `${formatSlaDue({ status: row.status, extra: row.extra ?? null, date: String(value) })} — ${slaStateLabel(
+                  slaState({ status: row.status, extra: row.extra ?? null, date: String(value) }),
                 )}`
               : field.key === "amount"
                 ? money(Number(value) || 0, currency)

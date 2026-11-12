@@ -33,7 +33,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { formatDay, money, modules, type Module, type RecordRow } from "@/lib/crm/catalog";
-import { slaState, slaStateLabel } from "@/lib/crm/sla";
+import { formatSlaDue, slaState, slaStateLabel } from "@/lib/crm/sla";
 import { buildJourney } from "@/lib/crm/journey";
 import { statusGuide } from "@/lib/crm/language";
 import { getSchema, type ColumnDef, type FieldDef } from "@/lib/crm/schema";
@@ -331,7 +331,7 @@ export function CellValue({
       if (row.moduleId === "support" && column.key === "date") {
         const state = slaState({
           status: row.status,
-          extra: row.extra ?? {},
+          extra: row.extra ?? null,
           date: String(raw),
         });
         const tone =
@@ -342,7 +342,7 @@ export function CellValue({
               : "text-foreground";
         return (
           <span className={tone} title={slaStateLabel(state)}>
-            {raw === "" ? "—" : `${formatDay(String(raw))} ${state === "breached" ? "⚠" : state === "due soon" ? "⏰" : ""}`}
+            {raw === "" ? "—" : `${formatSlaDue({ status: row.status, extra: row.extra ?? null, date: String(raw) })} ${state === "breached" ? "⚠" : state === "due soon" ? "⏰" : ""}`}
           </span>
         );
       }

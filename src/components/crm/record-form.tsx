@@ -149,7 +149,7 @@ export function RecordForm({
       destination: text(row?.destination ?? initialData?.destination),
       owner: text(row?.owner ?? initialData?.owner ?? employees[0]?.name ?? ""),
       branch: text(row?.branch ?? initialData?.branch ?? settings.branches[0] ?? ""),
-      date: text(row?.date ?? initialData?.date) || today(),
+      date: text(row?.date ?? initialData?.date) || (module.id === "support" ? "" : today()),
       amount: Number(row?.amount ?? initialData?.amount ?? 0),
       currency: text(row?.currency ?? initialData?.currency ?? settings.currency),
       status: text(row?.status ?? initialData?.status ?? startStatus(module.id, schema.statuses)),

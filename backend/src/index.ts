@@ -12,6 +12,7 @@ import {
   startWorkflowRetryScheduler,
   stopWorkflowRetryScheduler,
 } from "./services/workflow-runs";
+import { startSlaScheduler, stopSlaScheduler } from "./services/sla";
 import { captureException, sentryEnabled } from "./services/sentry";
 import { alertInBackground, alertingEnabled } from "./services/alerting";
 import { initSocket } from "./lib/socket";
@@ -85,6 +86,8 @@ async function bootstrap() {
     // Retries automations that failed, and dead-letters the ones that ran out
     // of attempts. Claiming is atomic, but the leader still owns the loop.
     startWorkflowRetryScheduler();
+    // Escalate overdue support tickets on the elected scheduler process.
+    startSlaScheduler();
   } else {
     logger.info("In-process schedulers disabled (RUN_SCHEDULERS=false)");
   }
@@ -103,6 +106,7 @@ async function bootstrap() {
     stopWebhookScheduler();
     stopCampaignScheduler();
     stopWorkflowRetryScheduler();
+    stopSlaScheduler();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);

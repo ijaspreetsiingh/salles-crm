@@ -180,6 +180,16 @@ const PHRASES: Array<[RegExp, string]> = [
   [/^in conversation$/i, "In conversation"],
   [/^new enquiries$/i, "New enquiries"],
   [/^won$/i, "Became a trip"],
+  [/^closed value$/i, "Sales completed"],
+  [/^average record value$/i, "Average amount"],
+  [/^activity by destination$/i, "Records by destination"],
+  [/^activity by owner$/i, "Work by team member"],
+  [/^records by status$/i, "Where work stands"],
+  [/^records by source$/i, "Where they came from"],
+  [/^monthly activity$/i, "Activity by month"],
+  [/^sla breached$/i, "Reply is overdue"],
+  [/^sla due soon$/i, "Reply is due soon"],
+  [/^sla on track$/i, "Reply is on time"],
 ];
 
 /** The word a person would use instead of the internal one. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isSlaBreached,
-  slaDueDate,
+  slaDueAt,
   slaState,
 } from "../src/services/sla";
 
@@ -17,7 +17,7 @@ import {
 
 const ticket = (over: {
   status?: string;
-  extra?: string | null;
+  extra?: Record<string, unknown> | null;
   date?: string | null;
 }) => ({
   id: "tkt-1",
@@ -28,38 +28,45 @@ const ticket = (over: {
   date: over.date ?? null,
 });
 
-const now = () => new Date().toISOString().slice(0, 10);
 const tomorrow = () =>
   new Date(Date.now() + 86400000).toISOString().slice(0, 10);
 const yesterday = () =>
   new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-describe("SLA due date by priority", () => {
+describe("SLA deadline by priority", () => {
   it("Urgent expires in 4 hours", () => {
-    expect(slaDueDate("Urgent", "2026-11-12T08:00:00.000Z")).toBe("2026-11-12");
+    const base = new Date("2026-11-12T08:00:00.000Z");
+    const due = slaDueAt("Urgent", base);
+    expect(new Date(due).getTime() - base.getTime()).toBe(4 * 60 * 60 * 1000);
   });
 
   it("High expires in 1 day", () => {
-    expect(slaDueDate("High", "2026-11-12T08:00:00.000Z")).toBe("2026-11-13");
+    const base = new Date("2026-11-12T08:00:00.000Z");
+    const due = slaDueAt("High", base);
+    expect(new Date(due).getTime() - base.getTime()).toBe(24 * 60 * 60 * 1000);
   });
 
   it("Normal expires in 3 days", () => {
-    expect(slaDueDate("Normal", "2026-11-12T08:00:00.000Z")).toBe("2026-11-15");
+    const base = new Date("2026-11-12T08:00:00.000Z");
+    const due = slaDueAt("Normal", base);
+    expect(new Date(due).getTime() - base.getTime()).toBe(72 * 60 * 60 * 1000);
   });
 
   it("Low expires in 7 days", () => {
-    expect(slaDueDate("Low", "2026-11-12T08:00:00.000Z")).toBe("2026-11-19");
+    const base = new Date("2026-11-12T08:00:00.000Z");
+    const due = slaDueAt("Low", base);
+    expect(new Date(due).getTime() - base.getTime()).toBe(168 * 60 * 60 * 1000);
   });
 
-  it("Unknown priority defaults to Normal (3 days)", () => {
-    expect(slaDueDate("Whatever", "2026-11-12T08:00:00.000Z")).toBe(
-      "2026-11-15",
-    );
+  it("Unknown priority defaults to Normal", () => {
+    const base = new Date("2026-11-12T08:00:00.000Z");
+    const due = slaDueAt("Whatever", base);
+    expect(new Date(due).getTime() - base.getTime()).toBe(72 * 60 * 60 * 1000);
   });
 });
 
 describe("breach detection", () => {
-  it("a ticket due today is breached", () => {
+  it("a ticket past its deadline is breached", () => {
     expect(isSlaBreached(ticket({ date: yesterday() }))).toBe(true);
   });
 
@@ -68,9 +75,9 @@ describe("breach detection", () => {
   });
 
   it("a resolved ticket is not breached even when past due", () => {
-    expect(isSlaBreached(ticket({ status: "Resolved", date: yesterday() }))).toBe(
-      false,
-    );
+    expect(
+      isSlaBreached(ticket({ status: "Resolved", date: yesterday() })),
+    ).toBe(false);
   });
 
   it("a closed ticket is not breached even when past due", () => {

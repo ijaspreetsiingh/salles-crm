@@ -303,8 +303,13 @@ ab "Rooms planned" kehlata hai, taaki held rooms se confuse na ho. **P1 → done
 PO amount, supplier bill, received amount + verdict; settlement `matched` par hi
 allowed, variance par explicit override + reason. **P1 → done.**
 
-**Support** — tickets, refunds with approval chain, escalations, KB. **Gap:**
-SLA timers/breach alerts nahi. **P1.**
+**Support** — tickets, refunds with approval chain, escalations, KB. SLA deadline
+priority ke hisaab se exact timestamp par set hoti hai (Urgent 4h, High 1d,
+Normal 3d, Low 7d); manually chosen due date is preserved. Ek elected API
+scheduler har 5 minute me overdue open tickets escalate karta hai, audit entry
+aur notification ke saath. **Still needs:** production timezone/business-hours
+policy; abhi windows elapsed hours hain, office hours nahi. **P1 until policy
+is agreed.**
 
 **B2B agents** — KYC, credit limits, commissions, sub-agents, portal. **Credit
 limit ab enforce hota hai:** booking create se pehle check, phir conditional
@@ -349,7 +354,9 @@ nahi chalate. **P1 → done.**
 portal read-only-ish hai; booking engine nahi. **P2.**
 
 **Integrations** — connections, API keys, webhooks + delivery log + HMAC signing.
-**Gap:** API keys me expiry/rotation policy aur IP allowlist nahi. **P1.**
+**API key lifecycle:** expiry, rotation aur per-key IP allowlist ab available
+hain (latest API-key change). Organization admins ko production me keys issue
+karne se pehle allowlist/expiry policy set karni hogi.
 
 **Administration** — org, branches, employees, roles, subscription, tax, audit,
 security (2FA), custom fields, recycle bin, **attendance/working hours (new)**.
@@ -401,9 +408,7 @@ export for external auditor (P2).
     sakta hai; approval matrix product decision chahiye.
 13. **Live e-invoicing GSP credentials** — Sek crypto implemented aur tested,
     lekin real GSP account/IRP registration ke bina production IRN nahi banega.
-14. **API key lifecycle** — expiry/rotation policy aur per-key IP allowlist nahi.
-15. **Support SLA timers** — ticket breach alerts nahi.
-16. **AI prompt-injection guard** — model-level cross-tenant guard aur output
+14. **AI prompt-injection guard** — model-level cross-tenant guard aur output
     review flow chahiye (security review).
 
 ### Closed is pass (is pass me)
@@ -420,6 +425,8 @@ export for external auditor (P2).
 - **Driver/vehicle double-booking** — ek vehicle/driver ek din me ek transfer.
 - **Groups room blocks** — dedicated table, atomic room claim, delete by id.
 - **Reports** — exact totals at any table size; honest export labels.
+- **Support SLA** — exact deadline metadata, priority recalculation, automatic
+  escalation scheduler, audit event and notification.
 - **Workflow retries** — backoff, dead-letter, manual retry/discard.
 
 ### P2 — scale/parity
@@ -439,7 +446,7 @@ export for external auditor (P2).
 2. `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` 32+ chars, `SEED_*` defaults badle.
 3. `CORS_ORIGINS`, `APP_URL`, `FRONTEND_URL`, `PORTAL_URL` real domains.
 4. `TWO_FACTOR_ENFORCEMENT=true`; admin/finance ne enrol kiya.
-5. SMTP + WhatsApp creds; ek test mail/Message bhej ke outbox check.
+5. SMTP + WhatsApp creds; ek test mail/message bhej ke outbox check.
 6. `INBOUND_EMAIL_SECRET` + `WHATSAPP_APP_SECRET` + `WHATSAPP_VERIFY_TOKEN` set
    (warna production inbound refuse karega — by design).
 7. Razorpay keys + webhook secret + dashboard webhook URL.
@@ -455,7 +462,8 @@ export for external auditor (P2).
 12. `REQUIRE_EMAIL_VERIFICATION=true`; SMTP working (verification mail).
 13. Lead form par Turnstile keys (optional; honeypot/limiter bina bhi active).
 14. Uptime monitoring; log retention policy (PII redaction ab lagu hai).
-15. Pilot: 1 branch, 5–10 users, real data, weekly review — phir rollout.
+15. Support SLA windows ko business/holiday timezone policy se confirm karo.
+16. Pilot: 1 branch, 5–10 users, real data, weekly review — phir rollout.
 
 ---
 
