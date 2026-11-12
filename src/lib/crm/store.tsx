@@ -147,14 +147,15 @@ type Store = {
   remove: (module: string, rowId: string) => void;
   /**
    * Applies one change to many records at once and re-reads the list.
-   * Resolves with how many records actually changed.
+   * Resolves with how many records actually changed, and any that were refused
+   * with a reason (a full departure, for example).
    */
   bulkUpdate: (
     moduleId: string,
     references: string[],
     action: "assign" | "status" | "delete",
     value?: string,
-  ) => Promise<number>;
+  ) => Promise<{ affected: number; skipped?: Array<{ reference: string; reason: string }> }>;
   /** Folds duplicates into one record; resolves with what moved. */
   mergeInto: (
     moduleId: string,
@@ -377,20 +378,24 @@ export function CRMProvider({ children }: { children: ReactNode }) {
 
     // Sync server-side preferences: apply theme, language, etc.
     // Fail silently — workspace loads fine without prefs.
-    import("@/lib/api/preferences").then(({ fetchPreferences }) =>
-      fetchPreferences().then((prefs) => {
-        if (prefs.language) {
-          localStorage.setItem("travo.language", prefs.language);
-        }
-        if (prefs.theme) {
-          document.documentElement.setAttribute("data-theme", prefs.theme);
-          localStorage.setItem("travo.theme", prefs.theme);
-        }
-        if (prefs.sidebarPinned !== undefined) {
-          localStorage.setItem("travo.sidebarPinned", prefs.sidebarPinned);
-        }
-      }).catch(() => {})
-    ).catch(() => {});
+    import("@/lib/api/preferences")
+      .then(({ fetchPreferences }) =>
+        fetchPreferences()
+          .then((prefs) => {
+            if (prefs.language) {
+              localStorage.setItem("travo.language", prefs.language);
+            }
+            if (prefs.theme) {
+              document.documentElement.setAttribute("data-theme", prefs.theme);
+              localStorage.setItem("travo.theme", prefs.theme);
+            }
+            if (prefs.sidebarPinned !== undefined) {
+              localStorage.setItem("travo.sidebarPinned", prefs.sidebarPinned);
+            }
+          })
+          .catch(() => {}),
+      )
+      .catch(() => {});
 
     /*
      * The recent slice of every module is *context* — the record drawer's
@@ -1059,7 +1064,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       references: string[],
       action: "assign" | "status" | "delete",
       value?: string,
-    ): Promise<number> => {
+    ): Promise<{ affected: number; skipped?: Array<{ reference: string; reason: string }> }> => {
       if (status !== "ready") {
         // Demo workspace — the same edit, applied in memory.
         setRecords((prev) => {
@@ -1086,7 +1091,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
                 : `assigned to ${value || "the unclaimed queue"}`
           }`,
         );
-        return references.length;
+        return { affected: references.length, skipped: [] };
       }
 
       const result = await bulkRecords(moduleId, {
@@ -1096,7 +1101,7 @@ export function CRMProvider({ children }: { children: ReactNode }) {
       });
       await reloadList(moduleId);
       void refreshAudit();
-      return result.affected;
+      return { affected: result.affected, skipped: result.skipped ?? [] };
     },
     [status, pushAudit, refreshAudit, reloadList],
   );

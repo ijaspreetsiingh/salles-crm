@@ -114,14 +114,23 @@ export function BulkBar({
   const apply = async (action: "assign" | "status" | "delete", value?: string): Promise<void> => {
     setBusy(true);
     try {
-      const affected = await bulkUpdate(module.id, selected, action, value);
+      const { affected, skipped = [] } = await bulkUpdate(module.id, selected, action, value);
       const verb =
         action === "delete"
           ? "deleted"
           : action === "status"
             ? `moved to ${value}`
             : `assigned to ${value || "the unclaimed queue"}`;
-      if (affected < count) {
+      if (skipped.length) {
+        // Say why a ticked row was left alone — "the departure is full" is a
+        // different thing from "it belongs to another branch".
+        toast.warning(
+          `${affected} of ${count} ${noun} ${verb}. Left alone: ${skipped
+            .slice(0, 3)
+            .map((row) => `${row.reference} (${row.reason})`)
+            .join("; ")}${skipped.length > 3 ? ` and ${skipped.length - 3} more` : ""}`,
+        );
+      } else if (affected < count) {
         // Say it plainly: silently editing fewer rows than were ticked is how
         // people lose trust in a bulk button.
         toast.warning(`${affected} of ${count} ${noun} ${verb} — the rest are outside your branch`);

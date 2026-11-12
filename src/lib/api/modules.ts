@@ -1063,6 +1063,15 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
  * The rows are named by their reference ("LD-2409") — the code the person
  * ticked — not by a database id, so what is sent is exactly what was chosen.
  */
+export type BulkResultDto = {
+  affected: number;
+  /**
+   * Ticked records that were deliberately left alone, with the reason — a
+   * cancelled booking reopened onto a full departure, for instance.
+   */
+  skipped?: Array<{ reference: string; reason: string }>;
+};
+
 export const bulkRecords = (
   moduleId: string,
   body: {
@@ -1071,7 +1080,7 @@ export const bulkRecords = (
     value?: string;
   },
 ) =>
-  apiRequest<{ affected: number }>(`/workspace/${moduleId}/records/bulk`, {
+  apiRequest<BulkResultDto>(`/workspace/${moduleId}/records/bulk`, {
     method: "POST",
     body,
   });
