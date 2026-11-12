@@ -8,6 +8,10 @@ import { startDigestScheduler, stopDigestScheduler } from "./services/digest";
 import { startFollowUpScheduler, stopFollowUpScheduler } from "./services/followups";
 import { startWebhookScheduler, stopWebhookScheduler } from "./services/webhook-dispatch";
 import { startCampaignScheduler, stopCampaignScheduler } from "./services/campaign-scheduler";
+import {
+  startWorkflowRetryScheduler,
+  stopWorkflowRetryScheduler,
+} from "./services/workflow-runs";
 import { initSocket } from "./lib/socket";
 
 async function bootstrap() {
@@ -64,6 +68,9 @@ async function bootstrap() {
     startWebhookScheduler();
     // Picks up campaigns scheduled for a future time and fires them when due.
     startCampaignScheduler();
+    // Retries automations that failed, and dead-letters the ones that ran out
+    // of attempts. Claiming is atomic, but the leader still owns the loop.
+    startWorkflowRetryScheduler();
   } else {
     logger.info("In-process schedulers disabled (RUN_SCHEDULERS=false)");
   }
@@ -81,6 +88,7 @@ async function bootstrap() {
     stopFollowUpScheduler();
     stopWebhookScheduler();
     stopCampaignScheduler();
+    stopWorkflowRetryScheduler();
     server.close(async () => {
       await prisma.$disconnect();
       process.exit(0);

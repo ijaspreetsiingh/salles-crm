@@ -344,9 +344,16 @@ export type GraphRunDto = {
 export type WorkflowRunDto = {
   id: string;
   workflow: string;
+  workflowId?: string;
   status: string;
   trigger: string;
   log: string;
+  /** Attempts made so far; 1 means it has only failed once. */
+  attempts: number;
+  /** When the automatic retry is due, or null when none is pending. */
+  nextAttemptAt: string | null;
+  /** Set when the retries ran out and a person has to look at it. */
+  deadLetteredAt: string | null;
   startedAt: string;
   finishedAt: string | null;
 };
@@ -388,6 +395,17 @@ export const runWorkflow = (id: string, options: { dryRun?: boolean } = {}) =>
 
 export const fetchWorkflowRunsFor = (id: string) =>
   apiRequest<Array<WorkflowRunDto & { workflowId: string }>>(`/workflows/${id}/runs`);
+
+/** Try a failed or dead-lettered run again, right now. */
+export const retryWorkflowRun = (runId: string) =>
+  apiRequest<WorkflowRunDto>(`/workflows/runs/${runId}/retry`, { method: "POST", body: {} });
+
+/** Accept that a run will not be retried. */
+export const discardWorkflowRun = (runId: string) =>
+  apiRequest<{ discarded: boolean }>(`/workflows/runs/${runId}/discard`, {
+    method: "POST",
+    body: {},
+  });
 
 /* ------------------------------------------------------------------ *
  * Custom Fields

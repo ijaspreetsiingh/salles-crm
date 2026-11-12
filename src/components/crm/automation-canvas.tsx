@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  Ban,
   Check,
   CircleAlert,
   Loader2,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
   Workflow as WorkflowIcon,
@@ -18,8 +20,10 @@ import { useApiQuery } from "@/lib/api/hooks";
 import {
   createWorkflow,
   deleteWorkflow,
+  discardWorkflowRun,
   fetchWorkflowRuns,
   fetchWorkflows,
+  retryWorkflowRun,
   runWorkflow,
   updateWorkflow,
   type GraphRunDto,
@@ -64,7 +68,11 @@ const ACTIONS = [
   { kind: "send_whatsapp", label: "Send a WhatsApp", config: { body: "" } },
   { kind: "assign_owner", label: "Assign to me" },
   { kind: "update_status", label: "Change status to…", config: { value: "Contacted" } },
-  { kind: "send_alert", label: "Send an alert", config: { channel: "email", message: "Alert: review this record" } },
+  {
+    kind: "send_alert",
+    label: "Send an alert",
+    config: { channel: "email", message: "Alert: review this record" },
+  },
   { kind: "webhook", label: "Call a webhook", config: { url: "" } },
 ];
 
@@ -459,7 +467,8 @@ export function AutomationStudio() {
                   {node.kind === "status_is" && `Status is ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "status_not" && `Status is not ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "owner_is" && `Owner is ${node.config?.["value"] ?? "…"}`}
-                  {node.kind === "destination_is" && `Destination has "${node.config?.["value"] ?? "…"}"`}
+                  {node.kind === "destination_is" &&
+                    `Destination has "${node.config?.["value"] ?? "…"}"`}
                   {node.kind === "source_is" && `Source is ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "update_status" && `New status: ${node.config?.["value"] ?? "…"}`}
                   {node.kind === "create_task" && String(node.config?.["title"] ?? "Create a task")}
@@ -469,10 +478,20 @@ export function AutomationStudio() {
                     )}
                   {node.kind === "webhook" && `POST to ${node.config?.["url"] ?? "(no URL)"}`}
                   {![
-                    "amount_above", "amount_below", "status_is", "status_not", "owner_is",
-                    "destination_is", "source_is",
-                    "update_status", "create_task", "send_email", "send_whatsapp", "notify",
-                    "send_alert", "webhook",
+                    "amount_above",
+                    "amount_below",
+                    "status_is",
+                    "status_not",
+                    "owner_is",
+                    "destination_is",
+                    "source_is",
+                    "update_status",
+                    "create_task",
+                    "send_email",
+                    "send_whatsapp",
+                    "notify",
+                    "send_alert",
+                    "webhook",
                   ].includes(node.kind) && KIND_LABEL[node.kind]}
                 </p>
                 <div className="auto-node__foot">
@@ -605,7 +624,16 @@ export function AutomationStudio() {
               {selected.type} · {selected.kind}
             </p>
 
-            {["amount_above", "amount_below", "status_is", "status_not", "owner_is", "destination_is", "source_is", "update_status"].includes(selected.kind) && (
+            {[
+              "amount_above",
+              "amount_below",
+              "status_is",
+              "status_not",
+              "owner_is",
+              "destination_is",
+              "source_is",
+              "update_status",
+            ].includes(selected.kind) && (
               <label>
                 {selected.kind === "status_is" || selected.kind === "status_not"
                   ? "Status value"
@@ -669,7 +697,10 @@ export function AutomationStudio() {
                                 ...current,
                                 nodes: current.nodes.map((node) =>
                                   node.id === selected.id
-                                    ? { ...node, config: { ...node.config, channel: e.target.value } }
+                                    ? {
+                                        ...node,
+                                        config: { ...node.config, channel: e.target.value },
+                                      }
                                     : node,
                                 ),
                               }
@@ -847,10 +878,38 @@ export function AutomationStudio() {
 export function ExecutionHistory() {
   const { data, loading, error, reload } = useApiQuery(() => fetchWorkflowRuns(), []);
   const [filter, setFilter] = useState("All");
+  const [busy, setBusy] = useState<string | null>(null);
   const runs = data?.items ?? [];
   const shown = filter === "All" ? runs : runs.filter((run) => run.status === filter);
 
-  const statuses = ["All", "success", "failed", "skipped"];
+  const statuses = ["All", "success", "failed", "dead", "skipped", "discarded"];
+
+  const retry = async (id: string) => {
+    setBusy(id);
+    try {
+      const run = await retryWorkflowRun(id);
+      if (run.status === "success") toast.success("The rule worked this time");
+      else toast.error(`Still failing — ${run.attempts} of 3 attempts used`);
+      reload();
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not retry this run"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const discard = async (id: string) => {
+    setBusy(id);
+    try {
+      await discardWorkflowRun(id);
+      toast.success("This run will not be tried again");
+      reload();
+    } catch (err) {
+      toast.error(errorMessage(err, "Could not discard this run"));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -867,7 +926,7 @@ export function ExecutionHistory() {
                   : "border-line bg-white text-muted hover:text-foreground"
               }`}
             >
-              {status === "All" ? "All runs" : status}
+              {status === "All" ? "All runs" : status === "dead" ? "Gave up" : status}
             </button>
           ))}
         </div>
@@ -907,34 +966,86 @@ export function ExecutionHistory() {
                 <th className="px-4 py-3 font-medium">Started</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="hidden px-4 py-3 font-medium md:table-cell">What happened</th>
+                <th className="px-4 py-3 font-medium">Next step</th>
               </tr>
             </thead>
             <tbody>
-              {shown.map((run) => (
-                <tr key={run.id} className="border-b border-line last:border-0">
-                  <td className="px-4 py-3">
-                    <strong className="font-medium text-foreground">{run.workflow}</strong>
-                    <p className="text-[11px] text-muted">{run.trigger}</p>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-muted">
-                    {new Date(run.startedAt).toLocaleString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`auto-run__status is-${run.status}`}>{run.status}</span>
-                  </td>
-                  <td
-                    className="hidden max-w-[420px] truncate px-4 py-3 text-muted md:table-cell"
-                    title={run.log}
-                  >
-                    {run.log || "—"}
-                  </td>
-                </tr>
-              ))}
+              {shown.map((run) => {
+                const retryable = run.status === "failed" || run.status === "dead";
+                return (
+                  <tr key={run.id} className="border-b border-line last:border-0">
+                    <td className="px-4 py-3">
+                      <strong className="font-medium text-foreground">{run.workflow}</strong>
+                      <p className="text-[11px] text-muted">{run.trigger}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-muted">
+                      {new Date(run.startedAt).toLocaleString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`auto-run__status is-${run.status}`}>
+                        {run.status === "dead" ? "gave up" : run.status}
+                      </span>
+                    </td>
+                    <td
+                      className="hidden max-w-[420px] px-4 py-3 text-muted md:table-cell"
+                      title={run.log}
+                    >
+                      <p className="truncate">{run.log || "—"}</p>
+                      {retryable && (
+                        <p className="mt-0.5 text-[11px]">
+                          {run.status === "dead"
+                            ? `Tried ${run.attempts} times, then stopped`
+                            : run.nextAttemptAt
+                              ? `Attempt ${run.attempts} of 3 · next try ${new Date(
+                                  run.nextAttemptAt,
+                                ).toLocaleTimeString("en-IN", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}`
+                              : `Attempt ${run.attempts} of 3`}
+                        </p>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      {retryable ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy === run.id}
+                            onClick={() => void retry(run.id)}
+                          >
+                            {busy === run.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="size-3.5" />
+                            )}
+                            Try again
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy === run.id}
+                            onClick={() => void discard(run.id)}
+                            title="Stop retrying this run"
+                          >
+                            <Ban className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-muted">
+                          {run.status === "discarded" ? "Will not run again" : "—"}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

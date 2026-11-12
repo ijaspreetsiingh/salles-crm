@@ -7,9 +7,13 @@ import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
-import { createNotification } from "../services/notifications";
 import { recordAudit } from "../services/audit";
 import { parseGraph, runWorkflowGraph } from "../services/workflow-graph";
+import {
+  discardWorkflowRunById,
+  retryWorkflowRunById,
+  runWorkflowNow,
+} from "../services/workflow-runs";
 
 const router = Router();
 router.use(requireAuth);
@@ -91,9 +95,13 @@ router.get(
         items.map((run) => ({
           id: run.id,
           workflow: run.workflow.name,
+          workflowId: run.workflowId,
           status: run.status,
           trigger: run.trigger,
           log: run.log,
+          attempts: run.attempts,
+          nextAttemptAt: run.nextAttemptAt?.toISOString() ?? null,
+          deadLetteredAt: run.deadLetteredAt?.toISOString() ?? null,
           startedAt: run.startedAt.toISOString(),
           finishedAt: run.finishedAt?.toISOString() ?? null,
         })),
@@ -156,6 +164,9 @@ router.delete(
  * Executes a workflow once and records the outcome. Actions are deliberately
  * workspace-internal (tasks, notifications, assignments) — nothing is sent to
  * external suppliers or payment providers.
+ *
+ * A failure is recorded with the attempt count and the record it was about, so
+ * the retry loop can try it again and a person can replay it later.
  */
 router.post(
   "/:id/run",
@@ -178,117 +189,88 @@ router.post(
       return ok(res, { status: run.status, log: run.log });
     }
 
-    // A workflow drawn on the canvas runs its graph, node by node.
-    const graph = parseGraph(workflow.graph);
-    if (graph) {
-      const dryRun = String(req.query.dryRun ?? "") === "1";
-      const result = await runWorkflowGraph({
-        organizationId,
-        moduleId: workflow.moduleId,
-        userId: req.auth!.userId,
-        userName: req.auth!.name,
-        graph,
-        dryRun,
-      });
-      if (!dryRun) {
-        await prisma.workflowRun.create({
-          data: {
-            workflowId: workflow.id,
-            status: result.status === "success" ? "success" : result.status,
-            trigger: workflow.trigger,
-            log: result.log,
-            finishedAt: new Date(),
-          },
-        });
-        await prisma.workflow.update({
-          where: { id: workflow.id },
-          data: { runCount: { increment: 1 }, lastRunAt: new Date() },
-        });
-      }
+    const dryRun = String(req.query.dryRun ?? "") === "1";
+    if (dryRun) {
+      const graph = parseGraph(workflow.graph);
+      const result = graph
+        ? await runWorkflowGraph({
+            organizationId,
+            moduleId: workflow.moduleId,
+            userId: req.auth!.userId,
+            userName: req.auth!.name,
+            graph,
+            dryRun: true,
+          })
+        : {
+            status: "skipped" as const,
+            log: "Nothing to test: this rule has no canvas graph, so a test would create a real task.",
+          };
       await recordAudit({
         organizationId,
         action: "WorkflowRun",
         moduleId: "automation",
         recordId: workflow.id,
-        label: `${dryRun ? "Tested" : "Ran"} "${workflow.name}" on the canvas`,
+        label: `Tested "${workflow.name}" without saving changes`,
         req,
       });
       return ok(res, result);
     }
 
-    const log: string[] = [];
-    const lowerAction = workflow.action.toLowerCase();
-
-    if (lowerAction.includes("task")) {
-      const task = await prisma.task.create({
-        data: {
-          organizationId,
-          title: `Automated: ${workflow.name}`,
-          type: "Automation",
-          ownerName: req.auth!.name,
-          ownerId: req.auth!.userId,
-          date: new Date().toISOString().slice(0, 10),
-          priority: "Normal",
-        },
-      });
-      log.push(`Created follow-up task ${task.id}`);
-    } else if (lowerAction.includes("assign")) {
-      const unassigned = await prisma.record.findMany({
-        where: { organizationId, moduleId: workflow.moduleId, ownerName: "", deletedAt: null },
-        take: 25,
-      });
-      for (const record of unassigned) {
-        await prisma.record.update({
-          where: { id: record.id },
-          data: { ownerId: req.auth!.userId, ownerName: req.auth!.name },
-        });
-      }
-      log.push(`Assigned ${unassigned.length} unowned ${workflow.moduleId} records`);
-    } else if (lowerAction.includes("approval")) {
-      await createNotification({
-        organizationId,
-        title: `Approval required — ${workflow.name}`,
-        body: `Workflow condition matched: ${workflow.condition}`,
-        level: "warning",
-      });
-      log.push("Raised approval request");
-    } else {
-      await createNotification({
-        organizationId,
-        title: workflow.name,
-        body: workflow.action,
-        moduleId: workflow.moduleId,
-        level: "info",
-      });
-      log.push("Prepared notification draft");
-    }
-
-    const [run] = await Promise.all([
-      prisma.workflowRun.create({
-        data: {
-          workflowId: workflow.id,
-          status: "success",
-          trigger: workflow.trigger,
-          log: log.join(" · "),
-          finishedAt: new Date(),
-        },
-      }),
-      prisma.workflow.update({
-        where: { id: workflow.id },
-        data: { runCount: { increment: 1 }, lastRunAt: new Date() },
-      }),
-    ]);
+    const run = await runWorkflowNow({
+      workflow,
+      actor: { organizationId, userId: req.auth!.userId, userName: req.auth!.name },
+      trigger: workflow.trigger || "manual",
+      context: { event: "manual" },
+    });
 
     await recordAudit({
       organizationId,
       action: "WorkflowRun",
       moduleId: "automation",
       recordId: workflow.id,
-      label: `Workflow "${workflow.name}" executed`,
+      label: `Ran "${workflow.name}" — ${run.status}`,
       req,
     });
 
-    return ok(res, { status: run.status, log: run.log, finishedAt: run.finishedAt });
+    return ok(res, {
+      status: run.status,
+      log: run.log,
+      runId: run.runId,
+      attempts: run.attempts,
+      nextAttemptAt: run.nextAttemptAt,
+    });
+  }),
+);
+
+/** Try a failed or dead-lettered run again, right now. */
+router.post(
+  "/runs/:runId/retry",
+  requireModulePermission("automation", "edit"),
+  asyncHandler(async (req, res) => {
+    const run = await retryWorkflowRunById(req.params.runId, req.auth!.organizationId);
+    if (!run) throw new NotFoundError("Workflow run");
+
+    await recordAudit({
+      organizationId: req.auth!.organizationId,
+      action: "WorkflowRun",
+      moduleId: "automation",
+      recordId: req.params.runId,
+      label: `Retried a failed automation by hand — ${run.status}`,
+      req,
+    });
+
+    return ok(res, run);
+  }),
+);
+
+/** Accept that a run will not be retried, and stop it coming back. */
+router.post(
+  "/runs/:runId/discard",
+  requireModulePermission("automation", "edit"),
+  asyncHandler(async (req, res) => {
+    const discarded = await discardWorkflowRunById(req.params.runId, req.auth!.organizationId);
+    if (!discarded) throw new NotFoundError("Workflow run");
+    return ok(res, { discarded: true });
   }),
 );
 
@@ -309,6 +291,9 @@ router.get(
       res,
       runs.map((r) => ({
         ...r,
+        attempts: r.attempts,
+        nextAttemptAt: r.nextAttemptAt?.toISOString() ?? null,
+        deadLetteredAt: r.deadLetteredAt?.toISOString() ?? null,
         startedAt: r.startedAt.toISOString(),
         finishedAt: r.finishedAt?.toISOString() ?? null,
       })),

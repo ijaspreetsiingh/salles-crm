@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
-import { parseGraph, runWorkflowGraph } from "./workflow-graph";
+import { parseGraph } from "./workflow-graph";
+import { runWorkflowNow } from "./workflow-runs";
 
 /**
  * Live automation triggers.
@@ -78,7 +79,7 @@ export type FireInput = {
   userName?: string;
 };
 
-export type FireResult = { fired: number; skipped: number };
+export type FireResult = { fired: number; skipped: number; failed: number };
 
 /**
  * Runs every matching automation. Never throws: a broken workflow must not
@@ -86,7 +87,7 @@ export type FireResult = { fired: number; skipped: number };
  * history where they can be seen and fixed.
  */
 export async function fireWorkflows(input: FireInput): Promise<FireResult> {
-  const result: FireResult = { fired: 0, skipped: 0 };
+  const result: FireResult = { fired: 0, skipped: 0, failed: 0 };
   try {
     const workflows = await prisma.workflow.findMany({
       where: {
@@ -117,104 +118,43 @@ export async function fireWorkflows(input: FireInput): Promise<FireResult> {
       if (!kinds.has(kind)) continue;
 
       // A status-change trigger that names no filter still fires on any move;
-      // when the graph has a `status_is` condition it filters for real below.
-      const graph = parseGraph(workflow.graph ?? "");
+      // when the graph has a `status_is` condition it filters for real inside
+      // the executor.
       const reason =
         input.event === "record.status_changed" && input.previousStatus !== undefined
           ? `status ${input.previousStatus || "(none)"} → ${input.status ?? "(none)"}`
           : input.event;
       const detailTrigger = `${workflow.trigger || kind} · ${reason}`;
 
+      const context = {
+        userId: actorId ?? "",
+        userName,
+        moduleId: input.moduleId,
+        recordId: input.recordId,
+        event: input.event,
+        status: input.status,
+        previousStatus: input.previousStatus,
+      };
+
       try {
-        if (graph) {
-          const run = await runWorkflowGraph({
+        // Failed runs are recorded with their trigger context and picked up by
+        // the retry loop; a rule that fails at 3am is not silently forgotten.
+        const run = await runWorkflowNow({
+          workflow,
+          actor: {
             organizationId: input.organizationId,
-            moduleId: input.moduleId,
             userId: actorId ?? "",
             userName,
-            graph,
-            dryRun: false,
             recordId: input.recordId,
-          });
-          await prisma.$transaction([
-            prisma.workflowRun.create({
-              data: {
-                workflowId: workflow.id,
-                status: run.status,
-                trigger: detailTrigger,
-                log: run.log,
-                finishedAt: new Date(),
-              },
-            }),
-            prisma.workflow.update({
-              where: { id: workflow.id },
-              data: { runCount: { increment: 1 }, lastRunAt: new Date() },
-            }),
-          ]);
-          if (run.status === "skipped") result.skipped += 1;
-          else result.fired += 1;
-        } else {
-          // A workflow from the plain API has no canvas: honour its action text.
-          const lower = workflow.action.toLowerCase();
-          const log: string[] = [];
-          if (lower.includes("task")) {
-            const task = await prisma.task.create({
-              data: {
-                organizationId: input.organizationId,
-                title: `Automated: ${workflow.name}`,
-                type: "Automation",
-                ownerName: userName,
-                ownerId: actorId ?? undefined,
-                date: new Date().toISOString().slice(0, 10),
-                priority: "Normal",
-                relatedModule: input.moduleId,
-                relatedRecordId: input.recordId,
-              },
-            });
-            log.push(`Created follow-up task ${task.id}`);
-          } else {
-            await prisma.notification.create({
-              data: {
-                organizationId: input.organizationId,
-                title: workflow.name,
-                body: workflow.action,
-                moduleId: input.moduleId,
-                recordId: input.recordId,
-                level: "info",
-              },
-            });
-            log.push("Notified the team");
-          }
-          await prisma.$transaction([
-            prisma.workflowRun.create({
-              data: {
-                workflowId: workflow.id,
-                status: "success",
-                trigger: detailTrigger,
-                log: log.join(" · "),
-                finishedAt: new Date(),
-              },
-            }),
-            prisma.workflow.update({
-              where: { id: workflow.id },
-              data: { runCount: { increment: 1 }, lastRunAt: new Date() },
-            }),
-          ]);
-          result.fired += 1;
-        }
-      } catch (error) {
-        result.skipped += 1;
-        await prisma.workflowRun
-          .create({
-            data: {
-              workflowId: workflow.id,
-              status: "failed",
-              trigger: detailTrigger,
-              log: error instanceof Error ? error.message : "Automation failed",
-              finishedAt: new Date(),
-            },
-          })
-          .catch(() => undefined);
+          },
+          trigger: detailTrigger,
+          context,
+        });
+        if (run.status === "skipped") result.skipped += 1;
+        else if (run.status === "success") result.fired += 1;
+        else result.failed += 1;
+      } catch {
+        result.failed += 1;
       }
     }
   } catch {

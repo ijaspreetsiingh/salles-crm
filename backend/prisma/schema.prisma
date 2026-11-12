@@ -507,15 +507,24 @@ model Workflow {
 model WorkflowRun {
   id         String    @id @default(cuid())
   workflowId String
-  status     String    @default("success") // success | failed | skipped
+  status     String    @default("success") // success | failed | skipped | dead
   trigger    String    @default("")
   log        String    @default("")
+  /// Attempts made so far; the first try counts as one.
+  attempts   Int       @default(1)
+  /// When the next automatic retry is due. Null means nothing is pending.
+  nextAttemptAt DateTime?
+  /// Set when retries ran out: a person has to look at this one.
+  deadLetteredAt DateTime?
+  /// JSON of the triggering event, so a retry can replay the same record.
+  context    String    @default("{}")
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
 
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   @@index([workflowId, startedAt])
+  @@index([status, nextAttemptAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
