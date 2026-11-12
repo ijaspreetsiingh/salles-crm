@@ -38,6 +38,14 @@ type PayableRow = {
   dueDate: Date | null;
   status: string;
   notes: string;
+  poNumber: string;
+  poAmount: number | null;
+  receivedAmount: number | null;
+  invoiceNumber: string;
+  invoiceAmount: number | null;
+  matchStatus: string;
+  matchNote: string;
+  matchedAt: Date | null;
   createdAt: Date;
 };
 
@@ -65,9 +73,49 @@ const mapPayable = (row: PayableRow, paid: number, today: string) => {
     balance,
     overdue: Boolean(due && due < today && balance > 0.5),
     notes: row.notes,
+    poNumber: row.poNumber,
+    poAmount: row.poAmount,
+    receivedAmount: row.receivedAmount,
+    invoiceNumber: row.invoiceNumber,
+    invoiceAmount: row.invoiceAmount,
+    matchStatus: row.matchStatus,
+    matchNote: row.matchNote,
+    matchedAt: row.matchedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 };
+
+const variance = (a: number, b: number): boolean => Math.abs(a - b) > Math.max(1, Math.abs(a) * 0.01);
+
+/** PO ↔ GRN ↔ invoice. A 1% / ₹1 tolerance absorbs rounding, not a real gap. */
+function evaluateMatch(
+  po: number | null | undefined,
+  received: number | null | undefined,
+  invoice: number | null | undefined,
+): { status: string; note: string } {
+  if (po === null || po === undefined || po <= 0) {
+    return { status: "missing_po", note: "No purchase order amount recorded" };
+  }
+  if (received === null || received === undefined) {
+    return { status: "missing_grn", note: "No goods-received amount recorded" };
+  }
+  const billed = invoice ?? po;
+  if (variance(po, received) || variance(po, billed)) {
+    return {
+      status: "variance",
+      note: `PO ${po.toFixed(2)} · received ${received.toFixed(2)} · invoice ${billed.toFixed(2)}`,
+    };
+  }
+  return { status: "matched", note: "PO, receipt and invoice agree" };
+}
+
+const matchSchema = z.object({
+  poNumber: z.string().max(60).optional(),
+  poAmount: z.number().min(0).max(1_000_000_000).optional(),
+  receivedAmount: z.number().min(0).max(1_000_000_000).optional(),
+  invoiceNumber: z.string().max(60).optional(),
+  invoiceAmount: z.number().min(0).max(1_000_000_000).optional(),
+});
 
 const createSchema = z.object({
   supplierName: z.string().min(1).max(160),
@@ -88,10 +136,17 @@ const createSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
   notes: z.string().max(600).optional(),
+  poNumber: z.string().max(60).optional(),
+  poAmount: z.number().min(0).max(1_000_000_000).optional(),
+  receivedAmount: z.number().min(0).max(1_000_000_000).optional(),
+  invoiceNumber: z.string().max(60).optional(),
+  invoiceAmount: z.number().min(0).max(1_000_000_000).optional(),
 });
 
 const settleSchema = z.object({
   amount: z.number().positive().max(1_000_000_000),
+  /** Finance may override a failed match consciously; it is audited. */
+  overrideMatch: z.boolean().optional(),
   paidOn: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -190,6 +245,11 @@ router.post(
         gstRate: body.gstRate ?? 0,
         dueDate: asDate(body.dueDate),
         notes: body.notes?.trim() ?? "",
+        poNumber: body.poNumber?.trim() ?? "",
+        ...(body.poAmount !== undefined ? { poAmount: body.poAmount } : {}),
+        ...(body.receivedAmount !== undefined ? { receivedAmount: body.receivedAmount } : {}),
+        invoiceNumber: body.invoiceNumber?.trim() ?? "",
+        ...(body.invoiceAmount !== undefined ? { invoiceAmount: body.invoiceAmount } : {}),
         createdById: req.auth!.userId,
       },
     });
@@ -229,6 +289,17 @@ router.post(
     const alreadyPaid = num(settled._sum.amount);
     const balance = Math.max(0, payable.amount - alreadyPaid);
     if (balance <= 0.5) throw new BadRequestError("This bill is already settled");
+    /*
+     * Three-way match gate: when a purchase order is recorded, the PO, the
+     * goods-received note and the supplier invoice must agree before money
+     * leaves. Paying a mismatched bill is how duplicate and inflated supplier
+     * invoices get through.
+     */
+    if (payable.poAmount !== null && payable.matchStatus !== "matched" && !body.overrideMatch) {
+      throw new BadRequestError(
+        `This bill has not passed the three-way match (${payable.matchStatus}). Run the match or use an explicit override.`,
+      );
+    }
     if (body.amount > balance + 0.5) {
       throw new BadRequestError(
         `Only ${balance.toLocaleString("en-IN")} is left on this bill — settle that or less`,
@@ -302,6 +373,11 @@ router.patch(
         ...(body.supplierGstin !== undefined ? { supplierGstin: body.supplierGstin } : {}),
         ...(body.dueDate !== undefined ? { dueDate: asDate(body.dueDate) } : {}),
         ...(body.notes !== undefined ? { notes: body.notes.trim() } : {}),
+        ...(body.poNumber !== undefined ? { poNumber: body.poNumber.trim() } : {}),
+        ...(body.poAmount !== undefined ? { poAmount: body.poAmount } : {}),
+        ...(body.receivedAmount !== undefined ? { receivedAmount: body.receivedAmount } : {}),
+        ...(body.invoiceNumber !== undefined ? { invoiceNumber: body.invoiceNumber.trim() } : {}),
+        ...(body.invoiceAmount !== undefined ? { invoiceAmount: body.invoiceAmount } : {}),
       },
     });
 
@@ -315,6 +391,62 @@ router.patch(
         num(settled._sum.amount),
         dateKey(new Date()),
       ),
+    });
+  }),
+);
+
+/** Runs the three-way match and stores the verdict. */
+router.post(
+  "/:id/match",
+  requirePermission("edit"),
+  validate(matchSchema),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const body = req.body as z.infer<typeof matchSchema>;
+    const payable = await prisma.payable.findFirst({
+      where: { id: req.params.id, organizationId },
+    });
+    if (!payable) throw new NotFoundError("Payable");
+
+    const po = body.poAmount ?? payable.poAmount;
+    const received = body.receivedAmount ?? payable.receivedAmount;
+    const invoice = body.invoiceAmount ?? payable.invoiceAmount ?? payable.amount;
+    const verdict = evaluateMatch(po, received, invoice);
+
+    const updated = await prisma.payable.update({
+      where: { id: payable.id },
+      data: {
+        ...(body.poNumber !== undefined ? { poNumber: body.poNumber.trim() } : {}),
+        ...(body.poAmount !== undefined ? { poAmount: body.poAmount } : {}),
+        ...(body.receivedAmount !== undefined ? { receivedAmount: body.receivedAmount } : {}),
+        ...(body.invoiceNumber !== undefined ? { invoiceNumber: body.invoiceNumber.trim() } : {}),
+        ...(body.invoiceAmount !== undefined ? { invoiceAmount: body.invoiceAmount } : {}),
+        matchStatus: verdict.status,
+        matchNote: verdict.note,
+        matchedAt: verdict.status === "matched" ? new Date() : null,
+      },
+    });
+
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "suppliers",
+      label: `Three-way match ${verdict.status} for ${payable.supplierName}`,
+      meta: { payableId: payable.id, status: verdict.status },
+      req,
+    });
+
+    const settled = await prisma.payablePayment.aggregate({
+      where: { organizationId, payableId: payable.id },
+      _sum: { amount: true },
+    });
+    return ok(res, {
+      payable: mapPayable(
+        updated as unknown as PayableRow,
+        num(settled._sum.amount),
+        dateKey(new Date()),
+      ),
+      match: verdict,
     });
   }),
 );

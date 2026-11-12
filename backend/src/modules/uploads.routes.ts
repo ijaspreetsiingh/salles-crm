@@ -20,8 +20,11 @@ fs.mkdirSync(uploadDir, { recursive: true });
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${randomToken(6)}${ext}`);
+    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, "");
+    // Sanitize: keep only safe extension chars, never allow .html/.php/.js
+    const BLOCKED_EXTS = new Set([".html", ".htm", ".php", ".php3", ".php4", ".phtml", ".js", ".jsx", ".ts", ".tsx", ".sh", ".bash", ".cmd", ".bat", ".exe", ".dll", ".so"]);
+    const safeExt = BLOCKED_EXTS.has(ext) ? ".bin" : ext;
+    cb(null, `${Date.now()}-${randomToken(6)}${safeExt}`);
   },
 });
 
@@ -308,7 +311,12 @@ router.get(
     assertModuleAccess(req.auth!, attachment.moduleId, "view");
 
     const filePath = path.join(uploadDir, attachment.storedName);
-    if (!fs.existsSync(filePath)) throw new NotFoundError("File");
+    // Path traversal guard: the resolved path must stay inside uploadDir.
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(uploadDir) + path.sep)) {
+      throw new NotFoundError("File");
+    }
+    if (!fs.existsSync(resolved)) throw new NotFoundError("File");
 
     res.setHeader("Content-Type", attachment.mimeType);
     /*
@@ -322,7 +330,7 @@ router.get(
       `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(attachment.filename)}"`,
     );
     res.setHeader("X-Content-Type-Options", "nosniff");
-    return fs.createReadStream(filePath).pipe(res);
+    return fs.createReadStream(resolved).pipe(res);
   }),
 );
 

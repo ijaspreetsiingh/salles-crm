@@ -5,7 +5,8 @@ import { asyncHandler, created, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
-import { NotFoundError } from "../lib/errors";
+import { BadRequestError, NotFoundError } from "../lib/errors";
+import { parseJson } from "../lib/utils";
 import { recordAudit } from "../services/audit";
 import { applyBranchScope } from "../services/records";
 
@@ -415,6 +416,133 @@ router.get(
         withoutPassport: members.filter((m) => m.status !== "Cancelled" && !m.passport).length,
       },
     });
+  }),
+);
+
+// ── Room blocks — link hotel allotments to a group ───────────────────────────
+
+const roomBlockSchema = z.object({
+  allotmentId: z.string().min(1),
+  roomsHeld: z.number().int().min(1).max(500).default(1),
+  notes: z.string().max(500).default(""),
+});
+
+/** Lists all room blocks (allotment links) for a group. */
+router.get(
+  "/:recordId/room-blocks",
+  requireModulePermission("groups", "view"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const group = await assertGroup(req.auth!, req.params.recordId);
+    const extra = parseJson<Record<string, unknown>>(group.extra as string, {});
+    const blocks = Array.isArray(extra["roomBlocks"]) ? extra["roomBlocks"] as Array<Record<string, unknown>> : [];
+
+    // Hydrate allotment details
+    const allotmentIds = blocks.map((b) => String(b["allotmentId"] ?? "")).filter(Boolean);
+    const allotments = allotmentIds.length > 0
+      ? await prisma.hotelAllotment.findMany({ where: { id: { in: allotmentIds }, organizationId } })
+      : [];
+    const allotmentMap = new Map(allotments.map((a) => [a.id, a]));
+
+    return ok(res, blocks.map((b) => ({
+      ...b,
+      allotment: allotmentMap.get(String(b["allotmentId"] ?? "")) ?? null,
+    })));
+  }),
+);
+
+/** Links a hotel allotment (contract room block) to this group. */
+router.post(
+  "/:recordId/room-blocks",
+  requireModulePermission("groups", "edit"),
+  validate(roomBlockSchema),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const group = await assertGroup(req.auth!, req.params.recordId);
+    const body = req.body as z.infer<typeof roomBlockSchema>;
+
+    // Verify the allotment exists and belongs to this org
+    const allotment = await prisma.hotelAllotment.findFirst({
+      where: { id: body.allotmentId, organizationId },
+    });
+    if (!allotment) throw new NotFoundError("Allotment");
+
+    // Check availability
+    const available = allotment.totalRooms - allotment.usedRooms;
+    if (body.roomsHeld > available) {
+      throw new BadRequestError(
+        `Only ${available} rooms available (total ${allotment.totalRooms}, used ${allotment.usedRooms})`,
+      );
+    }
+
+    // Store the room block in the group record's extra JSON
+    const extra = parseJson<Record<string, unknown>>(group.extra as string, {});
+    const blocks = Array.isArray(extra["roomBlocks"]) ? extra["roomBlocks"] as Array<Record<string, unknown>> : [];
+    blocks.push({
+      allotmentId: body.allotmentId,
+      hotelName: allotment.hotelName,
+      roomType: allotment.roomType,
+      roomsHeld: body.roomsHeld,
+      notes: body.notes,
+      linkedAt: new Date().toISOString(),
+    });
+
+    await prisma.record.update({
+      where: { id: group.id },
+      data: { extra: JSON.stringify({ ...extra, roomBlocks: blocks }) },
+    });
+
+    // Increment the allotment's used rooms
+    await prisma.hotelAllotment.update({
+      where: { id: allotment.id },
+      data: { usedRooms: { increment: body.roomsHeld } },
+    });
+
+    await recordAudit({
+      organizationId,
+      action: "Updated",
+      moduleId: "groups",
+      recordId: group.id,
+      label: `Room block: ${body.roomsHeld} ${allotment.roomType} at ${allotment.hotelName}`,
+      req,
+    });
+
+    return created(res, { linked: true, roomsHeld: body.roomsHeld });
+  }),
+);
+
+/** Removes a room block from a group (releases rooms back to the allotment). */
+router.delete(
+  "/:recordId/room-blocks/:blockIndex",
+  requireModulePermission("groups", "edit"),
+  asyncHandler(async (req, res) => {
+    const organizationId = req.auth!.organizationId;
+    const group = await assertGroup(req.auth!, req.params.recordId);
+    const blockIndex = parseInt(req.params.blockIndex, 10);
+
+    const extra = parseJson<Record<string, unknown>>(group.extra as string, {});
+    const blocks = Array.isArray(extra["roomBlocks"]) ? extra["roomBlocks"] as Array<Record<string, unknown>> : [];
+    if (blockIndex < 0 || blockIndex >= blocks.length) throw new NotFoundError("Room block");
+
+    const removed = blocks[blockIndex];
+    const roomsHeld = Number(removed["roomsHeld"] ?? 0);
+    const allotmentId = String(removed["allotmentId"] ?? "");
+
+    // Release the rooms back
+    if (allotmentId && roomsHeld > 0) {
+      await prisma.hotelAllotment.update({
+        where: { id: allotmentId },
+        data: { usedRooms: { decrement: roomsHeld } },
+      }).catch(() => { /* best effort */ });
+    }
+
+    blocks.splice(blockIndex, 1);
+    await prisma.record.update({
+      where: { id: group.id },
+      data: { extra: JSON.stringify({ ...extra, roomBlocks: blocks }) },
+    });
+
+    return ok(res, { removed: true });
   }),
 );
 

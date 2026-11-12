@@ -33,6 +33,7 @@ const mapCampaign = (row: {
   failed: number;
   skipped: number;
   lastSentAt: Date | null;
+  scheduledFor?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }) => ({
@@ -49,6 +50,7 @@ const mapCampaign = (row: {
   failed: row.failed,
   skipped: row.skipped,
   lastSentAt: row.lastSentAt?.toISOString() ?? null,
+  scheduledFor: row.scheduledFor?.toISOString() ?? null,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
@@ -60,6 +62,8 @@ const campaignSchema = z.object({
   body: z.string().max(4000).default(""),
   audienceModule: z.string().min(1).max(40).default("leads"),
   statuses: z.array(z.string().max(60)).max(12).default([]),
+  /** ISO datetime string — when set, the campaign is queued until this time */
+  scheduledFor: z.string().datetime().optional().nullable(),
 });
 
 router.get(
@@ -91,6 +95,7 @@ router.post(
         audienceModule: body.audienceModule,
         audience: JSON.stringify({ statuses: body.statuses }),
         createdById: req.auth!.userId,
+        ...(body.scheduledFor ? { scheduledFor: new Date(body.scheduledFor), status: "scheduled" } : {}),
       },
     });
     await recordAudit({
@@ -126,6 +131,9 @@ router.patch(
         ...rest,
         ...(statuses ? { audience: JSON.stringify({ statuses }) } : {}),
         ...(rest.name ? { name: rest.name.trim() } : {}),
+        ...(body.scheduledFor !== undefined
+          ? { scheduledFor: body.scheduledFor ? new Date(body.scheduledFor) : null }
+          : {}),
       },
     });
     return ok(res, mapCampaign(campaign));

@@ -16,6 +16,7 @@ export type ModuleId =
   | "visa"
   | "groups"
   | "operations"
+  | "attendance"
   | "suppliers"
   | "support"
   | "agents"
@@ -43,6 +44,7 @@ export type ModuleDef = {
     | "automation"
     | "settings"
     | "flights"
+    | "attendance"
     | "itinerary";
   /** Default statuses used when seeding and when a module has no status map. */
   statuses: string[];
@@ -191,6 +193,17 @@ export const MODULES: ModuleDef[] = [
     noun: "trip",
     statuses: ["Upcoming", "In progress", "Completed", "Cancelled"],
     prefix: "OPS",
+  },
+  {
+    id: "attendance",
+    name: "Attendance & working hours",
+    group: "Operations",
+    tabs: ["Today", "Team attendance", "Monthly summary", "Leave"],
+    description: "Who is in, who is on leave, and the hours the desk actually worked.",
+    noun: "attendance entry",
+    special: "attendance",
+    statuses: ["Present", "Half day", "Leave", "Holiday", "Work from home", "Absent"],
+    prefix: "ATT",
   },
   {
     id: "suppliers",

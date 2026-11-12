@@ -89,4 +89,51 @@ router.get(
   }),
 );
 
+/**
+ * DNS verification for white-label domains.
+ *
+ * Checks whether a CNAME record points the custom domain at the platform.
+ * Returns the DNS lookup result so the settings UI can show a green check
+ * or a red "not configured yet" without the user leaving the page.
+ */
+router.get(
+  "/check-dns/:domain",
+  asyncHandler(async (req, res) => {
+    const domain = req.params.domain;
+    const target = process.env["PLATFORM_DOMAIN"] ?? "app.traveldesk.in";
+
+    let resolved = false;
+    let cnameTarget = "";
+    let aRecords: string[] = [];
+
+    try {
+      const dns = await import("node:dns").then((m) => m.promises);
+      // Check CNAME
+      const cnames = await dns.resolveCname(domain).catch(() => [] as string[]);
+      if (cnames.length > 0) {
+        cnameTarget = cnames[0]!;
+        resolved = cnames.some((c) => c.includes(target) || c.includes("traveldesk"));
+      }
+      // Check A records as fallback (direct IP)
+      if (!resolved) {
+        aRecords = await dns.resolve4(domain).catch(() => [] as string[]);
+        resolved = aRecords.length > 0;
+      }
+    } catch {
+      // DNS lookup failed — domain may not be configured yet
+    }
+
+    return ok(res, {
+      domain,
+      target,
+      resolved,
+      cnameTarget,
+      aRecords,
+      message: resolved
+        ? `DNS resolves correctly — ${cnameTarget || aRecords.join(", ")}`
+        : `No DNS record found for ${domain}. Add a CNAME pointing to ${target}.`,
+    });
+  }),
+);
+
 export default router;

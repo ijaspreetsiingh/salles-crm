@@ -6,7 +6,7 @@ import { requireAuth } from "../middlewares/auth";
 import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { NotFoundError } from "../lib/errors";
-import { parseJson, stringifyJson } from "../lib/utils";
+import { parseJson, stringifyJson, cuid } from "../lib/utils";
 import { buildReport } from "../services/analytics";
 import { buildReportPdf, buildReportWorkbook } from "../services/report-export";
 import { recordAudit } from "../services/audit";
@@ -167,6 +167,30 @@ router.get(
       filtersFrom(req.query as Record<string, unknown>),
     );
 
+    // For the team report, attach target vs actual data
+    if (report === "team") {
+      const targets = await prisma.record.findMany({
+        where: {
+          organizationId: req.auth!.organizationId,
+          moduleId: "settings",
+          tab: "Targets",
+          deletedAt: null,
+        },
+      });
+      const targetMap = new Map(targets.map((t) => [t.name, Number(t.amount)]));
+      // Attach targets to each team member row in the report
+      if (data && typeof data === "object" && "breakdown" in data) {
+        const breakdown = (data as { breakdown: Array<Record<string, unknown>> }).breakdown;
+        for (const row of breakdown) {
+          const name = String(row["label"] ?? row["name"] ?? "");
+          row["target"] = targetMap.get(name) ?? 0;
+          const actual = Number(row["amount"] ?? row["value"] ?? 0);
+          const target = Number(row["target"] ?? 0);
+          row["variance"] = target > 0 ? Math.round(((actual - target) / target) * 100) : 0;
+        }
+      }
+    }
+
     await recordAudit({
       organizationId: req.auth!.organizationId,
       action: "Export",
@@ -176,6 +200,87 @@ router.get(
     });
 
     return ok(res, data);
+  }),
+);
+
+// ── Team performance targets ────────────────────────────────────────────────────
+
+const targetSchema = z.object({
+  memberName: z.string().min(1).max(120),
+  targetAmount: z.number().min(0),
+  period: z.string().max(20).default("monthly"), // monthly | quarterly | yearly
+});
+
+/** List all team targets. */
+router.get(
+  "/targets/list",
+  asyncHandler(async (req, res) => {
+    const targets = await prisma.record.findMany({
+      where: {
+        organizationId: req.auth!.organizationId,
+        moduleId: "settings",
+        tab: "Targets",
+        deletedAt: null,
+      },
+      orderBy: { name: "asc" },
+    });
+    return ok(res, targets.map((t) => {
+      const extra = parseJson<Record<string, unknown>>(t.extra as string, {});
+      return {
+        id: t.id,
+        memberName: t.name,
+        targetAmount: Number(t.amount),
+        period: extra["period"] ?? "monthly",
+        currency: t.currency || "INR",
+      };
+    }));
+  }),
+);
+
+/** Set or update a team member's sales target. */
+router.post(
+  "/targets",
+  requireModulePermission("reports", "edit"),
+  validate(targetSchema),
+  asyncHandler(async (req, res) => {
+    const { memberName, targetAmount, period } = req.body as z.infer<typeof targetSchema>;
+
+    // Upsert: find existing target for this member, update or create
+    const existing = await prisma.record.findFirst({
+      where: {
+        organizationId: req.auth!.organizationId,
+        moduleId: "settings",
+        tab: "Targets",
+        name: memberName,
+        deletedAt: null,
+      },
+    });
+
+    if (existing) {
+      await prisma.record.update({
+        where: { id: existing.id },
+        data: { amount: targetAmount, extra: JSON.stringify({ period }) },
+      });
+    } else {
+      await prisma.record.create({
+        data: {
+          id: cuid(),
+          organizationId: req.auth!.organizationId,
+          moduleId: "settings",
+          tab: "Targets",
+          reference: `TGT-${Date.now().toString(36).toUpperCase()}`,
+          name: memberName,
+          amount: targetAmount,
+          currency: "INR",
+          status: "Active",
+          extra: JSON.stringify({ period }),
+          meta: "{}",
+          createdById: req.auth!.userId,
+        },
+      });
+    }
+
+    return created(res, { memberName, targetAmount, period, saved: true });
   }),
 );
 

@@ -24,6 +24,7 @@ import { resolveHotelbedsAccount } from "../services/channels";
 import { nextReference } from "../services/records";
 import { MODULES } from "../domain/modules";
 import { recordAudit } from "../services/audit";
+import { generateVoucherPdf } from "../services/voucher-pdf";
 
 const router = Router();
 router.use(requireAuth);
@@ -464,6 +465,24 @@ router.delete(
     if (!rate) throw new NotFoundError("Rate");
     await prisma.hotelRate.update({ where: { id: rate.id }, data: { deletedAt: new Date() } });
     return ok(res, { deleted: true });
+  }),
+);
+
+// ── Hotel voucher PDF ─────────────────────────────────────────────────────────
+
+/** Downloads a hotel voucher PDF for a hotel record. */
+router.get(
+  "/:recordId/voucher",
+  requireModulePermission("hotels", "view"),
+  asyncHandler(async (req, res) => {
+    const { filename, stream } = await generateVoucherPdf({
+      organizationId: req.auth!.organizationId,
+      recordId: req.params.recordId,
+    });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    stream.pipe(res);
   }),
 );
 

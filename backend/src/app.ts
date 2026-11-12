@@ -61,6 +61,27 @@ export function createApp(): Express {
       autoLogging: {
         ignore: (req) => req.url?.includes("/health") || req.url?.includes("/ready") || false,
       },
+      /*
+       * Access logs keep the path and drop the query string. The customer
+       * portal lookup takes `?email=`, and the inbound webhooks accept a
+       * `?secret=`; writing either into a log file copies personal data and a
+       * credential into whatever ships logs off the box.
+       */
+      serializers: {
+        req: (req: {
+          id?: string;
+          method?: string;
+          url?: string;
+          remoteAddress?: string;
+          remotePort?: number;
+        }) => ({
+          id: req.id,
+          method: req.method,
+          url: (req.url ?? "").split("?")[0],
+          remoteAddress: req.remoteAddress,
+          remotePort: req.remotePort,
+        }),
+      },
     }),
   );
 

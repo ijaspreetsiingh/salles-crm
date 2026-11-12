@@ -47,6 +47,27 @@ import pnrRoutes from "../modules/pnr.routes";
 import portalRoutes from "../modules/portal.routes";
 import reconciliationRoutes from "../modules/reconciliation.routes";
 import integrationsTestRoutes from "../modules/integrations-test.routes";
+// New production-gap routes
+import relationsRoutes from "../modules/relations.routes";
+import timelineRoutes from "../modules/timeline.routes";
+import savedViewsRoutes from "../modules/saved-views.routes";
+import favoritesRoutes from "../modules/favorites.routes";
+import preferencesRoutes from "../modules/preferences.routes";
+import einvoiceRoutes from "../modules/einvoice.routes";
+import exportRoutes from "../modules/export.routes";
+// Priority module routes
+import corporateRoutes from "../modules/corporate.routes";
+import distributionRoutes from "../modules/distribution.routes";
+import transfersExtRoutes from "../modules/transfers.routes";
+import suppliersExtRoutes from "../modules/suppliers-ext.routes";
+import operationsExtRoutes from "../modules/operations-ext.routes";
+import moduleExtensionsRoutes from "../modules/module-extensions.routes";
+import financeExtensionsRoutes from "../modules/finance-extensions.routes";
+import assistantExtensionsRoutes from "../modules/assistant-extensions.routes";
+import teamChatExtensionsRoutes from "../modules/team-chat-extensions.routes";
+import privacyRoutes from "../modules/privacy.routes";
+import attendanceRoutes from "../modules/attendance.routes";
+import creditNoteRoutes from "../modules/creditNotes.routes";
 
 /** Mounts every feature router under /api/v1. */
 export function buildRoutes(): Router {
@@ -85,6 +106,11 @@ export function buildRoutes(): Router {
 
   // Team Chat
   router.use("/team-chat", teamChatRoutes);
+
+  // Privacy (data-subject erasure) + attendance
+  router.use("/privacy", privacyRoutes);
+  router.use("/attendance", attendanceRoutes);
+  router.use("/credit-notes", creditNoteRoutes);
 
   // Hotel search + contract rates
   router.use("/hotels", hotelsRoutes);
@@ -130,6 +156,25 @@ export function buildRoutes(): Router {
 
   // Signature-verified payment webhooks (no auth middleware)
   router.use("/webhooks/razorpay", razorpayWebhook);
+
+  // New production-gap routes
+  router.use("/relations", relationsRoutes);
+  router.use("/timeline", timelineRoutes);
+  router.use("/saved-views", savedViewsRoutes);
+  router.use("/favorites", favoritesRoutes);
+  router.use("/preferences", preferencesRoutes);
+  router.use("/einvoice", einvoiceRoutes);
+  router.use("/export", exportRoutes);
+  // Priority module routes
+  router.use("/corporate", corporateRoutes);
+  router.use("/distribution", distributionRoutes);
+  router.use("/transfers", transfersExtRoutes);
+  router.use("/suppliers-ext", suppliersExtRoutes);
+  router.use("/operations-ext", operationsExtRoutes);
+  router.use("/ext", moduleExtensionsRoutes);
+  router.use("/finance-ext", financeExtensionsRoutes);
+  router.use("/assistant-ext", assistantExtensionsRoutes);
+  router.use("/team-chat-ext", teamChatExtensionsRoutes);
 
   return router;
 }

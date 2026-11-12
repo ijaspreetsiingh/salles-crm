@@ -16,6 +16,7 @@ import {
   mapPayment,
   syncRecordMoney,
 } from "../services/payment-ledger";
+import { eventPayment } from "../services/timeline";
 
 const router = Router();
 router.use(requireAuth);
@@ -126,6 +127,21 @@ router.post(
       meta: { paymentId: result.payment.id, receiptNo: result.payment.receiptNo },
       req,
     });
+
+    // Timeline: write a "payment received" event on the linked record so the
+    // agent can see the full payment history without opening the ledger.
+    if (result.recordId) {
+      void eventPayment(
+        req.auth!.organizationId,
+        result.recordId,
+        body.amount,
+        result.payment.currency || "INR",
+        result.payment.method || "Cash",
+        result.payment.receiptNo,
+        req.auth!.userId,
+        req.auth!.name,
+      );
+    }
 
     return created(res, result);
   }),

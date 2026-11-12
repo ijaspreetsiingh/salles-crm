@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma";
 import { asyncHandler, ok, created } from "../lib/http";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import { validate } from "../middlewares/validate";
-import { portalLookupLimiter } from "../middlewares/rateLimit";
+import { leadFormLimiter, portalLookupLimiter } from "../middlewares/rateLimit";
 import { nextReference } from "../services/records";
 import type { ModuleDef } from "../domain/modules";
 import { sendEmail } from "../services/email";
@@ -30,7 +30,48 @@ const leadSchema = z.object({
   destination: z.string().max(160).optional(),
   travellers: z.coerce.number().int().min(1).max(99).optional(),
   notes: z.string().max(2000).optional(),
+  /** Hidden field real people never fill. Bots do. */
+  website: z.string().max(200).optional(),
+  /** When the form was rendered, so an instant POST can be spotted. */
+  renderedAt: z.coerce.number().int().optional(),
+  /** Cloudflare Turnstile token, when the workspace configured a secret. */
+  turnstileToken: z.string().max(4000).optional(),
 });
+
+/**
+ * Cheap spam checks that need no third-party account: a honeypot field and a
+ * minimum time between rendering the form and submitting it. A bot that fills
+ * every input and posts in 80 ms is refused without telling it why.
+ */
+function looksAutomated(body: z.infer<typeof leadSchema>): boolean {
+  if ((body.website ?? "").trim()) return true;
+  if (body.renderedAt) {
+    const age = Date.now() - body.renderedAt;
+    if (age < 1_200 || age > 6 * 60 * 60_000) return true;
+  }
+  return false;
+}
+
+/** Verifies a Turnstile token when a secret is configured. */
+async function turnstilePassed(token: string | undefined, ip: string | undefined): Promise<boolean> {
+  if (!env.TURNSTILE_SECRET_KEY) return true;
+  if (!token) return false;
+  try {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: env.TURNSTILE_SECRET_KEY,
+        response: token,
+        ...(ip ? { remoteip: ip } : {}),
+      }),
+    });
+    const json = (await response.json()) as { success?: boolean };
+    return Boolean(json.success);
+  } catch {
+    return false;
+  }
+}
 
 /** Form metadata for the hosted lead page. */
 router.get(
@@ -47,18 +88,58 @@ router.get(
         supportEmail: organization.supportEmail,
       },
       token,
+      // The hosted form renders the widget only when the server actually
+      // verifies a token, so the two settings can never disagree silently.
+      captcha: env.TURNSTILE_SECRET_KEY
+        ? { provider: "turnstile", siteKey: env.TURNSTILE_SITE_KEY }
+        : null,
     });
   }),
 );
 
 router.post(
   "/lead-form/:slug",
+  leadFormLimiter,
   validate(leadSchema),
   asyncHandler(async (req, res) => {
     const organization = await prisma.organization.findUnique({ where: { slug: req.params.slug } });
     if (!organization) throw new NotFoundError("Travel company");
 
     const body = req.body as z.infer<typeof leadSchema>;
+
+    /*
+     * Refuse silently: a fake success leaves a spam bot with nothing to tune
+     * against, while a real visitor never sees this path.
+     */
+    if (looksAutomated(body)) {
+      return ok(res, {
+        ok: true,
+        reference: "",
+        message: "Thank you! Your enquiry is with our travel desk — we will reply within one working day.",
+      });
+    }
+    if (!(await turnstilePassed(body.turnstileToken, req.ip))) {
+      throw new BadRequestError("Captcha verification failed. Please reload the page and try again.");
+    }
+
+    // A double-click or a retry must not become two leads with two owners.
+    const recent = await prisma.record.findFirst({
+      where: {
+        organizationId: organization.id,
+        moduleId: "leads",
+        email: { equals: body.email, mode: "insensitive" },
+        createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { reference: true },
+    });
+    if (recent) {
+      return ok(res, {
+        ok: true,
+        reference: recent.reference,
+        message: "Thank you! Your enquiry is already with our travel desk.",
+      });
+    }
 
     // Website enquiries can arrive in bursts — reference uniqueness matters
     // more than a perfect sequence, so retries add a time suffix on conflict.

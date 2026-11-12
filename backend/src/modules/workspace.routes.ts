@@ -8,7 +8,13 @@ import { requireModulePermission, requirePermission } from "../middlewares/rbac"
 import { validate } from "../middlewares/validate";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../lib/errors";
 import { getPagination, paginated } from "../lib/pagination";
-import { toCsv } from "../lib/csv";
+import { csvHeader, csvRow, type CsvValue } from "../lib/csv";
+import { assertAgentCredit, chargeAgentCredit, releaseAgentCredit } from "../services/agent-credit";
+import {
+  releaseDepartureCapacity,
+  reserveDepartureCapacity,
+} from "../services/departure-capacity";
+import { assertSegregationOfDuties } from "../services/sod";
 import { stringifyJson } from "../lib/utils";
 import { MODULES, moduleGroups } from "../domain/modules";
 import { hasPermission } from "../domain/rbac";
@@ -29,6 +35,7 @@ import { buildAttention } from "../services/attention";
 import { findDuplicateGroups, mergeRecords } from "../services/duplicates";
 import { fireWorkflows } from "../services/automation";
 import { dispatchWebhookEvent } from "../services/webhook-dispatch";
+import { eventCreated, eventStatusChange } from "../services/timeline";
 import { num } from "../lib/money";
 
 const router = Router();
@@ -483,6 +490,12 @@ router.post(
       body.owner,
       body.branch,
     );
+    const extraJson = normalizeExtra(body.extra);
+    // A credit sale is refused before a row exists, so the agent's line is a
+    // control rather than a number someone remembers to update.
+    if (module.id === "bookings") {
+      await assertAgentCredit(organizationId, extraJson, body.amount ?? 0);
+    }
 
     // Two records created in the same second can race for the same reference —
     // retry with the next free one instead of failing the save.
@@ -519,7 +532,7 @@ router.post(
             phone: body.phone ?? "",
             source: body.source ?? "Website",
             notes: body.notes ?? "",
-            extra: normalizeExtra(body.extra),
+            extra: extraJson,
             meta: stringifyJson(body.meta ?? {}),
             createdById: req.auth!.userId,
           },
@@ -535,6 +548,36 @@ router.post(
       }
     }
     if (!record) throw new BadRequestError("Could not allocate a reference for this record");
+
+    if (module.id === "bookings") {
+      // Seats and credit are both controls, not counters someone updates by
+      // hand. Reserve seats first; if credit then refuses the sale, put the
+      // seats back before deleting the row.
+      let reservation: Awaited<ReturnType<typeof reserveDepartureCapacity>> | null = null;
+      try {
+        reservation = await reserveDepartureCapacity(organizationId, record.extra, 1);
+        if (record.amount > 0) {
+          const charged = await chargeAgentCredit(organizationId, record.extra, record.amount);
+          if (charged.accountId && !charged.charged) {
+            if (reservation.reserved) {
+              await releaseDepartureCapacity(organizationId, record.extra, 1).catch(() => undefined);
+            }
+            // The pre-check passed but a concurrent booking took the line first;
+            // remove the row so a refused sale never appears as booked.
+            await prisma.record.delete({ where: { id: record.id } }).catch(() => undefined);
+            throw new BadRequestError(
+              "The agent's credit limit was reached by another booking — this one was not created",
+            );
+          }
+        }
+      } catch (error) {
+        if (reservation?.reserved) {
+          await releaseDepartureCapacity(organizationId, record.extra, 1).catch(() => undefined);
+        }
+        await prisma.record.delete({ where: { id: record.id } }).catch(() => undefined);
+        throw error;
+      }
+    }
 
     await Promise.all([
       recordAudit({
@@ -554,6 +597,16 @@ router.post(
         level: "success",
       }),
     ]);
+
+    // Timeline: "created" event so the agent can see when this record came in.
+    void eventCreated(
+      organizationId,
+      record.id,
+      record.reference,
+      module.name,
+      req.auth!.userId,
+      req.auth!.name,
+    );
 
     // Live automation: "when a new enquiry arrives, WhatsApp the desk".
     void fireWorkflows({
@@ -603,6 +656,16 @@ router.patch(
 
     const body = req.body as Partial<z.infer<typeof recordBodySchema>>;
     assertValidStatus(module, body.status);
+    // The creator cannot approve/close their own invoice. Role permissions
+    // decide what a person may do; this decides they cannot be both sides.
+    assertSegregationOfDuties({
+      moduleId: module.id,
+      action: "approve",
+      actorId: req.auth!.userId,
+      createdById: existing.createdById,
+      currentStatus: existing.status,
+      nextStatus: body.status,
+    });
 
     /*
      * Two people editing the same booking is normal in a busy agency. Without
@@ -654,6 +717,15 @@ router.patch(
       },
     });
 
+    // Cancelling a credit sale puts the money back on the agent's line, and
+    // returns the seats to the fixed departure.
+    if (module.id === "bookings" && record.status === "Cancelled" && existing.status !== "Cancelled") {
+      await Promise.all([
+        releaseAgentCredit(req.auth!.organizationId, existing.extra, existing.amount),
+        releaseDepartureCapacity(req.auth!.organizationId, existing.extra, 1),
+      ]);
+    }
+
     await recordAudit({
       organizationId: req.auth!.organizationId,
       action: "Updated",
@@ -678,6 +750,16 @@ router.patch(
         userId: req.auth!.userId,
         userName: req.auth!.name,
       });
+      // Timeline: show the status move so anyone reading the record history
+      // can see the progression (New → Quoted → Booked → Confirmed).
+      void eventStatusChange(
+        req.auth!.organizationId,
+        record.id,
+        existing.status,
+        record.status,
+        req.auth!.userId,
+        req.auth!.name,
+      );
     }
 
     const payload = toRecordDto(record) as unknown as Record<string, unknown>;
@@ -723,6 +805,14 @@ router.delete(
       ),
     });
     if (!existing) throw new NotFoundError("Record");
+
+    assertSegregationOfDuties({
+      moduleId: module.id,
+      action: "delete",
+      actorId: req.auth!.userId,
+      createdById: existing.createdById,
+      currentStatus: existing.status,
+    });
 
     await prisma.record.update({
       where: { id: existing.id },
@@ -1167,62 +1257,135 @@ router.get(
       req.query as Record<string, unknown>,
       req.auth!,
     );
-    const items = await prisma.record.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: 5000,
-    });
-
-    const csv = toCsv(
-      items.map((r) => {
-        const dto = toRecordDto(r);
-        const extra = dto.extra as Record<string, string | number>;
-        return {
-          reference: dto.reference,
-          name: dto.name,
-          detail: dto.detail,
-          destination: dto.destination,
-          owner: dto.owner,
-          branch: dto.branch,
-          date: dto.date,
-          amount: dto.amount,
-          status: dto.status,
-          email: dto.email,
-          phone: dto.phone,
-          source: dto.source,
-          ...extra,
-        };
-      }),
-      [
-        { key: "reference", label: "Reference" },
-        {
-          key: "name",
-          label: module.noun ? module.noun[0]!.toUpperCase() + module.noun.slice(1) : "Name",
-        },
-        { key: "detail", label: "Details" },
-        { key: "destination", label: "Destination" },
-        { key: "owner", label: "Owner" },
-        { key: "branch", label: "Branch" },
-        { key: "date", label: "Date" },
-        { key: "amount", label: "Value" },
-        { key: "status", label: "Status" },
-        { key: "email", label: "Email" },
-        { key: "phone", label: "Phone" },
-        { key: "source", label: "Source" },
-      ],
+    /*
+     * An export is how an agency gets its own data back — for a CA, a
+     * migration or a backup. Silently stopping at 5,000 rows turned that into
+     * a truncated file nobody noticed, so the ceiling is explicit, callers can
+     * raise it, and the response says how many rows matched versus how many
+     * were written.
+     */
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? ""), 10);
+    const limit = Math.min(
+      Math.max(Number.isFinite(requestedLimit) && requestedLimit > 0 ? requestedLimit : 25_000, 1),
+      100_000,
     );
+    const matched = await prisma.record.count({ where });
+    const columns = [
+      { key: "reference", label: "Reference" },
+      {
+        key: "name",
+        label: module.noun ? module.noun[0]!.toUpperCase() + module.noun.slice(1) : "Name",
+      },
+      { key: "detail", label: "Details" },
+      { key: "destination", label: "Destination" },
+      { key: "owner", label: "Owner" },
+      { key: "branch", label: "Branch" },
+      { key: "date", label: "Date" },
+      { key: "amount", label: "Value" },
+      { key: "status", label: "Status" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "Phone" },
+      { key: "source", label: "Source" },
+    ];
+    const exportRow = (record: Parameters<typeof toRecordDto>[0]): Record<string, CsvValue> => {
+      const dto = toRecordDto(record);
+      return {
+        reference: dto.reference,
+        name: dto.name,
+        detail: dto.detail,
+        destination: dto.destination,
+        owner: dto.owner,
+        branch: dto.branch,
+        date: dto.date,
+        amount: dto.amount,
+        status: dto.status,
+        email: dto.email,
+        phone: dto.phone,
+        source: dto.source,
+        ...(dto.extra as Record<string, CsvValue>),
+      };
+    };
 
-    await recordAudit({
-      organizationId,
-      action: "Export",
-      moduleId: module.id,
-      label: `Exported ${items.length} records`,
-      req,
-    });
-
+    /*
+     * Streaming, not buffering.
+     *
+     * The previous version built one string for up to 100,000 rows before
+     * sending a byte. A single large export could push the API process into an
+     * out-of-memory restart and take every other tenant down with it. Rows are
+     * now read in keyset batches of 1,000 and written straight to the socket,
+     * waiting for `drain` when the client is slower than the database.
+     *
+     * Headers have to be final before the first byte goes out, so the counts
+     * are computed once up front. If the client disconnects, the loop stops
+     * querying instead of finishing work nobody will receive.
+     */
+    res.status(200);
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${module.id}-export.csv"`);
-    return res.send(csv);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Total-Count", String(matched));
+    res.setHeader("X-Export-Limit", String(limit));
+    res.setHeader("X-Exported-Rows", String(Math.min(matched, limit)));
+    res.setHeader("X-Export-Truncated", matched > limit ? "true" : "false");
+    // Tell a browser fetch which headers it may read when it inspects the file.
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "X-Total-Count, X-Export-Limit, X-Exported-Rows, X-Export-Truncated",
+    );
+    res.flushHeaders();
+
+    const write = (chunk: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        if (res.writableEnded || res.destroyed) return resolve(false);
+        let settled = false;
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          res.off("drain", onDrain);
+          res.off("close", onClose);
+          resolve(ok);
+        };
+        const onDrain = () => finish(true);
+        const onClose = () => finish(false);
+        try {
+          if (res.write(chunk)) return finish(true);
+          res.once("drain", onDrain);
+          res.once("close", onClose);
+        } catch {
+          finish(false);
+        }
+      });
+
+    let written = 0;
+    try {
+      if (!(await write(`${csvHeader(columns)}\n`))) return;
+      const BATCH = 1_000;
+      let cursorId: string | undefined;
+      while (written < limit) {
+        const batch = await prisma.record.findMany({
+          where,
+          orderBy: { id: "asc" },
+          take: Math.min(BATCH, limit - written),
+          ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+        });
+        if (batch.length === 0) break;
+        const chunk = batch.map((record) => `${csvRow(exportRow(record), columns)}\n`).join("");
+        if (!(await write(chunk))) break; // client went away; stop querying
+        written += batch.length;
+        cursorId = batch[batch.length - 1]!.id;
+      }
+    } finally {
+      if (!res.writableEnded && !res.destroyed) res.end();
+      await recordAudit({
+        organizationId,
+        action: "Export",
+        moduleId: module.id,
+        label: `Exported ${written} of ${matched} records${
+          matched > written ? " (truncated or cancelled)" : ""
+        }`,
+        req,
+      }).catch(() => undefined);
+    }
   }),
 );
 

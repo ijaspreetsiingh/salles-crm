@@ -23,12 +23,8 @@ import { randomToken, sha256, stringifyJson, uniqueSlug } from "../lib/utils";
 import { ROLE_DEFS, isBranchScoped, normalizePermissions, requiresTwoFactor } from "../domain/rbac";
 import { recordAudit } from "../services/audit";
 import { sendEmail } from "../services/email";
-import {
-  generateRecoveryCodes,
-  generateTotpSecret,
-  otpauthUrl,
-  verifyTotp,
-} from "../lib/totp";
+import { generateRecoveryCodes, generateTotpSecret, otpauthUrl, verifyTotp } from "../lib/totp";
+import { checkPwnedPassword } from "../lib/pwned";
 
 const router = Router();
 
@@ -213,6 +209,20 @@ router.post(
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw new ConflictError("An account with this email already exists");
 
+    // Check the password against the HaveIBeenPwned breach database.
+    // Fail open: if HIBP is unreachable we still register the user.
+    try {
+      const pwnCount = await checkPwnedPassword(password);
+      if (pwnCount > 0) {
+        throw new BadRequestError(
+          `This password has appeared in ${pwnCount.toLocaleString()} data breaches. Please choose a different password.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BadRequestError) throw err;
+      // Network error reaching HIBP — allow registration to proceed.
+    }
+
     const organization = await prisma.organization.create({
       data: {
         name: organizationName,
@@ -307,8 +317,41 @@ router.post(
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.active) throw new UnauthorizedError("Invalid email or password");
 
+    // Account lockout: refuse sign-in if the account is temporarily locked.
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const unlockIn = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+      throw new UnauthorizedError(
+        `Too many failed attempts. Try again in ${unlockIn} minute${unlockIn === 1 ? "" : "s"}.`,
+        "account_locked",
+      );
+    }
+
     const valid = await verifyPassword(password, user.passwordHash);
-    if (!valid) throw new UnauthorizedError("Invalid email or password");
+    if (!valid) {
+      // Increment failure counter and lock the account after 10 consecutive failures.
+      const attempts = (user.loginAttempts ?? 0) + 1;
+      const lockThreshold = 10;
+      const lockedUntil = attempts >= lockThreshold
+        ? new Date(Date.now() + 15 * 60 * 1000) // 15 min lock
+        : null;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { loginAttempts: attempts, lockedUntil },
+      });
+      if (lockedUntil) {
+        throw new UnauthorizedError(
+          "Too many failed attempts. Your account is locked for 15 minutes.",
+          "account_locked",
+        );
+      }
+      throw new UnauthorizedError("Invalid email or password");
+    }
+
+    // Successful sign-in: reset failure counter.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { loginAttempts: 0, lockedUntil: null },
+    });
 
     const membership = await prisma.membership.findFirst({
       where: { userId: user.id, active: true },
@@ -337,6 +380,20 @@ router.post(
         }
         usedRecoveryCode = true;
       }
+    }
+
+    /*
+     * An unverified address cannot complete a password sign-in when the
+     * workspace requires verification. Without this gate anyone could type a
+     * colleague's address, receive the invoice and password-reset mail, and
+     * take the account over. The error code lets the sign-in screen offer
+     * "resend the link" instead of showing "wrong password".
+     */
+    if (env.REQUIRE_EMAIL_VERIFICATION && !user.emailVerified) {
+      throw new ForbiddenError(
+        "Verify your email address before signing in. Open the link we emailed you, or request a new one.",
+        "email_not_verified",
+      );
     }
 
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
@@ -373,6 +430,7 @@ router.post(
     return ok(res, {
       ...session,
       organization,
+      emailVerified: user.emailVerified,
       twoFactorSetupRequired,
       twoFactorEnabled: Boolean(user.twoFactorEnabledAt),
       ...(usedRecoveryCode ? { recoveryCodeUsed: true } : {}),
@@ -398,6 +456,12 @@ router.post(
 
     const user = await prisma.user.findUnique({ where: { id: row.userId } });
     if (!user || !user.active) throw new UnauthorizedError("Account is inactive");
+    if (env.REQUIRE_EMAIL_VERIFICATION && !user.emailVerified) {
+      throw new ForbiddenError(
+        "Verify your email address before continuing",
+        "email_not_verified",
+      );
+    }
 
     const membership = await prisma.membership.findFirst({
       where: { userId: row.userId, active: true },
@@ -739,6 +803,18 @@ router.post(
       throw new BadRequestError("Current password is incorrect");
     }
 
+    // Check new password against HIBP breach database (fail open on network error).
+    try {
+      const pwnCount = await checkPwnedPassword(newPassword);
+      if (pwnCount > 0) {
+        throw new BadRequestError(
+          `This password has appeared in ${pwnCount.toLocaleString()} data breaches. Please choose a different password.`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BadRequestError) throw err;
+    }
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -835,6 +911,41 @@ router.post(
       data: { revokedAt: new Date() },
     });
     return ok(res, { reset: true });
+  }),
+);
+
+/**
+ * Re-sends the verification link. Always answers the same way, so the endpoint
+ * cannot be used to discover which addresses have an account.
+ */
+router.post(
+  "/resend-verification",
+  authLimiter,
+  validate(z.object({ email: z.string().email().max(160).toLowerCase() })),
+  asyncHandler(async (req, res) => {
+    const { email } = req.body as { email: string };
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user && user.active && !user.emailVerified) {
+      const membership = await prisma.membership.findFirst({
+        where: { userId: user.id, active: true },
+        orderBy: { createdAt: "asc" },
+      });
+      if (membership) {
+        const token = signEmailVerifyToken(user.id);
+        const link = `${env.FRONTEND_URL.replace(/\/+$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
+        void sendEmail({
+          organizationId: membership.organizationId,
+          to: user.email,
+          subject: "Verify your Traveldesk email",
+          body: `Open this link to verify your email address (expires in 24 hours):\n${link}\n\nIf you did not ask for this, you can ignore it.`,
+          template: "email-verify",
+          userId: user.id,
+        }).catch(() => {
+          /* delivery failures are recorded in the outbox */
+        });
+      }
+    }
+    return ok(res, { sent: true });
   }),
 );
 

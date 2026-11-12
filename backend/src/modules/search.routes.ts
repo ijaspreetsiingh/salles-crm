@@ -4,6 +4,7 @@ import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { MODULE_MAP } from "../domain/modules";
 import { applyBranchScope } from "../services/records";
+import { containsText } from "../lib/prisma";
 
 const router = Router();
 router.use(requireAuth);
@@ -16,7 +17,7 @@ router.get(
     if (!q || q.length < 2) return ok(res, { query: q ?? "", groups: [] });
 
     const organizationId = req.auth!.organizationId;
-    const contains = { contains: q } as const;
+    const contains = containsText(q);
 
     const allowedModules =
       req.auth!.permissions.modules === "*" ? null : req.auth!.permissions.modules;

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Prisma } from "@prisma/client";
-import { prisma } from "../lib/prisma";
+import { containsText, prisma } from "../lib/prisma";
 import { asyncHandler, ok } from "../lib/http";
 import { requireAuth } from "../middlewares/auth";
 import { requireRole } from "../middlewares/rbac";
@@ -22,14 +22,14 @@ router.get(
 
     if (moduleId) where.moduleId = moduleId;
     if (action) where.action = action;
-    if (actor) where.actorName = { contains: actor };
+    if (actor) where.actorName = containsText(actor);
     if (from || to) {
       where.createdAt = {
         ...(from ? { gte: new Date(from) } : {}),
         ...(to ? { lte: new Date(to) } : {}),
       };
     }
-    if (search) where.label = { contains: search };
+    if (search) where.label = containsText(search);
 
     const p = getPagination(req.query as Record<string, unknown>, 50);
     const [items, total] = await Promise.all([

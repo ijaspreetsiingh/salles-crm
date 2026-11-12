@@ -13,6 +13,7 @@ import {
   buildGstr3b,
   computeInvoiceGst,
   gstr1Csv,
+  type CreditNoteGst,
   type PurchaseGst,
 } from "../services/gst";
 
@@ -37,6 +38,9 @@ type BranchAuth = { organizationId: string; roleKey: string; branchId: string | 
 const rangeSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  // Kept in the schema: the validator replaces req.query with the parsed
+  // object, so an undeclared `format=csv` would silently fall back to JSON.
+  format: z.enum(["csv", "json"]).optional(),
 });
 
 /** Defaults to the current Indian financial year (April → March). */
@@ -112,6 +116,30 @@ async function loadInvoices(
   return { organization, settings, invoices, sellerState };
 }
 
+/** Credit notes issued in the period (table 9B / 3B reduction). */
+async function loadCreditNotes(
+  auth: BranchAuth,
+  from: string,
+  to: string,
+): Promise<CreditNoteGst[]> {
+  const rows = await prisma.creditNote.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      status: { not: "cancelled" },
+      issuedOn: { gte: new Date(`${from}T00:00:00`), lte: new Date(`${to}T23:59:59`) },
+    },
+    orderBy: { issuedOn: "asc" },
+  });
+  return rows.map((row) => ({
+    reference: row.reference,
+    invoiceReference: row.invoiceReference,
+    amount: num(row.amount),
+    gstRate: num(row.gstRate),
+    customerGstin: row.customerGstin ?? "",
+    date: row.issuedOn.toISOString().slice(0, 10),
+  }));
+}
+
 /** Purchase bills in the period, for input credit. */
 async function loadPurchases(
   auth: BranchAuth,
@@ -173,8 +201,9 @@ router.get(
   validate(rangeSchema, "query"),
   asyncHandler(async (req, res) => {
     const range = resolveRange(req.query as { from?: string; to?: string });
-    const { invoices } = await loadInvoices(req.auth!, range.from, range.to);
-    const report = buildGstr1(invoices, range);
+    const { invoices, sellerState } = await loadInvoices(req.auth!, range.from, range.to);
+    const creditNotes = await loadCreditNotes(req.auth!, range.from, range.to);
+    const report = buildGstr1(invoices, range, creditNotes, sellerState);
 
     if ((req.query.format as string | undefined) === "csv") {
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
@@ -197,7 +226,8 @@ router.get(
     const range = resolveRange(req.query as { from?: string; to?: string });
     const { invoices, sellerState } = await loadInvoices(req.auth!, range.from, range.to);
     const purchases = await loadPurchases(req.auth!, range.from, range.to);
-    const report = buildGstr3b(invoices, purchases, range, sellerState);
+    const creditNotes = await loadCreditNotes(req.auth!, range.from, range.to);
+    const report = buildGstr3b(invoices, purchases, range, sellerState, creditNotes);
     return ok(res, report);
   }),
 );
