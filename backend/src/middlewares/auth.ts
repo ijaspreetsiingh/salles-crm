@@ -6,6 +6,60 @@ import { normalizePermissions, permissionsForApiKeyScopes, requiresTwoFactor, RO
 import { sha256 } from "../lib/utils";
 import { env } from "../config/env";
 
+/**
+ * Returns the client's IP address. `trust proxy` is set in app.ts, so
+ * `req.ip` resolves through `X-Forwarded-For` behind a reverse proxy.
+ */
+function clientIp(req: Request): string {
+  return req.ip ?? req.socket?.remoteAddress ?? "";
+}
+
+/** Parses an IPv4 address into its four octets. Returns null when invalid. */
+function parseIpv4(ip: string): [number, number, number, number] | null {
+  const parts = ip.split(".").map((p) => Number(p));
+  if (parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return null;
+  return parts as [number, number, number, number];
+}
+
+/** True when `ip` falls inside `cidr` (e.g. "203.0.113.0/24" or a bare IP). */
+function ipInCidr(ip: string, cidr: string): boolean {
+  const trimmed = cidr.trim();
+  if (!trimmed) return false;
+
+  const [range, bitsRaw] = trimmed.split("/");
+  const ipParts = parseIpv4(ip);
+  const rangeParts = parseIpv4(range);
+  if (!ipParts || !rangeParts) return false;
+
+  const bits = bitsRaw === undefined ? 32 : Number(bitsRaw);
+  if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+
+  const ipInt =
+    (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+  const rangeInt =
+    (rangeParts[0] << 24) | (rangeParts[1] << 16) | (rangeParts[2] << 8) | rangeParts[3];
+  const mask = bits === 0 ? 0 : ~(0xffffffff >>> bits) & 0xffffffff;
+
+  return (ipInt & mask) === (rangeInt & mask);
+}
+
+/**
+ * Checks whether the client IP is allowed by the key's allowlist.
+ *
+ * An empty allowlist means any IP. A non-empty allowlist contains IP or CIDR
+ * strings; the client must match at least one.
+ */
+function isIpAllowed(ip: string, allowedIpsJson: string): boolean {
+  let list: string[];
+  try {
+    list = JSON.parse(allowedIpsJson || "[]");
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(list) || list.length === 0) return true;
+  return list.some((entry) => ipInCidr(ip, String(entry)));
+}
+
 const readToken = (req: Request): string | null => {
   const header = req.header("authorization");
   if (header?.toLowerCase().startsWith("bearer ")) return header.slice(7).trim();
@@ -71,6 +125,20 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       });
       if (!apiKey || apiKey.keyHash !== sha256(token))
         throw new UnauthorizedError("Invalid API key");
+
+      // Expired keys stop working at the configured moment.
+      if (apiKey.expiresAt && new Date(apiKey.expiresAt) < new Date()) {
+        throw new ForbiddenError("This API key has expired. Create a new one in Settings → API keys.", "api_key_expired");
+      }
+
+      // IP allowlist: a key only works from the networks it was made for.
+      const ip = clientIp(req);
+      if (!isIpAllowed(ip, apiKey.allowedIps)) {
+        throw new ForbiddenError(
+          `This API key does not allow requests from ${ip}. Add it to the key's allowed IPs in Settings → API keys.`,
+          "api_key_ip_not_allowed",
+        );
+      }
 
       await assertSubscriptionActive(apiKey.organizationId);
       await prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } });

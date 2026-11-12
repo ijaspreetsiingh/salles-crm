@@ -1016,15 +1016,53 @@ export type ApiKeyDto = {
   name: string;
   prefix: string;
   scopes: string[];
+  expiresAt: string | null;
+  allowedIps: string[];
   lastUsedAt: string | null;
   createdAt: string;
 };
 
 export const fetchApiKeys = () => apiRequest<ApiKeyDto[]>("/api-keys");
 
-export const createApiKey = (body: { name: string; scopes?: string[] }) =>
-  apiRequest<{ id: string; name: string; key: string; scopes: string[] }>("/api-keys", {
+export const createApiKey = (body: {
+  name: string;
+  scopes?: string[];
+  expiresAt?: string | null;
+  allowedIps?: string[];
+}) =>
+  apiRequest<{
+    id: string;
+    name: string;
+    key: string;
+    scopes: string[];
+    expiresAt: string | null;
+    allowedIps: string[];
+  }>("/api-keys", {
     method: "POST",
+    body,
+  });
+
+export const rotateApiKey = (id: string) =>
+  apiRequest<{
+    id: string;
+    name: string;
+    key: string;
+    scopes: string[];
+    expiresAt: string | null;
+    allowedIps: string[];
+  }>(`/api-keys/${id}/rotate`, { method: "POST" });
+
+export const updateApiKey = (
+  id: string,
+  body: {
+    name?: string;
+    scopes?: string[];
+    expiresAt?: string | null;
+    allowedIps?: string[];
+  },
+) =>
+  apiRequest<ApiKeyDto>(`/api-keys/${id}`, {
+    method: "PATCH",
     body,
   });
 

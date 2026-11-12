@@ -185,6 +185,10 @@ model ApiKey {
   prefix         String    @unique
   keyHash        String    @unique
   scopes         String    @default("[]") // JSON array
+  /// When the key stops working. Empty means it never expires.
+  expiresAt      DateTime?
+  /// Allowed client IPs/CIDRs. Empty means any IP. Checked on every request.
+  allowedIps     String    @default("[]") // JSON array of IP/CIDR strings
   lastUsedAt     DateTime?
   revokedAt      DateTime?
   createdAt      DateTime  @default(now())

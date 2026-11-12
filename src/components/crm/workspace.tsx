@@ -21,6 +21,7 @@ import {
   Mail,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Phone,
   Plane,
   Plus,
@@ -164,6 +165,8 @@ import {
   fetchWorkflows,
   fetchDomain,
   revokeApiKey,
+  rotateApiKey,
+  updateApiKey,
   removeEmailChannel,
   removeRazorpayChannel,
   removeWhatsAppChannel,
@@ -2915,8 +2918,15 @@ function SettingsPanel({
   const [savingBilling, setSavingBilling] = useState(false);
   const [savingRoles, setSavingRoles] = useState(false);
   const [keyName, setKeyName] = useState("");
+  const [keyExpires, setKeyExpires] = useState("");
+  const [keyIps, setKeyIps] = useState("");
   const [creatingKey, setCreatingKey] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
+  const [editingKeyName, setEditingKeyName] = useState("");
+  const [editingKeyExpires, setEditingKeyExpires] = useState("");
+  const [editingKeyIps, setEditingKeyIps] = useState("");
+  const [rotatingKey, setRotatingKey] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [auditModule, setAuditModule] = useState("All modules");
@@ -3027,9 +3037,18 @@ function SettingsPanel({
     if (!keyName.trim()) return;
     setCreatingKey(true);
     try {
-      const created = await createApiKey({ name: keyName.trim() });
+      const created = await createApiKey({
+        name: keyName.trim(),
+        expiresAt: keyExpires.trim() || null,
+        allowedIps: keyIps
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
       setNewKey(created.key);
       setKeyName("");
+      setKeyExpires("");
+      setKeyIps("");
       reloadKeys();
       toast.success("API key created");
     } catch (err) {
@@ -3044,6 +3063,41 @@ function SettingsPanel({
       await revokeApiKey(id);
       reloadKeys();
       toast.success(`${name} revoked`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
+
+  const rotateKey = async (id: string, name: string) => {
+    setRotatingKey(id);
+    try {
+      const rotated = await rotateApiKey(id);
+      setNewKey(rotated.key);
+      reloadKeys();
+      toast.success(`${name} rotated — copy the new key now`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setRotatingKey(null);
+    }
+  };
+
+  const updateKey = async (id: string) => {
+    try {
+      await updateApiKey(id, {
+        name: editingKeyName.trim(),
+        expiresAt: editingKeyExpires.trim() || null,
+        allowedIps: editingKeyIps
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      });
+      setEditingKeyId(null);
+      setEditingKeyName("");
+      setEditingKeyExpires("");
+      setEditingKeyIps("");
+      reloadKeys();
+      toast.success("API key updated");
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -3231,25 +3285,105 @@ function SettingsPanel({
           />
         ) : (
           <div className="branch-list">
-            {keyRows.map((k) => (
-              <div className="security-row" key={k.id}>
-                <div>
-                  <h3>{k.name}</h3>
-                  <p>
-                    {k.prefix}… · {k.scopes.join(", ") || "all scopes"} ·{" "}
-                    {k.lastUsedAt ? `last used ${formatDay(k.lastUsedAt)}` : "never used"}
-                  </p>
+            {keyRows.map((k) => {
+              const expired = k.expiresAt && new Date(k.expiresAt) < new Date();
+              const isEditing = editingKeyId === k.id;
+              return (
+                <div className="security-row" key={k.id}>
+                  <div>
+                    <h3>
+                      {k.name}
+                      {expired ? " · " : null}
+                      {expired ? <span className="text-xs text-muted">expired</span> : null}
+                    </h3>
+                    <p>
+                      {k.prefix}… · {k.scopes.join(", ") || "all scopes"} ·{" "}
+                      {k.lastUsedAt ? `last used ${formatDay(k.lastUsedAt)}` : "never used"} ·{" "}
+                      {k.expiresAt ? `expires ${formatDay(k.expiresAt)}` : "no expiry"} ·{" "}
+                      {k.allowedIps.length ? `IPs: ${k.allowedIps.join(", ")}` : "IPs: any"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isEditing ? (
+                      <>
+                        <input
+                          className="border border-input bg-background px-2 py-1 text-sm rounded"
+                          value={editingKeyName}
+                          onChange={(e) => setEditingKeyName(e.target.value)}
+                          placeholder="Key name"
+                        />
+                        <input
+                          className="border border-input bg-background px-2 py-1 text-sm rounded"
+                          type="date"
+                          value={editingKeyExpires}
+                          onChange={(e) => setEditingKeyExpires(e.target.value)}
+                          placeholder="Expiry date"
+                        />
+                        <input
+                          className="border border-input bg-background px-2 py-1 text-sm rounded"
+                          value={editingKeyIps}
+                          onChange={(e) => setEditingKeyIps(e.target.value)}
+                          placeholder="Allowed IPs (comma separated)"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => void updateKey(k.id)}
+                          disabled={rotatingKey === k.id}
+                        >
+                          <Check size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setEditingKeyId(null);
+                            setEditingKeyName("");
+                            setEditingKeyExpires("");
+                            setEditingKeyIps("");
+                          }}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={`Rotate ${k.name}`}
+                          onClick={() => void rotateKey(k.id, k.name)}
+                          disabled={rotatingKey === k.id}
+                        >
+                          <RefreshCw size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={`Edit ${k.name}`}
+                          onClick={() => {
+                            setEditingKeyId(k.id);
+                            setEditingKeyName(k.name);
+                            setEditingKeyExpires(k.expiresAt ?? "");
+                            setEditingKeyIps(k.allowedIps.join(", "));
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={`Revoke ${k.name}`}
+                          onClick={() => void revokeKey(k.id, k.name)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  title={`Revoke ${k.name}`}
-                  onClick={() => void revokeKey(k.id, k.name)}
-                >
-                  <Trash2 />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         <form
@@ -3264,6 +3398,22 @@ function SettingsPanel({
             placeholder="Key name (e.g. Zapier)"
             value={keyName}
             onChange={(e) => setKeyName(e.target.value)}
+            className="border border-input bg-background px-2 py-1 text-sm rounded w-full"
+          />
+          <input
+            aria-label="Expiry date"
+            type="date"
+            value={keyExpires}
+            onChange={(e) => setKeyExpires(e.target.value)}
+            placeholder="Expires (optional)"
+            className="border border-input bg-background px-2 py-1 text-sm rounded"
+          />
+          <input
+            aria-label="Allowed IPs"
+            placeholder="Allowed IPs (comma separated, optional)"
+            value={keyIps}
+            onChange={(e) => setKeyIps(e.target.value)}
+            className="border border-input bg-background px-2 py-1 text-sm rounded w-full"
           />
           <Button type="submit" disabled={creatingKey || !keyName.trim()}>
             <Plus /> Create key
