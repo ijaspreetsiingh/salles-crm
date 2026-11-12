@@ -7,6 +7,7 @@ import { requireModulePermission } from "../middlewares/rbac";
 import { validate } from "../middlewares/validate";
 import { env } from "../config/env";
 import { buildItinerary, callModel, deterministicReply, workspaceSnapshot } from "../services/ai";
+import { scanPrompt } from "../services/prompt-guard";
 
 const router = Router();
 router.use(requireAuth);
@@ -45,6 +46,22 @@ router.post(
   asyncHandler(async (req, res) => {
     const auth = req.auth!;
     const { message, conversationId } = req.body as z.infer<typeof chatSchema>;
+
+    const guard = scanPrompt(message);
+    if (!guard.safe) {
+      return ok(res, {
+        conversationId,
+        reply: {
+          id: "",
+          role: "assistant",
+          content: guard.reason,
+          model: null,
+          createdAt: new Date().toISOString(),
+        },
+        live: false,
+        blocked: true,
+      });
+    }
 
     const history = await prisma.aiMessage.findMany({
       where: { organizationId: auth.organizationId, conversationId },
