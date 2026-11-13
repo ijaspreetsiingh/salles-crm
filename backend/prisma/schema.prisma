@@ -84,6 +84,8 @@ model Organization {
   savedViews    SavedView[]
   favorites     Favorite[]
   preferences   Preference[]
+  itineraryTemplates ItineraryTemplate[]
+  sightseeingEntries SightseeingEntry[]
 }
 
 model User {
@@ -196,6 +198,75 @@ model ApiKey {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Itinerary Catalog — pre-built day-wise trip templates and sightseeing entries
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A pre-built trip template (e.g. "Goa 3N4D Beach", "Rajasthan 7N8D Heritage").
+/// organizationId is null when the template is global (shared across orgs).
+model ItineraryTemplate {
+  id             String   @id @default(cuid())
+  organizationId String?
+  name           String
+  destination    String
+  nights         Int
+  totalDays      Int      @default(0)
+  travellers     Int
+  category       String   // "Beach", "Hill Station", "Heritage", "Adventure", "Pilgrimage", "Wildlife"
+  pricePerPerson Decimal  @db.Decimal(14, 2)
+  currency       String   @default("INR")
+  durationType   String   @default("Fixed") // Fixed | Customizable
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  itineraryDays  ItineraryDay[]
+
+  @@index([organizationId, destination, isActive])
+  @@index([destination, isActive])
+  @@index([category, isActive])
+}
+
+/// One day inside an itinerary template.
+model ItineraryDay {
+  id             String   @id @default(cuid())
+  itineraryId    String
+  dayNumber      Int
+  title          String
+  description    String?
+  activities     String   // JSON array of sightseeing entry IDs
+  hotelId        String?
+  transportId    String?
+  meals          String   @default("CP") // CP | MAP | AP
+  order          Int
+
+  itinerary  ItineraryTemplate @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  @@index([itineraryId, order])
+}
+
+/// A sightseeing / activity entry that can be added to any itinerary day.
+model SightseeingEntry {
+  id             String   @id @default(cuid())
+  organizationId String?      // null = global entry
+  name           String
+  city           String
+  state          String?
+  country        String   @default("India")
+  category       String   // "Monument", "Temple", "Beach", "Museum", "Park", "Adventure", "Wildlife"
+  durationHours  Int      @default(2)
+  entryFee       Decimal? @db.Decimal(10, 2)
+  rating         Decimal? @db.Decimal(3, 1)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, city, isActive])
+  @@index([city, isActive])
+  @@index([category, isActive])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -68,6 +68,7 @@ import teamChatExtensionsRoutes from "../modules/team-chat-extensions.routes";
 import privacyRoutes from "../modules/privacy.routes";
 import attendanceRoutes from "../modules/attendance.routes";
 import creditNoteRoutes from "../modules/creditNotes.routes";
+import itineraryCatalogRoutes from "../modules/itinerary-catalog.routes";
 
 /** Mounts every feature router under /api/v1. */
 export function buildRoutes(): Router {
@@ -175,6 +176,7 @@ export function buildRoutes(): Router {
   router.use("/finance-ext", financeExtensionsRoutes);
   router.use("/assistant-ext", assistantExtensionsRoutes);
   router.use("/team-chat-ext", teamChatExtensionsRoutes);
+  router.use("/itinerary-catalog", itineraryCatalogRoutes);
 
   return router;
 }
